@@ -159,13 +159,6 @@ class Omod(
             null
         }
 
-        // TODO: Debug
-        val test = LinkCalibratorDefault(
-            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput.csv"),
-            this
-        )
-        // TODO: End Debug
-
         // Create routing cache
         routingCache = RoutingCache(routingMode, hopper, distanceCacheSize, dispatcher)
         if (routingMode == RoutingMode.GRAPHHOPPER) {
@@ -210,6 +203,13 @@ class Omod(
         agentFactory = AgentFactoryDefault(destinationFinder, carOwnership, popStrata, dispatcher)
 
         logger.info("Initializing OMOD took: ${timeSource.markNow() - timestampStartInit}")
+
+        // TODO: Debug
+        val test = LinkCalibratorDefault(
+            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput.csv"),
+            this
+        )
+        // TODO: End Debug
     }
 
     // Factories

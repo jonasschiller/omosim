@@ -9,10 +9,11 @@ import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
 import java.io.File
+import kotlin.math.pow
 
 // TODO
 // 1. Determine if link which links are affected by a transition
-// 2. Simulate a bath of agents
+// 2. Simulate a batch of agents
 // 3. Check transitions
 // 4. Do particle swarm
 class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator {
@@ -22,6 +23,39 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
     init {
         sensors = readSensorData(linkDataFile)
         affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
+        val fullPopulation = omod.buildings.sumOf { it.population }
+        val mse = runBatch(fullPopulation)
+    }
+
+    fun runBatch(fullPopulation: Double) : Double {
+        val agents = omod.run(10_000)
+
+        // Determine affected sensors
+        val simCount = sensors.associateWith { 0.0 }.toMutableMap()
+        for (agent in agents) {
+            var origin = agent.mobilityDemand.first().activities.first()
+            for (activity in agent.mobilityDemand.first().activities.drop(1)) {
+                if ((origin.location.getAggLoc() is Cell) and (activity.location.getAggLoc() is Cell)) {
+                    val od = Pair(origin.location.getAggLoc() as Cell, activity.location.getAggLoc() as Cell)
+                    if (od in affectedLinks) {
+                        val sensors = affectedLinks[od]!!
+                        for (sensor in sensors) {
+                            simCount[sensor] = simCount[sensor]!! + 1
+                        }
+                    }
+                }
+                origin = activity
+            }
+        }
+
+        var mse = 0.0
+        for (sensor in sensors) {
+            val simFlow = simCount[sensor]!! * fullPopulation / agents.size
+            mse += (sensor.measuredFlow - simFlow).pow(2)
+        }
+        mse /= sensors.size
+
+        return mse
     }
 
     fun readSensorData(linkData: File) : List<TrafficSensor> {
