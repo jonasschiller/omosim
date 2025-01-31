@@ -168,7 +168,7 @@ class Run : CliktCommand() {
         omod.doModeChoice(agents, mode_choice, return_path_coords)
 
         // Store output
-        logger.info("Saving results...")
+        logger.get()?.info("Saving results...")
         val success: Boolean
         when (out.extension) {
             "json" -> {
@@ -184,7 +184,7 @@ class Run : CliktCommand() {
                 success = writeMatSim(agents.map { formatOutput(it) }, out, n_days)
             }
             else -> {
-                logger.info(
+                logger.get()?.info(
                     "Warning! output file extension ${out.extension} is not implemented." +
                     "Available output formats: .json, .db (sqlite), .xml (MATSim)" +
                     "Falling back to JSON"
@@ -197,7 +197,7 @@ class Run : CliktCommand() {
             }
         }
         if (success) {
-            logger.info("Saving results... Done!")
+            logger.get()?.info("Saving results... Done!")
         }
     }
 }

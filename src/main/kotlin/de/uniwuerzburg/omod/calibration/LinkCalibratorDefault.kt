@@ -3,6 +3,7 @@ package de.uniwuerzburg.omod.calibration
 import com.graphhopper.GraphHopper
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
+import de.uniwuerzburg.omod.core.logger
 import de.uniwuerzburg.omod.core.models.Cell
 import de.uniwuerzburg.omod.core.models.RealLocation
 import de.uniwuerzburg.omod.routing.routeWith
@@ -27,12 +28,14 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         runPSO()
     }
 
-    fun runPSO(iterations: Int = 3, nParticles: Int = 10) {
+    fun runPSO(iterations: Int = 10, nParticles: Int = 10) {
+        logger.on = false // Switch off logger for iterative calibration runs
+
         val fullPopulation = omod.buildings.sumOf { it.population }
         val finder = omod.destinationFinder as DestinationFinderDefault
 
         // Initial mse
-        var currentBestMse = runBatch(fullPopulation)
+        var (currentBestMse, simFlow) = runBatch(fullPopulation)
         println("Best start: ${currentBestMse}")
 
         // Initialize particles with OMOD default calibration
@@ -62,7 +65,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
 
                 // Check performance
                 finder.updateCalibrationPosition(particle.position)
-                val mse = runBatch(fullPopulation) // TODO Silence logging output
+                val (mse, simFlow) = runBatch(fullPopulation)
 
                 if (mse < particle.bestMse) {
                     particle.bestPosition = particle.position
@@ -75,11 +78,15 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
                 }
             }
             println("Best iteration $i: $currentBestMse")
-            // TODO Print resulting flows
+            finder.updateCalibrationPosition(bestPosition)
+            val (mse, simFlow) = runBatch(fullPopulation)
+            println("Sim Flow iteration $i: $simFlow")
+            println("Measured Flow: ${sensors.first().measuredFlow}")
         }
+        logger.on = true
     }
 
-    fun runBatch(fullPopulation: Double) : Double {
+    fun runBatch(fullPopulation: Double) : Pair<Double, Double> {
         val agents = omod.run(10_000)
 
         // Determine affected sensors
@@ -101,13 +108,14 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         }
 
         var mse = 0.0
+        var simFlow = 0.0
         for (sensor in sensors) {
-            val simFlow = simCount[sensor]!! * fullPopulation / agents.size
+            simFlow = simCount[sensor]!! * fullPopulation / agents.size
             mse += (sensor.measuredFlow - simFlow).pow(2)
         }
         mse /= sensors.size
 
-        return mse
+        return Pair(mse, simFlow)
     }
 
     fun readSensorData(linkData: File) : List<TrafficSensor> {

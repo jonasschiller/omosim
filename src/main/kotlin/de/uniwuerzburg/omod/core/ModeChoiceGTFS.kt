@@ -68,7 +68,7 @@ class ModeChoiceGTFS(
             }
         }
         println("Mode Choice: " + ProgressBar.done())
-        logger.info("Mode Choice took: ${timeSource.markNow() - timestampStartInit}")
+        logger.get()?.info("Mode Choice took: ${timeSource.markNow() - timestampStartInit}")
         return agents
     }
 

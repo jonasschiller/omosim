@@ -175,7 +175,7 @@ class Omod(
 
         // Calibration
         if (odFile != null) {
-            logger.info("Calibrating with OD-Matrix...")
+            logger.get()?.info("Calibrating with OD-Matrix...")
             // Read OD-Matrix that is used for calibration
             val odZones = ODZone.readODMatrix(odFile, geometryFactory, transformer)
             // Add TAZ to buildings and cells
@@ -183,7 +183,7 @@ class Omod(
             zones = grid + dummyZones
             // Get calibration factors based on OD-Matrix
             destinationFinder.calibrate(zones, odZones)
-            logger.info("Calibration done!")
+            logger.get()?.info("Calibration done!")
         } else {
             zones = grid
         }
@@ -202,7 +202,7 @@ class Omod(
         // Agent factory
         agentFactory = AgentFactoryDefault(destinationFinder, carOwnership, popStrata, dispatcher)
 
-        logger.info("Initializing OMOD took: ${timeSource.markNow() - timestampStartInit}")
+        logger.get()?.info("Initializing OMOD took: ${timeSource.markNow() - timestampStartInit}")
 
         // TODO: Debug
         val test = LinkCalibratorDefault(
@@ -495,14 +495,18 @@ class Omod(
                     launch(dispatcher) {
                         runAgent(agent, start_wd, n_days, coroutineRng)
                         val done = jobsDone.incrementAndGet()
-                        print("Activity generation: ${ProgressBar.show(done / totalJobs)}\r")
+                        if (logger.on) { // TODO: This good?
+                            print("Activity generation: ${ProgressBar.show(done / totalJobs)}\r")
+                        }
                     }
                 }
             }
         }
-        println("Activity generation: " + ProgressBar.done())
+        if (logger.on) {// TODO: This good?
+            println("Activity generation: " + ProgressBar.done())
+        }
         routingCache.toOOMCache() // Save routing cache
-        logger.info("Activity generation took: ${timeSource.markNow() - timestampStartInit}")
+        logger.get()?.info("Activity generation took: ${timeSource.markNow() - timestampStartInit}")
         return agents
     }
 
