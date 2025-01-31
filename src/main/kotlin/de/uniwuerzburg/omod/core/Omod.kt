@@ -82,12 +82,12 @@ class Omod(
     val grid: List<Cell>
     private val zones: List<AggLocation> // Grid + DummyLocations for commuting locations
     private val activityGenerator: ActivityGenerator
-    private val mainRng: Random = if (seed != null) Random(seed) else Random()
+    val mainRng: Random = if (seed != null) Random(seed) else Random()
     val transformer: CRSTransformer
     private val routingCache: RoutingCache
     private var censusAvailable = false
     private val dispatcher = if (nWorker != null) Dispatchers.Default.limitedParallelism(nWorker) else Dispatchers.Default
-    private val destinationFinder: DestinationFinder
+    val destinationFinder: DestinationFinder
     private val agentFactory: AgentFactory
     private var gtfsComponents: GTFSComponents? = null
     private val focusArea: Geometry
@@ -171,7 +171,7 @@ class Omod(
         activityGenerator = ActivityGeneratorDefault(activityGroups)
 
         // Destination finder
-        destinationFinder = DestinationFinderDefault(routingCache, locChoiceWeightFuns)
+        destinationFinder = DestinationFinderDefault(routingCache, locChoiceWeightFuns.toMutableMap())
 
         // Calibration
         if (odFile != null) {

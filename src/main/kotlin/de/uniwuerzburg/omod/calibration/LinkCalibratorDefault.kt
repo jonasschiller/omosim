@@ -1,6 +1,7 @@
 package de.uniwuerzburg.omod.calibration
 
 import com.graphhopper.GraphHopper
+import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.Cell
 import de.uniwuerzburg.omod.core.models.RealLocation
@@ -23,8 +24,59 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
     init {
         sensors = readSensorData(linkDataFile)
         affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
+        runPSO()
+    }
+
+    fun runPSO(iterations: Int = 3, nParticles: Int = 10) {
         val fullPopulation = omod.buildings.sumOf { it.population }
-        val mse = runBatch(fullPopulation)
+        val finder = omod.destinationFinder as DestinationFinderDefault
+
+        // Initial mse
+        var currentBestMse = runBatch(fullPopulation)
+        println("Best start: ${currentBestMse}")
+
+        // Initialize particles with OMOD default calibration
+        var bestPosition = finder.getCalibrationPosition()
+        val particles = List(nParticles) {
+            val v = Array(bestPosition.size) { omod.mainRng.nextDouble() }
+            PSOParticle(v, bestPosition, bestPosition, currentBestMse)
+        }
+        // TODO Randomize start positions
+
+        for( i in 0 until iterations ) {
+            for (particle in particles) {
+                // Update velocity
+                for (i in particle.velocity.indices) {
+                    val xi = particle.position[i]
+                    val vi = particle.velocity[i]
+                    val pi = particle.bestPosition[i]
+                    val gi = bestPosition[i]
+                    val rp = omod.mainRng.nextDouble()
+                    val rg = omod.mainRng.nextDouble()
+
+                    particle.velocity[i] = vi + rp * (pi - xi) + rg * (gi - xi)
+                }
+
+                // Update position
+                particle.position = vectorAdd(particle.position, particle.velocity)
+
+                // Check performance
+                finder.updateCalibrationPosition(particle.position)
+                val mse = runBatch(fullPopulation) // TODO Silence logging output
+
+                if (mse < particle.bestMse) {
+                    particle.bestPosition = particle.position
+                    particle.bestMse = mse
+                }
+
+                if (mse < currentBestMse) {
+                    bestPosition = particle.position
+                    currentBestMse = mse
+                }
+            }
+            println("Best iteration $i: $currentBestMse")
+            // TODO Print resulting flows
+        }
     }
 
     fun runBatch(fullPopulation: Double) : Double {
@@ -153,3 +205,26 @@ data class TrafficSensor(
     val field: Geometry,
     val directional: Boolean
 )
+
+class PSOParticle(
+   var velocity: Array<Double>,
+   var position: Array<Double>,
+   var bestPosition: Array<Double>,
+   var bestMse: Double
+)
+
+fun vectorAdd(a: Array<Double>, b: Array<Double>) : Array<Double> {
+    val result = Array(a.size) {0.0}
+    for (i in a.indices) {
+        result[i] = a[i] + b[i]
+    }
+    return result
+}
+
+fun vectorSMult(a: Array<Double>, s: Double) : Array<Double> {
+    val result = Array(a.size) { 0.0 }
+    for (i in a.indices) {
+        result[i] = a[i] * s
+    }
+    return result
+}

@@ -11,7 +11,7 @@ import java.util.Random
  */
 class DestinationFinderDefault(
     private val routingCache: RoutingCache,
-    private val locChoiceWeightFuns: Map<ActivityType, LocationChoiceDCWeightFun>,
+    private var locChoiceWeightFuns: MutableMap<ActivityType, LocationChoiceDCWeightFun>,
 ) : DestinationFinder {
     private var calibrated = false
     private var firstOrderCFactors: Map<ActivityType, Map<ODZone, Double>> = mapOf()
@@ -348,5 +348,26 @@ class DestinationFinderDefault(
             map[zones[i]] = probs[i]
         }
         return map
+    }
+
+    fun getCalibrationPosition() : Array<Double> {
+        val x = mutableListOf<Double>()
+        for (activityType in ActivityType.entries) {
+            if (activityType in locChoiceWeightFuns) {
+                x.addAll(locChoiceWeightFuns[activityType]!!.getCalibrationPosition())
+            }
+        }
+        return x.toTypedArray()
+    }
+
+    fun updateCalibrationPosition(position: Array<Double>) {
+        var offset = 0
+        for (activityType in ActivityType.entries) {
+            val oldFun = locChoiceWeightFuns[activityType]!!
+            val required = oldFun.getCalibrationPosition()
+            val x = position.slice(offset until offset+required.size).toTypedArray()
+            locChoiceWeightFuns[activityType] = oldFun.createCopyFromCalibrationPosition(x)
+            offset += required.size
+        }
     }
 }
