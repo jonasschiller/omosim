@@ -3,6 +3,7 @@ package de.uniwuerzburg.omod.core
 import com.graphhopper.GraphHopper
 import com.graphhopper.gtfs.GraphHopperGtfs
 import com.graphhopper.gtfs.PtRouter
+import de.uniwuerzburg.omod.calibration.LinkCalibratorDefault
 import de.uniwuerzburg.omod.core.models.ModeChoiceOption
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.io.geojson.*
@@ -77,8 +78,8 @@ class Omod(
     val kdTree: KdTree
     @Suppress("MemberVisibilityCanBePrivate")
     val buildings: List<Building>
-    private var hopper: GraphHopper?
-    private val grid: List<Cell>
+    var hopper: GraphHopper?
+    val grid: List<Cell>
     private val zones: List<AggLocation> // Grid + DummyLocations for commuting locations
     private val activityGenerator: ActivityGenerator
     private val mainRng: Random = if (seed != null) Random(seed) else Random()
@@ -157,6 +158,13 @@ class Omod(
         } else {
             null
         }
+
+        // TODO: Debug
+        val test = LinkCalibratorDefault(
+            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput.csv"),
+            this
+        )
+        // TODO: End Debug
 
         // Create routing cache
         routingCache = RoutingCache(routingMode, hopper, distanceCacheSize, dispatcher)
