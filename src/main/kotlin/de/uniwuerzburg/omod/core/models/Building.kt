@@ -28,10 +28,11 @@ class Building  (
     override val latlonCoord: Coordinate,
     override var odZone: ODZone?,
     override val inFocusArea: Boolean,
-    override val attractions: Map<Int, Double>,
+    override var attractions: Map<Int, Double>,
     override val population: Double,
     val point: Point,
-    var cell: Cell? = null
+    var cell: Cell? = null,
+    val osmProperties: GeoJsonBuildingProperties
 ) : RealLocation, Clusterable {
     override val avgDistanceToSelf = 0.0
 
@@ -67,10 +68,15 @@ class Building  (
                     attractions = attractions,
                     population = properties.population ?: 0.0,
                     odZone = null,
-                    point = point
+                    point = point,
+                    osmProperties = properties
                 )
             }
         }
+    }
+
+    override fun recalculateAttractions(dcFunctions: Map<ActivityType, LocationChoiceDCWeightFun>) {
+        attractions = dcFunctions.map { (_, v) -> v.id to v.calcAttraction(osmProperties)}.toMap()
     }
 
     override fun getPoint(): DoubleArray {

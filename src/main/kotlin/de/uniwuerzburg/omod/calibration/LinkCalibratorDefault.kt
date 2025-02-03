@@ -4,6 +4,7 @@ import com.graphhopper.GraphHopper
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.logger
+import de.uniwuerzburg.omod.core.models.ActivityType
 import de.uniwuerzburg.omod.core.models.Cell
 import de.uniwuerzburg.omod.core.models.RealLocation
 import de.uniwuerzburg.omod.routing.routeWith
@@ -11,13 +12,9 @@ import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
 import java.io.File
+import kotlin.math.absoluteValue
 import kotlin.math.pow
 
-// TODO
-// 1. Determine if link which links are affected by a transition
-// 2. Simulate a batch of agents
-// 3. Check transitions
-// 4. Do particle swarm
 class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator {
     private val sensors: List<TrafficSensor>
     private val affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
@@ -31,20 +28,37 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
     fun runPSO(iterations: Int = 10, nParticles: Int = 10) {
         logger.on = false // Switch off logger for iterative calibration runs
 
+        // Parameters
+        val blo = 0.0
+        val bup = 10.0
+        val w = 0.9
+        val phiP = 0.5
+        val phiG = 0.3
+
         val fullPopulation = omod.buildings.sumOf { it.population }
         val finder = omod.destinationFinder as DestinationFinderDefault
 
         // Initial mse
+        omod.mainRng.setSeed(0)
         var (currentBestMse, simFlow) = runBatch(fullPopulation)
         println("Best start: ${currentBestMse}")
 
         // Initialize particles with OMOD default calibration
         var bestPosition = finder.getCalibrationPosition()
+        val vLow = -(bup - blo).absoluteValue
+        val vUp = (bup - blo).absoluteValue
         val particles = List(nParticles) {
-            val v = Array(bestPosition.size) { omod.mainRng.nextDouble() }
-            PSOParticle(v, bestPosition, bestPosition, currentBestMse)
+            val x = Array(bestPosition.size) { omod.mainRng.nextDouble(blo, bup) }
+            val v = Array(bestPosition.size) { omod.mainRng.nextDouble(vLow, vUp) }
+            omod.destinationFinder.updateCalibrationPosition(x, omod.grid)
+            omod.mainRng.setSeed(0)
+            val (mse, _) = runBatch(fullPopulation)
+            if (mse < currentBestMse) {
+                currentBestMse = mse
+                bestPosition = x
+            }
+            PSOParticle(v, x, x, mse)
         }
-        // TODO Randomize start positions
 
         for( i in 0 until iterations ) {
             for (particle in particles) {
@@ -57,14 +71,15 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
                     val rp = omod.mainRng.nextDouble()
                     val rg = omod.mainRng.nextDouble()
 
-                    particle.velocity[i] = vi + rp * (pi - xi) + rg * (gi - xi)
+                    particle.velocity[i] = w * vi + phiP * rp * (pi - xi) + phiG * rg * (gi - xi)
                 }
 
                 // Update position
                 particle.position = vectorAdd(particle.position, particle.velocity)
 
                 // Check performance
-                finder.updateCalibrationPosition(particle.position)
+                omod.destinationFinder.updateCalibrationPosition(particle.position, omod.grid)
+                omod.mainRng.setSeed(0)
                 val (mse, simFlow) = runBatch(fullPopulation)
 
                 if (mse < particle.bestMse) {
@@ -78,7 +93,8 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
                 }
             }
             println("Best iteration $i: $currentBestMse")
-            finder.updateCalibrationPosition(bestPosition)
+            omod.destinationFinder.updateCalibrationPosition(bestPosition, omod.grid)
+            omod.mainRng.setSeed(0)
             val (mse, simFlow) = runBatch(fullPopulation)
             println("Sim Flow iteration $i: $simFlow")
             println("Measured Flow: ${sensors.first().measuredFlow}")

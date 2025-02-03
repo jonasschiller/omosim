@@ -288,7 +288,6 @@ class PureAttraction (
             position[21],
             position[22],
         )
-        copy.id = this.id
         return copy
     }
 }
@@ -392,7 +391,6 @@ class LogNormDCUtil (
             this.coeff0,
             this.coeff1
         )
-        copy.id = this.id
         return copy
     }
 }
@@ -525,7 +523,6 @@ class LogNormPowerDCUtil (
             this.coeff1,
             this.coeff2
         )
-        copy.id = this.id
         return copy
     }
 }
@@ -629,7 +626,6 @@ data class CombinedDCUtil(
             this.coeff0,
             this.coeff1
         )
-        copy.id = this.id
         return copy
     }
 }

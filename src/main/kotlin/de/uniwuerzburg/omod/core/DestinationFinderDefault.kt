@@ -354,20 +354,27 @@ class DestinationFinderDefault(
         val x = mutableListOf<Double>()
         for (activityType in ActivityType.entries) {
             if (activityType in locChoiceWeightFuns) {
-                x.addAll(locChoiceWeightFuns[activityType]!!.getCalibrationPosition())
+                val lcwFun = locChoiceWeightFuns[activityType]!!
+                if (lcwFun is ByPopulation) { continue }
+                x.addAll(lcwFun.getCalibrationPosition())
             }
         }
         return x.toTypedArray()
     }
 
-    fun updateCalibrationPosition(position: Array<Double>) {
+    fun updateCalibrationPosition(position: Array<Double>, grid: List<Cell>) {
         var offset = 0
         for (activityType in ActivityType.entries) {
-            val oldFun = locChoiceWeightFuns[activityType]!!
-            val required = oldFun.getCalibrationPosition()
-            val x = position.slice(offset until offset+required.size).toTypedArray()
-            locChoiceWeightFuns[activityType] = oldFun.createCopyFromCalibrationPosition(x)
-            offset += required.size
+            if (activityType in locChoiceWeightFuns) {
+                val oldFun = locChoiceWeightFuns[activityType]!!
+                if (oldFun is ByPopulation) { continue }
+                val nParams = oldFun.getCalibrationPosition().size
+
+                val x = position.slice(offset until offset + nParams).toTypedArray()
+                locChoiceWeightFuns[activityType] = oldFun.createCopyFromCalibrationPosition(x)
+                offset += nParams
+            }
         }
+        grid.forEach{ it.recalculateAttractions(locChoiceWeightFuns) }
     }
 }
