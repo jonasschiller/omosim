@@ -206,7 +206,7 @@ class Omod(
 
         // TODO: Debug
         val test = LinkCalibratorDefault(
-            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput.csv"),
+            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput_v2.csv"),
             this
         )
         // TODO: End Debug

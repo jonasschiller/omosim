@@ -10,6 +10,7 @@ import de.uniwuerzburg.omod.routing.routeWith
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
+import org.locationtech.jts.io.WKTReader
 import java.io.File
 import kotlin.math.absoluteValue
 import kotlin.math.pow
@@ -84,13 +85,17 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
             }
 
             val (mse, sFlow) = runBatch(globalBestPosition)
+            println("______________________________")
             println("MSE iteration $iteration: $mse")
-            println("Flow $iteration: $sFlow / ${sensors.first().measuredFlow}")
+            println("------------------------------")
+            for ((i, flow) in sFlow.values.withIndex()) {
+                println("Sensor $i $iteration: $flow / ${sensors[i].measuredFlow }")
+            }
         }
         logger.on = true
     }
 
-    private fun runBatch(parameters: Array<Double>) : Pair<Double, Double> {
+    private fun runBatch(parameters: Array<Double>) : Pair<Double, Map<TrafficSensor, Double>> {
         // Set Parameters
         val finder = omod.destinationFinder as DestinationFinderDefault
         finder.updateCalibrationPosition(parameters, omod.grid)
@@ -120,22 +125,25 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         val fullPopulation = omod.buildings.sumOf { it.population }
 
         var mse = 0.0
-        var simFlow = 0.0
+        val allFlows = mutableMapOf<TrafficSensor, Double>()
         for (sensor in sensors) {
-            simFlow = simCount[sensor]!! * fullPopulation / agents.size
+            val simFlow = simCount[sensor]!! * fullPopulation / agents.size
             mse += (sensor.measuredFlow - simFlow).pow(2)
+
+            allFlows[sensor] = simFlow
         }
         mse /= sensors.size
 
-        return Pair(mse, simFlow)
+        return Pair(mse, allFlows)
     }
 
     private fun readSensorData(linkData: File) : List<TrafficSensor> {
-        val geometryFactory = GeometryFactory()
         val sensors = mutableListOf<TrafficSensor>()
         val reader = linkData.bufferedReader()
 
-        val delimiter = ","
+        val delimiter = ";"
+
+        val wktReader = WKTReader()
 
         // Parse header
         val header = reader.readLine()
@@ -143,29 +151,16 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
 
         // Index of cols to extract
         val flowCol =  idxMap["dailyFlow"]
-        val startLatCol = idxMap["startLat"]
-        val startLonCol = idxMap["startLon"]
-        val stopLatCol = idxMap["stopLat"]
-        val stopLonCol = idxMap["stopLon"]
-        val widthCol = idxMap["width"]
-        val directionalCol = idxMap["directional"]
+        val geometryCol = idxMap["Geometry"]
 
         // Read data
         for(line in reader.lines()) {
             val values = line.split(delimiter)
             val flow = values[flowCol!!].toDouble()
-            val startLat = values[startLatCol!!].toDouble()
-            val startLon = values[startLonCol!!].toDouble()
-            val stopLat = values[stopLatCol!!].toDouble()
-            val stopLon = values[stopLonCol!!].toDouble()
-            val width = values[widthCol!!].toDouble()
-            val directional = values[directionalCol!!].toBoolean()
+            val wkt = values[geometryCol!!]
+            val geometry = omod.transformer.toModelCRS(wktReader.read(wkt))
 
-            val coordinates = arrayOf(Coordinate(startLat, startLon), Coordinate(stopLat, stopLon))
-            val lineGeom = geometryFactory.createLineString(coordinates)
-            val field = omod.transformer.toModelCRS(lineGeom).buffer(width/2)
-
-            val sensor = TrafficSensor(flow, field, directional)
+            val sensor = TrafficSensor(flow, geometry)
             sensors.add(sensor)
         }
 
@@ -217,8 +212,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
 
 class TrafficSensor(
     val measuredFlow: Double,
-    val field: Geometry,
-    val directional: Boolean
+    val field: Geometry
 )
 
 class PSOParticle(
