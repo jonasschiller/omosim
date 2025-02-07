@@ -194,6 +194,12 @@ class DestinationFinderDefault(
     fun determinePairProbabilities(
         grid: List<Cell>, activityGenerator: ActivityGeneratorDefault
     ) : Map<Pair<Cell, Cell>, Double> {
+        // TODO Clean up, Speed up, Test for last divergence:
+        // Possible reasons
+        //      - Last trip Home, work, school ist approximated with OTHER
+        //      - No difference between origin -> destination and the other way
+        //      - Home probs because of Focus area
+
         val expectedCountPerAgent = mutableMapOf<Pair<Cell, Cell>, Double>()
         for (origin in grid) {
             for (destination in grid) {
@@ -201,7 +207,7 @@ class DestinationFinderDefault(
             }
         }
 
-        val homeWeights = getDistrNoOrigin(grid, activityType = ActivityType.HOME) // TODO what about buffer area
+        val homeWeights = getWeightsNoOrigin(grid, activityType = ActivityType.HOME) // TODO what about buffer area
         val homeProbs   = homeWeights.map { it / homeWeights.sum() }
 
         val transitionProbs =  mutableMapOf<ActivityType, Map<Pair<Cell, Cell>, Double>>()
@@ -210,7 +216,7 @@ class DestinationFinderDefault(
 
             val activityProbs = mutableMapOf<Pair<Cell, Cell>, Double>()
             for (origin in grid) {
-                val activityWeights = getWeights(origin, grid, activityType = ActivityType.WORK)
+                val activityWeights = getWeights(origin, grid, activityType = activityType)
                 val activityProb    = activityWeights.map { it / activityWeights.sum() }
 
                 for ((j, destination) in grid.withIndex()) {
@@ -245,7 +251,6 @@ class DestinationFinderDefault(
             Weekday.UNDEFINED, HomogeneousGrp.UNDEFINED, MobilityGrp.UNDEFINED, AgeGrp.UNDEFINED, ActivityType.HOME
         )
         val chainProbs = chains.weights.map { it / chains.weights.sum() }
-
         var coveredActivities = 0.0
         for ((chain, chainP) in chains.chains.zip(chainProbs)) {
             if (chain.size <= 1) {
@@ -281,26 +286,34 @@ class DestinationFinderDefault(
             } else if (chain.all { (it == ActivityType.HOME ) or ( it == ActivityType.WORK ) }) {
                 coveredActivities +=  chain.size * chainP
                 // Only Home and Work -> Directly
+                var lastActivity = chain.first()
                 for ((n, activity) in chain.withIndex().drop(1)) {
-                    for ((i, origin) in grid.withIndex()) {
-                        for ((j, destination) in grid.withIndex()) {
-                            val pair = Pair(origin, destination)
-                            expectedCountPerAgent[pair] =
-                                expectedCountPerAgent[pair]!! + chainP * homeWorkProbs[pair]!!
+                    if (lastActivity != activity) {
+                        for ((i, origin) in grid.withIndex()) {
+                            for ((j, destination) in grid.withIndex()) {
+                                val pair = Pair(origin, destination)
+                                expectedCountPerAgent[pair] =
+                                    expectedCountPerAgent[pair]!! + chainP * homeWorkProbs[pair]!!
+                            }
                         }
                     }
+                    lastActivity = activity
                 }
             } else if (chain.all { (it == ActivityType.HOME ) or ( it == ActivityType.SCHOOL ) }) {
                 coveredActivities +=  chain.size * chainP
                 // Only Home and School -> Directly
+                var lastActivity = chain.first()
                 for ((n, activity) in chain.withIndex().drop(1)) {
-                    for ((i, origin) in grid.withIndex()) {
-                        for ((j, destination) in grid.withIndex()) {
-                            val pair = Pair(origin, destination)
-                            expectedCountPerAgent[pair] =
-                                expectedCountPerAgent[pair]!! + chainP * homeSchoolProbs[pair]!!
+                    if (lastActivity != activity) {
+                        for ((i, origin) in grid.withIndex()) {
+                            for ((j, destination) in grid.withIndex()) {
+                                val pair = Pair(origin, destination)
+                                expectedCountPerAgent[pair] =
+                                    expectedCountPerAgent[pair]!! + chainP * homeSchoolProbs[pair]!!
+                            }
                         }
                     }
+                    lastActivity = activity
                 }
             } else {
                 coveredActivities +=  chain.size * chainP

@@ -161,7 +161,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         // Set Parameters
         val finder = omod.destinationFinder as DestinationFinderDefault
         finder.updateCellCValues(parameters, omod.grid)
-        omod.mainRng.setSeed(0)
+        omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
 
         // Run Simulation
         val agents = omod.run(1.0)
