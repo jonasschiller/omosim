@@ -81,7 +81,7 @@ class Omod(
     var hopper: GraphHopper?
     val grid: List<Cell>
     private val zones: List<AggLocation> // Grid + DummyLocations for commuting locations
-    private val activityGenerator: ActivityGenerator
+    val activityGenerator: ActivityGenerator
     val mainRng: Random = if (seed != null) Random(seed) else Random()
     val transformer: CRSTransformer
     private val routingCache: RoutingCache
