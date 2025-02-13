@@ -86,7 +86,7 @@ class Omod(
     val transformer: CRSTransformer
     private val routingCache: RoutingCache
     private var censusAvailable = false
-    private val dispatcher = if (nWorker != null) Dispatchers.Default.limitedParallelism(nWorker) else Dispatchers.Default
+    val dispatcher = if (nWorker != null) Dispatchers.Default.limitedParallelism(nWorker) else Dispatchers.Default
     val destinationFinder: DestinationFinder
     private val agentFactory: AgentFactory
     private var gtfsComponents: GTFSComponents? = null

@@ -10,9 +10,14 @@ import de.uniwuerzburg.omod.core.models.ActivityType
 import de.uniwuerzburg.omod.core.models.Cell
 import de.uniwuerzburg.omod.core.models.RealLocation
 import de.uniwuerzburg.omod.routing.routeWith
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
+import org.locationtech.jts.index.hprtree.HPRtree
 import org.locationtech.jts.io.WKTReader
 import java.io.File
 import kotlin.math.absoluteValue
@@ -245,39 +250,38 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         sensors: List<TrafficSensor>,
         hopper: GraphHopper
     ) : Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>> {
-        val affectedLinks = mutableMapOf<Pair<RealLocation, RealLocation>, List<TrafficSensor>>()
         val geometryFactory = GeometryFactory()
 
-        var cntr = -1
-        for (origin in grid) {
-            cntr += 1
+        val sensorTree = HPRtree()
+        for (sensor in sensors) {
+            sensorTree.insert(sensor.field.envelopeInternal, sensor)
+        }
 
-            for (destination in grid) {
-                val response = routeWith("car", origin, destination, hopper)
-                val coords = response.best.points.map { Coordinate(it.lat, it.lon) }.toTypedArray()
+        val affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>> = runBlocking(omod.dispatcher) {
+            channelFlow {
+                for (origin in grid) {
+                    launch {
+                        for (destination in grid) {
+                            val response = routeWith("car", origin, destination, hopper)
+                            val coords = response.best.points.map { Coordinate(it.lat, it.lon) }.toTypedArray()
 
-                if (coords.size <= 2) {
-                    continue
-                }
+                            if (coords.size >= 2) {
+                                val routeLine = omod.transformer.toModelCRS( geometryFactory.createLineString(coords) )
 
-                val routeLine = omod.transformer.toModelCRS( geometryFactory.createLineString(coords) )
+                                val thisAffected = sensorTree.query(routeLine.envelopeInternal)
+                                    .map { it as TrafficSensor }
+                                    .filter { it.field.envelope.intersects(routeLine) && it.field.intersects(routeLine) }
 
-                val thisAffected = mutableListOf<TrafficSensor>()
-                for (sensor in sensors) {
-                    if (routeLine.intersects(sensor.field)) {
-                        thisAffected.add(sensor)
+                                if(thisAffected.isNotEmpty()) {
+                                    send(Pair(Pair(origin, destination), thisAffected))
+                                }
+                            }
+                        }
                     }
                 }
+            }.toList()
+        }.toMap()
 
-                if(thisAffected.isNotEmpty()) {
-                    affectedLinks[Pair(origin, destination)] = thisAffected
-                }
-            }
-            if(cntr % 100 == 0) {
-                println(cntr.toDouble()/grid.size * 100)
-            }
-
-        }
         return affectedLinks
     }
 }
