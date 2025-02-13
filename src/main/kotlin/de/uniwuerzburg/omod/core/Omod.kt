@@ -417,7 +417,7 @@ class Omod(
             ActivityType.SCHOOL -> agent.school
             else -> throw Exception("Start must be either Home, Work, School, or coordinates must be given. Agent: ${agent.id}")
         }
-        return getActivitySchedule(agent, rng, weekday, from, location, )
+        return getActivitySchedule(agent, rng, weekday, from, location)
     }
 
     /**

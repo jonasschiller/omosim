@@ -222,8 +222,6 @@ class DestinationFinderDefault(
         // TODO Test for least divergence:
         // Possible reasons
         //      - Last trip Home, work, school ist approximated with OTHER
-        //      - No difference between origin -> destination and the other way
-        //      - Home probs because of Focus area
 
         // Result: Expected trip count on each od-paid of one agent on one day
         val expectedCountPerAgent = Array(grid.size) { Array(grid.size) { 0.0 } }
@@ -273,53 +271,150 @@ class DestinationFinderDefault(
         }
 
         // Get activity chains
+        // TODO account for socio-demographic features
+        // TODO test kotlin matrix lib for speed up
+        // TODO cache chain pieces for speed up Fixed -> Fixed tours
+        // 1. Find all unique fixed fixed tours
+        // 2. Determine their probability
+        // 3. Run normal code
+        // Later when time is important remember time windows on tour generation
         val chains = activityGenerator.getChain(
             Weekday.UNDEFINED, HomogeneousGrp.UNDEFINED, MobilityGrp.UNDEFINED, AgeGrp.UNDEFINED, ActivityType.HOME
         )
         val chainProbs = chains.weights.map { it / chains.weights.sum() }.toTypedArray()
 
         // Determine od pair probabilities
+        // TODO mode choice and time
         for ((chain, chainP) in chains.chains.zip(chainProbs)) {
             if (chain.size <= 1) { continue }
             var lastActivityFixed = chain.first()
             var lastActivity = chain.first()
             var previousProbs = homeProbs
+            var probPositionGivenLastFixed = Array(grid.size) { Array(grid.size) { 0.0 } }
+            for (start in grid.indices) {
+                probPositionGivenLastFixed[start][start] = 1.0
+            }
             for (activity in chain.drop(1)) {
                 when(activity){
                     ActivityType.HOME -> {
-                        if ((lastActivity == ActivityType.WORK) || (lastActivityFixed == ActivityType.WORK)){
+                        if (lastActivity == ActivityType.WORK){
                             updateExpectedCount(expectedCountPerAgent, homeWorkProbs, chainP, grid.size)
-                        } else if ((lastActivity == ActivityType.SCHOOL) || (lastActivityFixed == ActivityType.SCHOOL)){
+                        } else if (lastActivity == ActivityType.SCHOOL){
                             updateExpectedCount(expectedCountPerAgent, homeSchoolProbs, chainP, grid.size)
                         } else {
-                            val transitionP = transitionProbs[ActivityType.OTHER]!!
-                            updateExpectedCount(expectedCountPerAgent, transitionP, previousProbs, chainP, grid.size)
+                            when (lastActivityFixed) {
+                                ActivityType.HOME -> {
+                                    for (h in grid.indices) {
+                                        for (flex in grid.indices) {
+                                            expectedCountPerAgent[flex][h] += homeProbs[h] * probPositionGivenLastFixed[h][flex] * chainP
+                                        }
+                                    }
+                                }
+                                ActivityType.WORK -> {
+                                    for (h in grid.indices) {
+                                        for (flex in grid.indices) {
+                                            for (w in grid.indices) {
+                                                expectedCountPerAgent[flex][h] += homeWorkProbs[h][w] * probPositionGivenLastFixed[w][flex] * chainP
+                                            }
+                                        }
+                                    }
+                                }
+                                ActivityType.SCHOOL -> {
+                                    for (h in grid.indices) {
+                                        for (flex in grid.indices) {
+                                            for (s in grid.indices) {
+                                                expectedCountPerAgent[flex][h] += homeSchoolProbs[h][s] * probPositionGivenLastFixed[s][flex] * chainP
+                                            }
+                                        }
+                                    }
+                                }
+                                else -> {
+                                    require(false)
+                                }
+                            }
                         }
                         lastActivityFixed = ActivityType.HOME
                         previousProbs = homeProbs
+                        probPositionGivenLastFixed = Array(grid.size) { Array(grid.size) { 0.0 } }
+                        for (start in grid.indices) {
+                            probPositionGivenLastFixed[start][start] = 1.0
+                        }
                     }
                     ActivityType.WORK -> {
-                        if ((lastActivity == ActivityType.HOME) || (lastActivityFixed == ActivityType.HOME)){
+                        if ((lastActivity == ActivityType.HOME)){
                             updateExpectedCount(expectedCountPerAgent, homeWorkProbs, chainP, grid.size)
                         } else {
-                            val transitionP = transitionProbs[ActivityType.OTHER]!!
-                            updateExpectedCount(expectedCountPerAgent, transitionP, previousProbs, chainP, grid.size)
+                            when (lastActivityFixed) {
+                                ActivityType.HOME -> {
+                                    for (h in grid.indices) {
+                                        for (flex in grid.indices) {
+                                            for (w in grid.indices) {
+                                                expectedCountPerAgent[flex][w] += homeWorkProbs[h][w] * probPositionGivenLastFixed[h][flex] * chainP
+                                            }
+                                        }
+                                    }
+                                }
+                                ActivityType.WORK -> {
+                                    for (w in grid.indices) {
+                                        for (flex in grid.indices) {
+                                            expectedCountPerAgent[flex][w] += workProbs[w] * probPositionGivenLastFixed[w][flex] * chainP
+                                        }
+                                    }
+                                }
+                                else -> {
+                                    val transitionP = transitionProbs[ActivityType.OTHER]!!
+                                    updateExpectedCount(expectedCountPerAgent, transitionP, previousProbs, chainP, grid.size)
+                                }
+                            }
                         }
                         lastActivityFixed = ActivityType.WORK
                         previousProbs = workProbs
+                        probPositionGivenLastFixed = Array(grid.size) { Array(grid.size) { 0.0 } }
+                        for (start in grid.indices) {
+                            probPositionGivenLastFixed[start][start] = 1.0
+                        }
                     }
                     ActivityType.SCHOOL -> {
-                        if ((lastActivity == ActivityType.HOME) || (lastActivityFixed == ActivityType.HOME)){
+                        if ((lastActivity == ActivityType.HOME)){
                             updateExpectedCount(expectedCountPerAgent, homeSchoolProbs, chainP, grid.size)
-                        }  else {
-                            val transitionP = transitionProbs[ActivityType.OTHER]!!
-                            updateExpectedCount(expectedCountPerAgent, transitionP, previousProbs, chainP, grid.size)
+                        } else {
+                            when (lastActivityFixed) {
+                                ActivityType.HOME -> {
+                                    for (h in grid.indices) {
+                                        for (flex in grid.indices) {
+                                            for (s in grid.indices) {
+                                                expectedCountPerAgent[flex][s] += homeSchoolProbs[h][s] * probPositionGivenLastFixed[h][flex] * chainP
+                                            }
+                                        }
+                                    }
+                                }
+                                ActivityType.SCHOOL -> {
+                                    for (s in grid.indices) {
+                                        for (flex in grid.indices) {
+                                            expectedCountPerAgent[flex][s] += schoolProbs[s] * probPositionGivenLastFixed[s][flex] * chainP
+                                        }
+                                    }
+                                }
+                                else -> {
+                                    val transitionP = transitionProbs[ActivityType.OTHER]!!
+                                    updateExpectedCount(expectedCountPerAgent, transitionP, previousProbs, chainP, grid.size)
+                                }
+                            }
                         }
                         lastActivityFixed = ActivityType.SCHOOL
                         previousProbs = schoolProbs
+                        probPositionGivenLastFixed = Array(grid.size) { Array(grid.size) { 0.0 } }
+                        for (start in grid.indices) {
+                            probPositionGivenLastFixed[start][start] = 1.0
+                        }
                     }
                     else -> {
-                        val transitionP = transitionProbs[activity]!!
+                        val transitionActivity = if (activity == ActivityType.SHOPPING) {
+                            activity
+                        } else {
+                            ActivityType.OTHER
+                        }
+                        val transitionP = transitionProbs[transitionActivity]!!
                         val newProbs = Array(grid.size) { 0.0 }
                         for (o in grid.indices) {
                             for (d in grid.indices) {
@@ -327,6 +422,15 @@ class DestinationFinderDefault(
                                 expectedCountPerAgent[o][d] += pairP * chainP
                                 newProbs[d] += pairP
                             }
+                        }
+                        for (start in grid.indices) {
+                            val newProbsGiven = Array(grid.size) { 0.0 }
+                            for (o in grid.indices) {
+                                for (d in grid.indices) {
+                                    newProbsGiven[d] += probPositionGivenLastFixed[start][o] * transitionP[o][d]
+                                }
+                            }
+                            probPositionGivenLastFixed[start] = newProbsGiven
                         }
                         previousProbs = newProbs
                     }
