@@ -27,7 +27,9 @@ class DestinationFinderDefault(
      * @param activityType Activity type conducted at the destination.
      * @return Probabilistic weights
      */
-    override fun getWeights(origin: LocationOption, destinations: List<LocationOption>, activityType: ActivityType
+    override fun getWeights(
+        origin: LocationOption, destinations: List<LocationOption>, activityType: ActivityType,
+        customCellFactors: Map<Cell, Double>?
     ): List<Double> {
         require(activityType != ActivityType.HOME) { "For HOME activities call getWeightsNoOrigin()!" }
 
@@ -59,8 +61,9 @@ class DestinationFinderDefault(
         }
 
         // Test
+        val thisCellFactors = customCellFactors ?: cellCFactors
         return destinations.mapIndexed { i, destination ->
-            cellCFactors.getOrDefault(destination, 1.0) * weights[i]
+            thisCellFactors.getOrDefault(destination, 1.0) * weights[i]
         }
         /*
         if (!calibrated) { return weights }
@@ -214,9 +217,9 @@ class DestinationFinderDefault(
     }
 
     fun determinePairProbabilities(
-        grid: List<Cell>, activityGenerator: ActivityGeneratorDefault
+        grid: List<Cell>, activityGenerator: ActivityGeneratorDefault, customCellFactors: Map<Cell, Double>
     ) : Map<Pair<Cell, Cell>, Double> {
-        // TODO Clean up, Speed up, Test for least divergence:
+        // TODO Test for least divergence:
         // Possible reasons
         //      - Last trip Home, work, school ist approximated with OTHER
         //      - No difference between origin -> destination and the other way
@@ -237,7 +240,7 @@ class DestinationFinderDefault(
 
             val activityProbs = Array(grid.size) { Array(grid.size) { 0.0 } }
             for (o in grid.indices) {
-                val activityWeights = getWeights(grid[o], grid, activityType = activityType)
+                val activityWeights = getWeights(grid[o], grid, activityType = activityType, customCellFactors)
                 val activityProb    = activityWeights.map { it / activityWeights.sum() }.toTypedArray()
 
                 for (d in grid.indices) {
@@ -537,6 +540,7 @@ class DestinationFinderDefault(
     }
 
     fun updateCellCValues(position: Array<Double>, grid: List<Cell>) {
+       cellCFactors.clear()
        for((i, cell) in grid.withIndex()) {
            cellCFactors[cell] = position[i]
        }

@@ -1,9 +1,6 @@
 package de.uniwuerzburg.omod.core
 
-import de.uniwuerzburg.omod.core.models.ActivityType
-import de.uniwuerzburg.omod.core.models.AggLocation
-import de.uniwuerzburg.omod.core.models.LocationOption
-import de.uniwuerzburg.omod.core.models.ODZone
+import de.uniwuerzburg.omod.core.models.*
 import java.util.*
 
 /**
@@ -28,7 +25,10 @@ interface DestinationFinder {
      * @param activityType Activity type conducted at the destination.
      * @return Probabilistic weights
      */
-    fun getWeights(origin: LocationOption, destinations: List<LocationOption>, activityType: ActivityType ): List<Double>
+    fun getWeights(
+        origin: LocationOption, destinations: List<LocationOption>,
+        activityType: ActivityType, customCellFactors: Map<Cell, Double>? = null
+    ): List<Double> // TODO remove custom cell factors
 
     /**
      * Determine activity location.
