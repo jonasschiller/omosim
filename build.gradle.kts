@@ -40,6 +40,8 @@ dependencies {
     implementation("org.xerial:sqlite-jdbc:3.+")
     testImplementation("org.junit.jupiter:junit-jupiter:5.+")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    implementation("org.jetbrains.kotlinx:multik-core:0.2.3")
+    implementation("org.jetbrains.kotlinx:multik-default:0.2.3")
 }
 
 tasks.test {
