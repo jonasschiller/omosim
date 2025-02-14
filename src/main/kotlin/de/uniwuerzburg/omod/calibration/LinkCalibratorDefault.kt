@@ -40,6 +40,8 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         println("On test count in static map: ${staticMap[Pair(testOrigin, testDestination)]!! * nAgents}")
         println("Total trips in static map:  ${staticMap.values.sum() * nAgents}")
 
+        print("mergetest")
+
         println("______________________________")
         for ((i, flow) in sFlow.values.withIndex()) {
             println("Sensor $i: $flow  / ${staticFlow[sensors[i]]} / ${sensors[i].measuredFlow }")
