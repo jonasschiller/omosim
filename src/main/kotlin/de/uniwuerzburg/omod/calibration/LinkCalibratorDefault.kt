@@ -20,6 +20,7 @@ import org.locationtech.jts.io.WKTReader
 import java.io.File
 import kotlin.math.absoluteValue
 import kotlin.math.pow
+import kotlin.time.measureTime
 
 class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator {
     private val sensors: List<TrafficSensor>
@@ -30,10 +31,20 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         sensors = readSensorData(linkDataFile)
         affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
 
-        val bestPosition = runPSO()
+        //val bestPosition = runPSO()
+        val bestPosition = Array<Double>(omod.grid.size) {1.0}
+
+        var staticFlow: Map<TrafficSensor, Double>
+        var staticMap: Map<Pair<Cell, Cell>, Double>
+        val time = measureTime{
+            val (_, sFlow, sMap) = determineJointOD( bestPosition )
+            staticFlow = sFlow
+            staticMap = sMap
+        }
+        println(time)
 
         val (_, sFlow, nAgents) = runBatch( bestPosition )
-        val (_, staticFlow, staticMap) = determineJointOD( bestPosition )
+        //val (_, staticFlow, staticMap) = determineJointOD( bestPosition )
 
         val testOrigin = omod.grid[306]
         val testDestination = omod.grid[307]
@@ -141,6 +152,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         )
 
         // Determine affected sensors
+        // TODO directional check, temporal check
         val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
         for (origin in omod.grid) {
             for (destination in omod.grid) {
@@ -214,8 +226,8 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         }
         mse /= sensors.size
 
-        println("On test od: ${testCount}")
-        println("Total trip count: ${totalTripCount}")
+        println("On test od: $testCount")
+        println("Total trip count: $totalTripCount")
         return Triple(mse, allFlows, agents.size)
     }
 
