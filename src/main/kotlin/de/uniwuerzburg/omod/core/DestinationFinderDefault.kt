@@ -239,125 +239,141 @@ class DestinationFinderDefault(
 
         // Get activity chains
         // TODO account for socio-demographic features
-        // TODO cache chain pieces for speed up Fixed -> Fixed tours
-        // 1. Find all unique fixed fixed tours
-        // 2. Determine their probability
-        // 3. Run normal code
-        // Later when time is important remember time windows on tour generation
         val chains = activityGenerator.getChain(
             Weekday.UNDEFINED, HomogeneousGrp.UNDEFINED, MobilityGrp.UNDEFINED, AgeGrp.UNDEFINED, ActivityType.HOME
         )
         val chainProbs = chains.weights.map { it / chains.weights.sum() }.toTypedArray()
 
-        // Determine od pair probabilities
-        // TODO mode choice and time
+
+        // Determine unique Fixed -> Fixed chain segments
+        // TODO: Later when time is important remember time windows on tour generation
+        val fixedActivities = setOf(ActivityType.HOME, ActivityType.WORK, ActivityType.SCHOOL)
+        val fixedSegments = mutableListOf<FixedSegment>()
+        val segment = mutableListOf<ActivityType>()
         for ((chain, chainP) in chains.chains.zip(chainProbs)) {
-            if (chain.size <= 1) { continue }
+            segment.clear()
 
-            var lastActivityFixed = chain.first()
-            var lastActivity = chain.first()
-            var previousProbs = homeProbs
-            var probPositionGivenLastFixed = mk.identity<Double>(grid.size)
-            for (activity in chain.drop(1)) {
-                when(activity){
-                    ActivityType.HOME -> {
-                        when(lastActivity) {
-                            ActivityType.WORK -> expectedCountPerAgent.plusAssign(homeWorkProbs * chainP)
-                            ActivityType.SCHOOL -> expectedCountPerAgent.plusAssign(homeSchoolProbs * chainP)
-                            else -> {
-                                when (lastActivityFixed) {
-                                    ActivityType.HOME -> {
-                                        val priorXTransition = homeProbs.diagonal().dot( probPositionGivenLastFixed )
-                                        expectedCountPerAgent.plusAssign(priorXTransition.transpose() * chainP)
-                                    }
-                                    ActivityType.WORK -> {
-                                        val priorXTransition = homeWorkProbs.dot( probPositionGivenLastFixed )
-                                        expectedCountPerAgent.plusAssign(priorXTransition.transpose() * chainP)
-                                    }
-                                    ActivityType.SCHOOL -> {
-                                        val priorXTransition = homeSchoolProbs.dot( probPositionGivenLastFixed )
-                                        expectedCountPerAgent.plusAssign(priorXTransition.transpose() * chainP)
-                                    }
-                                    else -> {
-                                        throw IllegalStateException(
-                                            "Last fixed activity can not be of type $lastActivityFixed !"
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        lastActivityFixed = ActivityType.HOME
-                        previousProbs = homeProbs
-                        probPositionGivenLastFixed = mk.identity<Double>(grid.size)
-                    }
-                    ActivityType.WORK -> {
-                        when (lastActivity) {
-                            ActivityType.HOME -> expectedCountPerAgent.plusAssign(homeWorkProbs * chainP)
-                            else -> {
-                                when (lastActivityFixed) {
-                                    ActivityType.HOME -> {
-                                        val priorXTransition = homeWorkProbs.dot( probPositionGivenLastFixed )
-                                        expectedCountPerAgent.plusAssign(priorXTransition.transpose() * chainP)
-                                    }
-                                    ActivityType.WORK -> {
-                                        val priorXTransition = workProbs.diagonal().dot( probPositionGivenLastFixed )
-                                        expectedCountPerAgent.plusAssign(priorXTransition.transpose() * chainP)
-                                    }
-                                    else -> {
-                                        val transitionP = transitionProbs[ActivityType.OTHER]!!
-                                        expectedCountPerAgent.plusAssign(
-                                            previousProbs.diagonal().dot(transitionP) * chainP
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        lastActivityFixed = ActivityType.WORK
-                        previousProbs = workProbs
-                        probPositionGivenLastFixed = mk.identity<Double>(grid.size)
-                    }
-                    ActivityType.SCHOOL -> {
-                        when (lastActivity) {
-                            ActivityType.HOME -> expectedCountPerAgent.plusAssign(homeSchoolProbs * chainP)
-                            else -> {
-                                when (lastActivityFixed) {
-                                    ActivityType.HOME -> {
-                                        val priorXTransition = homeSchoolProbs.dot( probPositionGivenLastFixed )
-                                        expectedCountPerAgent.plusAssign(priorXTransition.transpose() * chainP)
-                                    }
-                                    ActivityType.SCHOOL -> {
-                                        val priorXTransition = schoolProbs.diagonal().dot( probPositionGivenLastFixed )
-                                        expectedCountPerAgent.plusAssign(priorXTransition.transpose() * chainP)
-                                    }
-                                    else -> {
-                                        val transitionP = transitionProbs[ActivityType.OTHER]!!
-                                        expectedCountPerAgent.plusAssign(
-                                            previousProbs.diagonal().dot(transitionP) * chainP
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        lastActivityFixed = ActivityType.SCHOOL
-                        previousProbs = schoolProbs
-                        probPositionGivenLastFixed = mk.identity<Double>(grid.size)
-                    }
-                    else -> {
-                        val transitionActivity = if (activity == ActivityType.SHOPPING) {
-                            activity
-                        } else {
-                            ActivityType.OTHER
-                        }
-                        val transitionP = transitionProbs[transitionActivity]!!
-
-                        expectedCountPerAgent.plusAssign( previousProbs.diagonal().dot(transitionP) * chainP )
-                        previousProbs = previousProbs.dot(transitionP)
-
-                        probPositionGivenLastFixed = probPositionGivenLastFixed
-                            .dot(transitionP)
+            for ((i, activity) in chain.withIndex()) {
+                segment.add(activity)
+                if (segment.size > 1) {
+                    if ((activity in fixedActivities) or (i == chain.size - 1)) {
+                        fixedSegments.add(
+                            FixedSegment(
+                                segment.toList(),
+                                chainP
+                            )
+                        )
+                        // New segment starts with last activity
+                        segment.clear()
+                        segment.add(activity)
                     }
                 }
-                lastActivity = activity
+            }
+        }
+        val uniqueSegments = fixedSegments.groupBy { it.chain }.map { (chain, segments) ->
+            FixedSegment(
+                chain,
+                segments.sumOf { it.probability }
+            )
+        }
+
+        // Determine od pair probabilities
+        // TODO mode choice and time
+        for ((chain, chainP) in uniqueSegments) {
+            if (chain.size <= 1) { continue }
+
+            val startActivity = chain.first()
+            val endActivity = chain.last()
+
+            // Short chains
+            if (chain.size == 2) {
+                when(Pair(startActivity, endActivity)) {
+                    Pair(ActivityType.HOME, ActivityType.WORK) -> {
+                        expectedCountPerAgent.plusAssign(homeWorkProbs * chainP)
+                        continue
+                    }
+                    Pair(ActivityType.HOME, ActivityType.SCHOOL) -> {
+                        expectedCountPerAgent.plusAssign(homeSchoolProbs * chainP)
+                        continue
+                    }
+                    Pair(ActivityType.WORK, ActivityType.HOME) -> {
+                        expectedCountPerAgent.plusAssign(homeWorkProbs * chainP)
+                        continue
+                    }
+                    Pair(ActivityType.SCHOOL, ActivityType.HOME) -> {
+                        expectedCountPerAgent.plusAssign(homeSchoolProbs * chainP)
+                        continue
+                    }
+                    else -> {}
+                }
+            }
+
+            // Setup
+            var probPositionGivenLastFixed: D2Array<Double>?
+            var previousProbs: D2Array<Double>
+            when(startActivity) {
+                ActivityType.HOME -> {
+                    previousProbs = homeProbs
+                    probPositionGivenLastFixed = when(endActivity) {
+                        ActivityType.HOME -> homeProbs.diagonal()
+                        ActivityType.WORK -> homeWorkProbs
+                        ActivityType.SCHOOL -> homeSchoolProbs
+                        else -> null
+                    }
+                }
+                ActivityType.WORK -> {
+                    previousProbs = workProbs
+                    probPositionGivenLastFixed = when(endActivity) {
+                        ActivityType.HOME -> homeWorkProbs
+                        ActivityType.WORK -> workProbs.diagonal()
+                        else -> null
+                    }
+                }
+                ActivityType.SCHOOL -> {
+                    previousProbs = schoolProbs
+                    probPositionGivenLastFixed = when(endActivity) {
+                        ActivityType.HOME -> homeSchoolProbs
+                        ActivityType.SCHOOL -> schoolProbs.diagonal()
+                        else -> null
+                    }
+                }
+                else -> {
+                    throw IllegalStateException(
+                        "Last fixed activity can not be of type $startActivity !"
+                    )
+                }
+            }
+
+            // Flexible chain components
+            for (activity in chain.drop(1).dropLast(1)) {
+                val transitionActivity = if (activity == ActivityType.SHOPPING) {
+                    activity
+                } else {
+                    ActivityType.OTHER
+                }
+                val transitionP = transitionProbs[transitionActivity]!!
+
+                expectedCountPerAgent.plusAssign(previousProbs.diagonal().dot(transitionP) * chainP)
+                previousProbs = previousProbs.dot(transitionP)
+
+                probPositionGivenLastFixed = probPositionGivenLastFixed?.dot(transitionP)
+            }
+
+            // Last chain component. Fixed most of the time.
+            if (
+                (endActivity == ActivityType.HOME) ||
+                ((endActivity == ActivityType.WORK) && (startActivity != ActivityType.SCHOOL)) ||
+                ((endActivity == ActivityType.SCHOOL) && (startActivity != ActivityType.WORK))
+            ) {
+                expectedCountPerAgent.plusAssign(probPositionGivenLastFixed!!.transpose() * chainP)
+            } else {
+                val transitionActivity = if (endActivity == ActivityType.SHOPPING) {
+                    endActivity
+                } else {
+                    ActivityType.OTHER
+                }
+                val transitionP = transitionProbs[transitionActivity]!!
+                expectedCountPerAgent.plusAssign( previousProbs.diagonal().dot(transitionP) * chainP )
             }
         }
 
@@ -580,4 +596,9 @@ class DestinationFinderDefault(
         }
         return  diagonal
     }
+
+    private data class FixedSegment(
+        val chain: List<ActivityType>,
+        val probability: Double
+    )
 }
