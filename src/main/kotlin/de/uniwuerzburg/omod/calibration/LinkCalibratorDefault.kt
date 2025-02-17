@@ -1,12 +1,9 @@
 package de.uniwuerzburg.omod.calibration
 
+import com.github.ajalt.mordant.table.grid
 import com.graphhopper.GraphHopper
-import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
-import de.uniwuerzburg.omod.core.DestinationFinderDefault
-import de.uniwuerzburg.omod.core.Omod
-import de.uniwuerzburg.omod.core.logger
-import de.uniwuerzburg.omod.core.models.Cell
-import de.uniwuerzburg.omod.core.models.RealLocation
+import de.uniwuerzburg.omod.core.*
+import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.routing.routeWith
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.toList
@@ -25,7 +22,7 @@ import kotlin.time.measureTime
 class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator {
     private val sensors: List<TrafficSensor>
     private val affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
-
+    private val modeChoiceCalibration = ModeChoiceCalibration()
 
     init {
         sensors = readSensorData(linkDataFile)
@@ -34,38 +31,41 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         //val bestPosition = runPSO()
         val bestPosition = Array<Double>(omod.grid.size) {1.0}
 
-        var staticFlow: Map<TrafficSensor, Double>
-        var staticMap: Map<Pair<Cell, Cell>, Double>
-        val time = measureTime{
-            val (_, sFlow, sMap) = determineJointOD( bestPosition )
-            staticFlow = sFlow
-            staticMap = sMap
-        }
-        println(time)
-
         val (_, sFlow, nAgents) = runBatch( bestPosition )
-        //val (_, staticFlow, staticMap) = determineJointOD( bestPosition )
+        val (_, staticFlow, staticMap) = determineJointOD( bestPosition )
 
         val testOrigin = omod.grid[306]
         val testDestination = omod.grid[307]
         println("On test count in static map: ${staticMap[Pair(testOrigin, testDestination)]!! * nAgents}")
         println("Total trips in static map:  ${staticMap.values.sum() * nAgents}")
-
-        println("______________________________")
+        println("_".repeat(20*4 + 5*3))
+        println("${"Sensor".padEnd(20)} | \t" +
+                "${"Flow Simulated".padEnd(20)} | \t" +
+                "${"Flow Deterministic".padEnd(20)} | \t" +
+                "Flow Measured".padEnd(20)
+        )
+        println("_".repeat(20) +
+                " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20))
         for ((i, flow) in sFlow.values.withIndex()) {
-            println("Sensor $i: $flow  / ${staticFlow[sensors[i]]} / ${sensors[i].measuredFlow }")
+            println(
+                "${sensors[i].name.padEnd(20)} | \t" +
+                "${flow.toString().padEnd(20)} | \t" +
+                "${staticFlow[sensors[i]].toString().padEnd(20)} | \t" +
+                sensors[i].measuredFlow.toString().padEnd(20)
+            )
         }
-
     }
 
     private fun runPSO(
-        iterations: Int = 20, nParticles: Int = 20,
+        iterations: Int = 10, nParticles: Int = 10,
         blo: Double = 0.1, bup: Double = 5.0,
         w: Double = 0.9, phiP: Double = 0.5,
         phiG: Double = 0.3
     ) : Array<Double> {
         logger.on = false // Switch off logger for iterative calibration runs
-
+        println("Start PSO")
         val nDimensions = omod.grid.size
 
         // Initial mse
@@ -85,68 +85,76 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
             }
             PSOParticle(v, x, x, mse)
         }
-
+        println("Start iterations")
         for(iteration in 0 until iterations ) {
-            runBlocking(omod.dispatcher) {
-                for (particle in particles) {
-                    launch {
-                        for (i in 0 until  nDimensions) {
-                            val rp = omod.mainRng.nextDouble()
-                            val rg = omod.mainRng.nextDouble()
+            val time = measureTime {
+                runBlocking {
+                    for (particle in particles) {
+                        launch {
+                            for (i in 0 until nDimensions) {
+                                val rp = omod.mainRng.nextDouble()
+                                val rg = omod.mainRng.nextDouble()
 
-                            // Update velocity
-                            particle.velocity[i] =
-                                        w         * particle.velocity[i] +
-                                        phiP * rp * ( particle.bestPosition[i] - particle.position[i] ) +
-                                        phiG * rg * ( globalBestPosition[i] - particle.position[i] )
+                                // Update velocity
+                                particle.velocity[i] =
+                                    w * particle.velocity[i] +
+                                            phiP * rp * (particle.bestPosition[i] - particle.position[i]) +
+                                            phiG * rg * (globalBestPosition[i] - particle.position[i])
 
-                            // Update position
-                            particle.position[i] += particle.velocity[i]
+                                // Update position
+                                particle.position[i] += particle.velocity[i]
 
-                            // Clip position
-                            if (particle.position[i] < 0) {
-                                particle.position[i] = 0.0
+                                // Clip position
+                                if (particle.position[i] < 0) {
+                                    particle.position[i] = 0.0
+                                }
                             }
-                        }
 
-                        // Check performance
-                        val (mse, _, _) = determineJointOD(particle.position)
+                            // Check performance
+                            val (mse, _, _) = determineJointOD(particle.position)
 
-                        if (mse < particle.bestMse) {
-                            particle.bestPosition = particle.position.copyOf()
-                            particle.bestMse = mse
+                            if (mse < particle.bestMse) {
+                                particle.bestPosition = particle.position.copyOf()
+                                particle.bestMse = mse
+                            }
                         }
                     }
                 }
-            }
 
-            for (particle in particles) {
-                if (particle.bestMse < globalBestMSE) {
-                    globalBestPosition = particle.bestPosition.copyOf()
-                    globalBestMSE = particle.bestMse
+                for (particle in particles) {
+                    if (particle.bestMse < globalBestMSE) {
+                        globalBestPosition = particle.bestPosition.copyOf()
+                        globalBestMSE = particle.bestMse
+                    }
                 }
             }
 
             val (mse, sFlow, _) = determineJointOD(globalBestPosition)
             println("______________________________")
+            println("Iteration $iteration took : $time")
             println("MSE iteration $iteration: $mse")
             println("------------------------------")
+            println("Sensor | \t Flow OMOD | \t Flow Measured")
             for ((i, flow) in sFlow.values.withIndex()) {
-                println("Sensor $i $iteration: $flow / ${sensors[i].measuredFlow }")
+                println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow }")
             }
         }
         logger.on = true
         return globalBestPosition
     }
 
-    private fun determineJointOD(parameters: Array<Double>) : Triple<Double, Map<TrafficSensor, Double>, Map<Pair<Cell, Cell>, Double>> {
+    private fun determineJointOD(
+        parameters: Array<Double>
+    ) : Triple<Double, Map<TrafficSensor, Double>, Map<Pair<Cell, Cell>, Double>> {
         // Set Parameters
         val finder = omod.destinationFinder as DestinationFinderDefault
         //finder.updateCellCValues(parameters, omod.grid)
         val fullPopulation = omod.buildings.sumOf { it.population }
 
+        // Pair probability
         val od = finder.determinePairProbabilities(
-                omod.grid, omod.activityGenerator as ActivityGeneratorDefault, omod.grid.zip(parameters).toMap()
+            omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
+            modeChoiceCalibration, omod.grid.zip(parameters).toMap()
         )
 
         // Determine affected sensors
@@ -185,6 +193,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
 
         // Run Simulation
         val agents = omod.run(1.0)
+        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
 
         // Determine affected sensors
         var totalTripCount = 0
@@ -194,17 +203,21 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         val simCount = sensors.associateWith { 0.0 }.toMutableMap()
         for (agent in agents) {
             var origin = agent.mobilityDemand.first().activities.first()
-            for (activity in agent.mobilityDemand.first().activities.drop(1)) {
-                totalTripCount += 1
-                if ((origin.location.getAggLoc() == testOrigin) and (activity.location.getAggLoc() == testDestination)) {
-                    testCount += 1
-                }
-                if ((origin.location.getAggLoc() is Cell) and (activity.location.getAggLoc() is Cell)) {
-                    val od = Pair(origin.location.getAggLoc() as Cell, activity.location.getAggLoc() as Cell)
-                    if (od in affectedLinks) {
-                        val sensors = affectedLinks[od]!!
-                        for (sensor in sensors) {
-                            simCount[sensor] = simCount[sensor]!! + 1
+            val activities = agent.mobilityDemand.first().activities.drop(1)
+            val trips = agent.mobilityDemand.first().trips
+            for ((activity, trip) in activities.zip(trips)) {
+                if (trip.mode == Mode.CAR_DRIVER) {
+                    totalTripCount += 1
+                    if ((origin.location.getAggLoc() == testOrigin) and (activity.location.getAggLoc() == testDestination)) {
+                        testCount += 1
+                    }
+                    if ((origin.location.getAggLoc() is Cell) and (activity.location.getAggLoc() is Cell)) {
+                        val od = Pair(origin.location.getAggLoc() as Cell, activity.location.getAggLoc() as Cell)
+                        if (od in affectedLinks) {
+                            val sensors = affectedLinks[od]!!
+                            for (sensor in sensors) {
+                                simCount[sensor] = simCount[sensor]!! + 1
+                            }
                         }
                     }
                 }
@@ -242,17 +255,19 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         val idxMap = header.split(delimiter).withIndex().associate { (i, v) -> v to i }
 
         // Index of cols to extract
+        val nameCol =  idxMap["name"]
         val flowCol =  idxMap["dailyFlow"]
         val geometryCol = idxMap["Geometry"]
 
         // Read data
         for(line in reader.lines()) {
             val values = line.split(delimiter)
+            val name = nameCol?.let { values[it] }
             val flow = values[flowCol!!].toDouble()
             val wkt = values[geometryCol!!]
             val geometry = omod.transformer.toModelCRS(wktReader.read(wkt))
 
-            val sensor = TrafficSensor(flow, geometry)
+            val sensor = TrafficSensor(name ?: sensors.size.toString(), flow, geometry)
             sensors.add(sensor)
         }
 
@@ -302,6 +317,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
 }
 
 class TrafficSensor(
+    val name: String,
     val measuredFlow: Double,
     val field: Geometry
 )
