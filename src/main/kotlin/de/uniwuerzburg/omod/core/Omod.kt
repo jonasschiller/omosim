@@ -577,6 +577,11 @@ class Omod(
                     gtfsComponents!!.gtfsHopper.close()
                 }
             }
+            ModeChoiceOption.FAST -> {
+                val modeChoice = ModeChoiceFast(routingCache)
+                modeChoice.doModeChoice(agents, mainRng, dispatcher)
+                return agents
+            }
         }
     }
 

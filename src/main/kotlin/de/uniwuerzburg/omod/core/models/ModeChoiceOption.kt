@@ -7,5 +7,5 @@ package de.uniwuerzburg.omod.core.models
  * GTFS: Use a logit model to determine the mode. All modes defined in [de.uniwuerzburg.omod.core.models.Mode] are possible.
  */
 enum class ModeChoiceOption {
-    NONE, CAR_ONLY, GTFS
+    NONE, CAR_ONLY, GTFS, FAST
 }

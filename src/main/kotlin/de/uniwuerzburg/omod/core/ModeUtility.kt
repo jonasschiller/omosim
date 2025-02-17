@@ -35,14 +35,23 @@ data class ModeUtility (
      * @return Utility
      */
     fun calc(
-        time: Double, distance: Double, activity: ActivityType, carAvailable: Boolean?, weekday: Weekday,
+        time: Double?, distance: Double, activity: ActivityType, carAvailable: Boolean?, weekday: Weekday,
         agent: MobiAgent
     ) : Double {
-        val timeClipped = max(time, 1.0) // Minimum time: 1 minute
+        val (timeClipped, lnTimeClipped) = if (time != null) {
+            val t = max(time, 1.0) // Minimum time: 1 minute
+            val lnt = ln(t)
+            t to lnt
+        } else {
+            val t = 0.0
+            val lnt = 0.0
+            t to lnt
+        }
+
         val distanceClipped = max(distance, 0.001) // Minimum distance: 1 meter
 
         return timeClipped * timeCoeff +
-               ln(timeClipped) * logTimeCoeff +
+               lnTimeClipped * logTimeCoeff +
                distanceClipped * distanceCoeff +
                ln(distanceClipped) * logDistanceCoeff +
                (homGroupCoeff[agent.homogenousGroup] ?: 0.0) +
