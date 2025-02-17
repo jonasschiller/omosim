@@ -1,17 +1,23 @@
 package de.uniwuerzburg.omod.core
 
+import de.uniwuerzburg.omod.calibration.ModeChoiceCalibration
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.routing.RoutingCache
 import de.uniwuerzburg.omod.utils.createCumDist
 import de.uniwuerzburg.omod.utils.sampleCumDist
-import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
-import org.jetbrains.kotlinx.multik.ndarray.data.*
-import org.jetbrains.kotlinx.multik.ndarray.operations.append
+import org.jetbrains.kotlinx.multik.api.mk
+import org.jetbrains.kotlinx.multik.api.ndarray
+import org.jetbrains.kotlinx.multik.api.zeros
+import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
+import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
+import org.jetbrains.kotlinx.multik.ndarray.data.get
+import org.jetbrains.kotlinx.multik.ndarray.data.set
 import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
 import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
-import java.util.Random
+import org.locationtech.jts.geom.Coordinate
+import java.util.*
 
 /**
  * Gravity model based destination finder.
@@ -202,7 +208,9 @@ class DestinationFinderDefault(
     }
 
     fun determinePairProbabilities(
-        grid: List<Cell>, activityGenerator: ActivityGeneratorDefault, customCellFactors: Map<Cell, Double>
+        grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
+        modeChoiceCalibration: ModeChoiceCalibration,
+        customCellFactors: Map<Cell, Double>
     ) : Map<Pair<Cell, Cell>, Double> {
         // Result: Expected trip count on each od-paid of one agent on one day
         val expectedCountPerAgent = mk.zeros<Double>(grid.size, grid.size)
@@ -214,7 +222,7 @@ class DestinationFinderDefault(
             .expandDims(0).asDNArray().asD2Array()
 
         // Transitions
-        val transitionProbs =  mutableMapOf<ActivityType,  D2Array<Double>>()
+        val transitionProbs = mutableMapOf<ActivityType,  D2Array<Double>>()
         for (activityType in ActivityType.entries) {
             if (activityType == ActivityType.HOME) { continue }
 
@@ -244,6 +252,30 @@ class DestinationFinderDefault(
         )
         val chainProbs = chains.weights.map { it / chains.weights.sum() }.toTypedArray()
 
+        // Car probability
+        val dummyCoord = Coordinate(0.0,0.0)
+        val dummyLocation = DummyLocation(dummyCoord, dummyCoord, null, setOf())
+        val dummyAgent = MobiAgent(
+            -1,  HomogeneousGrp.UNDEFINED, MobilityGrp.UNDEFINED, null,
+            dummyLocation, dummyLocation, dummyLocation, Sex.UNDEFINED
+        )
+        dummyAgent.carAccess = true // Car ownership probability is considered separately
+        val carOwnershipP = 0.6
+
+        val carProbs = mutableMapOf<ActivityType, D2Array<Double>>()
+        for (activity in ActivityType.entries) {
+            val carProbsActivity = mk.zeros<Double>(grid.size, grid.size)
+            for (o in grid.indices) {
+                val distances = routingCache.getDistances(grid[o], grid)
+                for (d in grid.indices) {
+                    val weights = modeChoiceCalibration.utilitiesForCalibration(
+                        distances[d].toDouble() / 1000.0, dummyAgent, activity, Weekday.UNDEFINED
+                    )
+                    carProbsActivity[o, d] = carOwnershipP * weights[0] / weights.sum()
+                }
+            }
+            carProbs[activity] = carProbsActivity
+        }
 
         // Determine unique Fixed -> Fixed chain segments
         // TODO: Later when time is important remember time windows on tour generation
@@ -289,19 +321,27 @@ class DestinationFinderDefault(
             if (chain.size == 2) {
                 when(Pair(startActivity, endActivity)) {
                     Pair(ActivityType.HOME, ActivityType.WORK) -> {
-                        expectedCountPerAgent.plusAssign(homeWorkProbs * chainP)
+                        val carP = carProbs[endActivity]!!
+                        val p = homeWorkProbs.times(carP) * chainP
+                        expectedCountPerAgent.plusAssign(p)
                         continue
                     }
                     Pair(ActivityType.HOME, ActivityType.SCHOOL) -> {
-                        expectedCountPerAgent.plusAssign(homeSchoolProbs * chainP)
+                        val carP = carProbs[endActivity]!!
+                        val p = homeSchoolProbs.times(carP) * chainP
+                        expectedCountPerAgent.plusAssign(p)
                         continue
                     }
                     Pair(ActivityType.WORK, ActivityType.HOME) -> {
-                        expectedCountPerAgent.plusAssign(homeWorkProbs * chainP)
+                        val carP = carProbs[endActivity]!!
+                        val p = homeWorkProbs.times(carP) * chainP
+                        expectedCountPerAgent.plusAssign(p)
                         continue
                     }
                     Pair(ActivityType.SCHOOL, ActivityType.HOME) -> {
-                        expectedCountPerAgent.plusAssign(homeSchoolProbs * chainP)
+                        val carP = carProbs[endActivity]!!
+                        val p = homeSchoolProbs.times(carP) * chainP
+                        expectedCountPerAgent.plusAssign(p)
                         continue
                     }
                     else -> {}
@@ -353,7 +393,9 @@ class DestinationFinderDefault(
                 }
                 val transitionP = transitionProbs[transitionActivity]!!
 
-                expectedCountPerAgent.plusAssign(previousProbs.diagonal().dot(transitionP) * chainP)
+                val carP = carProbs[transitionActivity]!!
+                val p = previousProbs.diagonal().dot(transitionP).times(carP) * chainP
+                expectedCountPerAgent.plusAssign(p)
                 previousProbs = previousProbs.dot(transitionP)
 
                 probPositionGivenLastFixed = probPositionGivenLastFixed?.dot(transitionP)
@@ -365,7 +407,9 @@ class DestinationFinderDefault(
                 ((endActivity == ActivityType.WORK) && (startActivity != ActivityType.SCHOOL)) ||
                 ((endActivity == ActivityType.SCHOOL) && (startActivity != ActivityType.WORK))
             ) {
-                expectedCountPerAgent.plusAssign(probPositionGivenLastFixed!!.transpose() * chainP)
+                val carP = carProbs[endActivity]!!
+                val p = probPositionGivenLastFixed!!.transpose().times(carP) * chainP
+                expectedCountPerAgent.plusAssign(p)
             } else {
                 val transitionActivity = if (endActivity == ActivityType.SHOPPING) {
                     endActivity
@@ -373,7 +417,10 @@ class DestinationFinderDefault(
                     ActivityType.OTHER
                 }
                 val transitionP = transitionProbs[transitionActivity]!!
-                expectedCountPerAgent.plusAssign( previousProbs.diagonal().dot(transitionP) * chainP )
+
+                val carP = carProbs[transitionActivity]!!
+                val p = previousProbs.diagonal().dot(transitionP).times(carP) * chainP
+                expectedCountPerAgent.plusAssign(p)
             }
         }
 

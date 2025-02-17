@@ -84,7 +84,7 @@ class Omod(
     val activityGenerator: ActivityGenerator
     val mainRng: Random = if (seed != null) Random(seed) else Random()
     val transformer: CRSTransformer
-    private val routingCache: RoutingCache
+    val routingCache: RoutingCache
     private var censusAvailable = false
     val dispatcher = if (nWorker != null) Dispatchers.Default.limitedParallelism(nWorker) else Dispatchers.Default
     val destinationFinder: DestinationFinder
@@ -206,7 +206,7 @@ class Omod(
 
         // TODO: Debug
         val test = LinkCalibratorDefault(
-            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput_v2.csv"),
+            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput_v3.csv"),
             this
         )
         // TODO: End Debug

@@ -1,7 +1,5 @@
 package de.uniwuerzburg.omod.core
 
-import com.graphhopper.GraphHopper
-import com.graphhopper.gtfs.PtRouter
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.io.json.readJsonFromResource
 import de.uniwuerzburg.omod.routing.*
@@ -11,11 +9,9 @@ import de.uniwuerzburg.omod.utils.sampleCumDist
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import java.time.LocalDate
 import java.time.LocalTime
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.time.TimeSource
 

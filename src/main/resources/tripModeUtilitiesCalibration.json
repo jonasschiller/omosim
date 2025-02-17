@@ -1,0 +1,96 @@
+[
+  {
+    "mode": "CAR_DRIVER",
+    "timeCoeff": 0.0,
+    "logTimeCoeff": 0.0,
+    "distanceCoeff": 0.0,
+    "logDistanceCoeff": 0.440499,
+    "homGroupCoeff": {
+      "WORKING": 0.0,
+      "NON_WORKING": 0.0,
+      "PUPIL_STUDENT": 0.0,
+      "UNDEFINED": 0.0
+    },
+    "ageGrpCoeff": {
+      "A0_40": 0.0,
+      "A40_60": 0.0,
+      "A60_100": 0.0
+    },
+    "mobGroupCoeff": {
+      "CAR_MIXED": 0.919233,
+      "CAR_USER": 1.460404,
+      "NOT_CAR": -0.353186
+    },
+    "sexCoeff": {
+      "MALE": 1.110595,
+      "FEMALE": 0.881563
+    },
+    "carAvailableCoeff": {
+      "True": 0.0,
+      "False": 0.0
+    },
+    "activityCoeff": {
+      "HOME": 1.135967,
+      "SHOPPING": 1.283972,
+      "SCHOOL": 0.237482,
+      "WORK": 1.173779
+    },
+    "weekdayCoeff": {
+      "MO": 1.046712,
+      "TU": 1.048785,
+      "WE": 1.044660,
+      "TH": 1.036866,
+      "FR": 1.034284,
+      "SA": 0.935494,
+      "SU": 0.697746
+    },
+    "intercept": 0.501135
+  },
+  {
+    "mode": "UNDEFINED",
+    "timeCoeff": 0.0,
+    "logTimeCoeff": 0.0,
+    "distanceCoeff": 0.0,
+    "logDistanceCoeff": -0.148803,
+    "homGroupCoeff": {
+      "WORKING": 0.0,
+      "NON_WORKING": 0.0,
+      "PUPIL_STUDENT": 0.0,
+      "UNDEFINED": 0.0
+    },
+    "ageGrpCoeff": {
+      "A0_40": 0.0,
+      "A40_60": 0.0,
+      "A60_100": 0.0
+    },
+    "mobGroupCoeff": {
+      "CAR_MIXED": 1.080767,
+      "CAR_USER": 0.539596,
+      "NOT_CAR": 2.353186
+    },
+    "sexCoeff": {
+      "MALE": 0.889405,
+      "FEMALE": 1.118437
+    },
+    "carAvailableCoeff": {
+      "True": 0.0,
+      "False": 0.0
+    },
+    "activityCoeff": {
+      "HOME": 0.864033,
+      "SHOPPING": 0.716028,
+      "SCHOOL": 1.762518,
+      "WORK": 0.826221
+    },
+    "weekdayCoeff": {
+      "MO": 0.953288,
+      "TU": 0.951215,
+      "WE": 0.955340,
+      "TH": 0.963134,
+      "FR": 0.965716,
+      "SA": 1.064506,
+      "SU": 1.302254
+    },
+    "intercept": 1.498865
+  }
+]
