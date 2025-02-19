@@ -295,9 +295,14 @@ class RoutingCache(
 
         // Fill cache
         for (i in 0 until cacheData.oCoords.size) {
-            val o = coordLocMap[cacheData.oCoords[i]]!!
-            val d = coordLocMap[cacheData.dCoords[i]]!!
-            val od = UnorderedODPair(o, d)
+            val o = coordLocMap[cacheData.oCoords[i]]
+            val d = coordLocMap[cacheData.dCoords[i]]
+
+            // Check if cache coordinates correspond to existing locations.
+            // Might not be if locations of individual buildings are cached.
+            if ((o == null) or (d == null)) { continue }
+
+            val od = UnorderedODPair(o!!, d!!)
             val distance = cacheData.distances[i]
             cache.put(od, distance)
         }

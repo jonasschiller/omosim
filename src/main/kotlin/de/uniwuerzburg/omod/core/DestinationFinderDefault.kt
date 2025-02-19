@@ -260,7 +260,7 @@ class DestinationFinderDefault(
             dummyLocation, dummyLocation, dummyLocation, Sex.UNDEFINED
         )
         dummyAgent.carAccess = true // Car ownership probability is considered separately
-        val carOwnershipP = 0.6
+        val carOwnershipP = 0.75
 
         val carProbs = mutableMapOf<ActivityType, D2Array<Double>>()
         for (activity in ActivityType.entries) {

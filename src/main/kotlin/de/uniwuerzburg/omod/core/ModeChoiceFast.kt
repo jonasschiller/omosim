@@ -98,10 +98,12 @@ class ModeChoiceFast(
             ) {
                 // IF trip is from fixed location to same fixed location. Impute a randomly sampled Round-trip.
                 rtDistances[originActivity.type]!!
-              }  else {
-                routingCache.getDistances(originActivity.location, listOf(destinationActivity.location))
-                    .first()
-                    .toDouble()
+            } else {
+                val origin = originActivity.location.getAggLoc()!!
+                val destination = destinationActivity.location.getAggLoc()!!
+                routingCache.getDistances(
+                    origin, listOf(destination)
+                ).first().toDouble() / 1000
             }
 
             val tripFeatures = TripMCFeatures(
