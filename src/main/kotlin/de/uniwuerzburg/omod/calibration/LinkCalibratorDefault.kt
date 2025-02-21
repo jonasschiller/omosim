@@ -193,7 +193,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
 
         // Run Simulation
         val agents = omod.run(1.0)
-        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
+        //omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
 
         // Determine affected sensors
         var totalTripCount = 0
@@ -204,7 +204,39 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         for (agent in agents) {
             var origin = agent.mobilityDemand.first().activities.first()
             val activities = agent.mobilityDemand.first().activities.drop(1)
-            val trips = agent.mobilityDemand.first().trips
+
+            // For tests
+            for (activity in activities) {
+                var mode = Mode.UNDEFINED
+                if ( omod.mainRng.nextDouble() < 0.60) { // Car availability
+                    val distance = omod.routingCache.getDistances(
+                        origin.location.getAggLoc()!!, listOf(activity.location.getAggLoc()!!)
+                    ).first().toDouble() / 1000.0
+                    val weights = modeChoiceCalibration.utilitiesForCalibration(distance, agent, activity.type, Weekday.UNDEFINED)
+                    val distr = createCumDist(weights)
+                    mode = modeChoiceCalibration.tripModeOptions[sampleCumDist(distr, omod.mainRng)].mode
+                }
+
+                if (mode == Mode.CAR_DRIVER) {
+                    totalTripCount += 1
+                    if ((origin.location.getAggLoc() == testOrigin) and (activity.location.getAggLoc() == testDestination)) {
+                        testCount += 1
+                    }
+                    if ((origin.location.getAggLoc() is Cell) and (activity.location.getAggLoc() is Cell)) {
+                        val od = Pair(origin.location.getAggLoc() as Cell, activity.location.getAggLoc() as Cell)
+                        if (od in affectedLinks) {
+                            val sensors = affectedLinks[od]!!
+                            for (sensor in sensors) {
+                                simCount[sensor] = simCount[sensor]!! + 1
+                            }
+                        }
+                    }
+                }
+                origin = activity
+            }
+
+            // Real version
+            /*val trips = agent.mobilityDemand.first().trips
             for ((activity, trip) in activities.zip(trips)) {
                 if (trip.mode == Mode.CAR_DRIVER) {
                     totalTripCount += 1
@@ -222,7 +254,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
                     }
                 }
                 origin = activity
-            }
+            }*/
         }
 
         val fullPopulation = omod.buildings.sumOf { it.population }

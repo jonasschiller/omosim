@@ -8,7 +8,7 @@ import de.uniwuerzburg.omod.io.json.readJsonFromResource
 import kotlin.math.exp
 
 class ModeChoiceCalibration {
-    private val tripModeOptions: Array<ModeUtility> = readJsonFromResource("tripModeUtilitiesCalibration.json")
+    val tripModeOptions: Array<ModeUtility> = readJsonFromResource("tripModeUtilitiesCalibration.json")
 
     fun utilitiesForCalibration(
         carDistance: Double, agent: MobiAgent, activity: ActivityType, weekday: Weekday
