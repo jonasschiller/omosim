@@ -1,10 +1,17 @@
 package de.uniwuerzburg.omod.calibration
 
-import com.github.ajalt.mordant.table.grid
 import com.graphhopper.GraphHopper
-import de.uniwuerzburg.omod.core.*
-import de.uniwuerzburg.omod.core.models.*
+import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
+import de.uniwuerzburg.omod.core.DestinationFinderDefault
+import de.uniwuerzburg.omod.core.Omod
+import de.uniwuerzburg.omod.core.logger
+import de.uniwuerzburg.omod.core.models.Cell
+import de.uniwuerzburg.omod.core.models.Mode
+import de.uniwuerzburg.omod.core.models.RealLocation
+import de.uniwuerzburg.omod.core.models.Weekday
 import de.uniwuerzburg.omod.routing.routeWith
+import de.uniwuerzburg.omod.utils.createCumDist
+import de.uniwuerzburg.omod.utils.sampleCumDist
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -29,7 +36,8 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
 
         //val bestPosition = runPSO()
-        val bestPosition = Array<Double>(omod.grid.size) {1.0}
+        //val bestPosition = Array<Double>(omod.grid.size) {1.0}
+        val bestPosition = runGradientDescent(10)
 
         val (_, sFlow, nAgents) = runBatch( bestPosition )
         val (_, staticFlow, staticMap) = determineJointOD( bestPosition )
@@ -56,6 +64,38 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
                 sensors[i].measuredFlow.toString().padEnd(20)
             )
         }
+    }
+
+    private fun runGradientDescent(
+        iterations: Int = 10
+    ) : Array<Double> {
+        logger.on = false // Switch off logger for iterative calibration runs
+        println("Start GD")
+        val nDimensions = omod.grid.size
+
+        val x = Array(nDimensions) { 1.0 }
+        
+        for(iteration in 0 until iterations ) {
+            val time = measureTime {
+                val gradient = twoPointGrad(x) // Takes forever because we have so many parameters
+
+                for (i in x.indices) {
+                    x[i] = x[i] - 0.001 * gradient[i]
+                }
+            }
+
+            val (mse, sFlow, _) = determineJointOD(x)
+            println("______________________________")
+            println("Iteration $iteration took : $time")
+            println("MSE iteration $iteration: $mse")
+            println("------------------------------")
+            println("Sensor | \t Flow OMOD | \t Flow Measured")
+            for ((i, flow) in sFlow.values.withIndex()) {
+                println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow }")
+            }
+        }
+        logger.on = true
+        return x
     }
 
     private fun runPSO(
@@ -346,6 +386,18 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
 
         return affectedLinks
     }
+
+    fun twoPointGrad(parameters: Array<Double>, stepsize: Double = 0.0001) : DoubleArray {
+        val gradient = Array<Double>(parameters.size) { 0.0 }
+        val fx = determineJointOD(parameters).first
+        for (i in parameters.indices) {
+            val pdash = parameters.copyOf()
+            pdash[i] = parameters[i] + stepsize
+            val fdash = determineJointOD(pdash).first
+            gradient[i] = (fdash - fx) / stepsize
+        }
+        return gradient.toDoubleArray()
+    }
 }
 
 class TrafficSensor(
@@ -360,3 +412,6 @@ class PSOParticle(
    var bestPosition: Array<Double>,
    var bestMse: Double
 )
+
+
+
