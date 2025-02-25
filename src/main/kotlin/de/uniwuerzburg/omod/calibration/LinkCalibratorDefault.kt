@@ -1,17 +1,9 @@
 package de.uniwuerzburg.omod.calibration
 
 import com.graphhopper.GraphHopper
-import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
-import de.uniwuerzburg.omod.core.DestinationFinderDefault
-import de.uniwuerzburg.omod.core.Omod
-import de.uniwuerzburg.omod.core.logger
-import de.uniwuerzburg.omod.core.models.Cell
-import de.uniwuerzburg.omod.core.models.Mode
-import de.uniwuerzburg.omod.core.models.RealLocation
-import de.uniwuerzburg.omod.core.models.Weekday
+import de.uniwuerzburg.omod.core.*
+import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.routing.routeWith
-import de.uniwuerzburg.omod.utils.createCumDist
-import de.uniwuerzburg.omod.utils.sampleCumDist
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -26,7 +18,12 @@ import kotlin.math.absoluteValue
 import kotlin.math.pow
 import kotlin.time.measureTime
 
-class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator {
+class LinkCalibratorDefault(
+    linkDataFile: File,
+    val omod: Omod,
+    val popStrata: List<PopStratum>,
+    val carOwnership: CarOwnership
+) : LinkCalibrator {
     private val sensors: List<TrafficSensor>
     private val affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     private val modeChoiceCalibration = ModeChoiceCalibration()
@@ -36,8 +33,8 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
 
         //val bestPosition = runPSO()
-        //val bestPosition = Array<Double>(omod.grid.size) {1.0}
-        val bestPosition = runGradientDescent(10)
+        val bestPosition = Array<Double>(omod.grid.size) {1.0}
+        //val bestPosition = runGradientDescent(10)
 
         val (_, sFlow, nAgents) = runBatch( bestPosition )
         val (_, staticFlow, staticMap) = determineJointOD( bestPosition )
@@ -80,7 +77,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
                 val gradient = twoPointGrad(x) // Takes forever because we have so many parameters
 
                 for (i in x.indices) {
-                    x[i] = x[i] - 0.001 * gradient[i]
+                    x[i] = x[i] - 0.1 * gradient[i]
                 }
             }
 
@@ -194,7 +191,8 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         // Pair probability
         val od = finder.determinePairProbabilities(
             omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
-            modeChoiceCalibration, omod.grid.zip(parameters).toMap()
+            modeChoiceCalibration, omod.grid.zip(parameters).toMap(),
+            popStrata, carOwnership
         )
 
         // Determine affected sensors
@@ -233,7 +231,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
 
         // Run Simulation
         val agents = omod.run(1.0)
-        //omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
+        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
 
         // Determine affected sensors
         var totalTripCount = 0
@@ -245,10 +243,10 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
             var origin = agent.mobilityDemand.first().activities.first()
             val activities = agent.mobilityDemand.first().activities.drop(1)
 
-            // For tests
+            /* For tests
             for (activity in activities) {
                 var mode = Mode.UNDEFINED
-                if ( omod.mainRng.nextDouble() < 0.60) { // Car availability
+                if ( omod.mainRng.nextDouble() < 0.75) { // Car availability
                     val distance = omod.routingCache.getDistances(
                         origin.location.getAggLoc()!!, listOf(activity.location.getAggLoc()!!)
                     ).first().toDouble() / 1000.0
@@ -274,9 +272,9 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
                 }
                 origin = activity
             }
-
+            */
             // Real version
-            /*val trips = agent.mobilityDemand.first().trips
+            val trips = agent.mobilityDemand.first().trips
             for ((activity, trip) in activities.zip(trips)) {
                 if (trip.mode == Mode.CAR_DRIVER) {
                     totalTripCount += 1
@@ -294,7 +292,7 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
                     }
                 }
                 origin = activity
-            }*/
+            }
         }
 
         val fullPopulation = omod.buildings.sumOf { it.population }
@@ -387,9 +385,10 @@ class LinkCalibratorDefault(linkDataFile: File, val omod: Omod) : LinkCalibrator
         return affectedLinks
     }
 
-    fun twoPointGrad(parameters: Array<Double>, stepsize: Double = 0.0001) : DoubleArray {
+    fun twoPointGrad(parameters: Array<Double>, stepsize: Double =  kotlin.math.sqrt(Double.MIN_VALUE)) : DoubleArray {
         val gradient = Array<Double>(parameters.size) { 0.0 }
         val fx = determineJointOD(parameters).first
+
         for (i in parameters.indices) {
             val pdash = parameters.copyOf()
             pdash[i] = parameters[i] + stepsize

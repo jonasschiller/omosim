@@ -210,7 +210,9 @@ class DestinationFinderDefault(
     fun determinePairProbabilities(
         grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>
+        customCellFactors: Map<Cell, Double>,
+        popStrata: List<PopStratum>,
+        carOwnership: CarOwnership
     ) : Map<Pair<Cell, Cell>, Double> {
         // Result: Expected trip count on each od-paid of one agent on one day
         val expectedCountPerAgent = mk.zeros<Double>(grid.size, grid.size)
@@ -245,36 +247,67 @@ class DestinationFinderDefault(
         val homeSchoolProbs = homeProbs.diagonal().dot(schoolTransitionP)
         val schoolProbs = homeProbs.dot(schoolTransitionP)
 
-        // Get activity chains
-        // TODO account for socio-demographic features
-        val chains = activityGenerator.getChain(
-            Weekday.UNDEFINED, HomogeneousGrp.UNDEFINED, MobilityGrp.UNDEFINED, AgeGrp.UNDEFINED, ActivityType.HOME
-        )
-        val chainProbs = chains.weights.map { it / chains.weights.sum() }.toTypedArray()
-
         // Car probability
         val dummyCoord = Coordinate(0.0,0.0)
         val dummyLocation = DummyLocation(dummyCoord, dummyCoord, null, setOf())
-        val dummyAgent = MobiAgent(
-            -1,  HomogeneousGrp.UNDEFINED, MobilityGrp.UNDEFINED, null,
-            dummyLocation, dummyLocation, dummyLocation, Sex.UNDEFINED
-        )
-        dummyAgent.carAccess = true // Car ownership probability is considered separately
-        val carOwnershipP = 0.60
-
         val carProbs = mutableMapOf<ActivityType, D2Array<Double>>()
         for (activity in ActivityType.entries) {
-            val carProbsActivity = mk.zeros<Double>(grid.size, grid.size)
-            for (o in grid.indices) {
-                val distances = routingCache.getDistances(grid[o], grid)
-                for (d in grid.indices) {
-                    val weights = modeChoiceCalibration.utilitiesForCalibration(
-                        distances[d].toDouble() / 1000.0, dummyAgent, activity, Weekday.UNDEFINED
-                    )
-                    carProbsActivity[o, d] = carOwnershipP * weights[0] / weights.sum()
+            carProbs[activity] = mk.zeros<Double>(grid.size, grid.size)
+        }
+        for (stratum in popStrata) {
+            if (stratum.stratumShare == 0.0) { continue }
+
+            for ((socioFeatureSet, pSFSet) in stratum.iterateOptions()) {
+                if (pSFSet == 0.0) { continue }
+
+                val dummyAgent = MobiAgent(
+                    -1,  socioFeatureSet.hom, socioFeatureSet.mob, socioFeatureSet.age,
+                    dummyLocation, dummyLocation, dummyLocation, socioFeatureSet.sex
+                )
+                dummyAgent.carAccess = true // Car ownership probability is considered separately
+                val carOwnershipP = carOwnership.probability(dummyAgent, stratum)
+                if (carOwnershipP == 0.0) { continue }
+
+                for (activity in ActivityType.entries) {
+                    val carProbsActivity = mk.zeros<Double>(grid.size, grid.size)
+                    for (o in grid.indices) {
+                        val distances = routingCache.getDistances(grid[o], grid)
+                        for (d in grid.indices) {
+                            val weights = modeChoiceCalibration.utilitiesForCalibration(
+                                distances[d].toDouble() / 1000.0, dummyAgent, activity, Weekday.UNDEFINED
+                            )
+                            val pTrip = weights[0] / weights.sum()
+                            carProbsActivity[o, d] = stratum.stratumShare * pSFSet * carOwnershipP * pTrip
+                        }
+                    }
+                    carProbs[activity]?.plusAssign(carProbsActivity)
                 }
             }
-            carProbs[activity] = carProbsActivity
+        }
+
+        // Get activity chains
+        // TODO Multiple days
+        val allChains = mutableMapOf<List<ActivityType>, Double>()
+        for (stratum in popStrata) {
+            if (stratum.stratumShare == 0.0) { continue }
+
+            for ((socioFeatureSet, pSFSet) in stratum.iterateOptions()) {
+                if (pSFSet == 0.0) { continue }
+                val ageGrp = AgeGrp.fromInt(socioFeatureSet.age)
+                val chains = activityGenerator.getChain(
+                    Weekday.UNDEFINED, socioFeatureSet.hom, socioFeatureSet.mob, ageGrp, ActivityType.HOME
+                )
+                val chainProbs = chains.weights.map { it / chains.weights.sum() }.toTypedArray()
+
+                for ((chain, chainP) in chains.chains.zip(chainProbs)) {
+                    val p = stratum.stratumShare * pSFSet * chainP
+                    if (chain in allChains) {
+                        allChains[chain] = allChains[chain]!! + p
+                    } else {
+                        allChains[chain] = p
+                    }
+                }
+            }
         }
 
         // Determine unique Fixed -> Fixed chain segments
@@ -282,7 +315,7 @@ class DestinationFinderDefault(
         val fixedActivities = setOf(ActivityType.HOME, ActivityType.WORK, ActivityType.SCHOOL)
         val fixedSegments = mutableListOf<FixedSegment>()
         val segment = mutableListOf<ActivityType>()
-        for ((chain, chainP) in chains.chains.zip(chainProbs)) {
+        for ((chain, chainP) in allChains) {
             segment.clear()
 
             for ((i, activity) in chain.withIndex()) {
@@ -310,7 +343,7 @@ class DestinationFinderDefault(
         }
 
         // Determine od pair probabilities
-        // TODO mode choice and time
+        // TODO time
         for ((chain, chainP) in uniqueSegments) {
             if (chain.size <= 1) { continue }
 

@@ -9,4 +9,5 @@ import java.util.*
  */
 interface CarOwnership {
     fun determine(agent: MobiAgent, stratum: PopStratum, rng: Random) : Boolean
+    fun probability(agent: MobiAgent, stratum: PopStratum) : Double
 }
