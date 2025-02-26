@@ -4,18 +4,20 @@ import com.graphhopper.GraphHopper
 import de.uniwuerzburg.omod.core.*
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.routing.routeWith
+import de.uniwuerzburg.omod.utils.CRSTransformer
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.geotools.filter.function.StaticGeometry.intersection
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
+import org.locationtech.jts.geom.LineString
 import org.locationtech.jts.index.hprtree.HPRtree
 import org.locationtech.jts.io.WKTReader
 import java.io.File
-import kotlin.math.absoluteValue
-import kotlin.math.pow
+import kotlin.math.*
 import kotlin.time.measureTime
 
 class LinkCalibratorDefault(
@@ -196,7 +198,7 @@ class LinkCalibratorDefault(
         )
 
         // Determine affected sensors
-        // TODO directional check, temporal check
+        // TODO temporal check
         val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
         for (origin in omod.grid) {
             for (destination in omod.grid) {
@@ -327,6 +329,7 @@ class LinkCalibratorDefault(
         // Index of cols to extract
         val nameCol =  idxMap["name"]
         val flowCol =  idxMap["dailyFlow"]
+        val dirCol =  idxMap["flowDirection"]
         val geometryCol = idxMap["Geometry"]
 
         // Read data
@@ -334,10 +337,18 @@ class LinkCalibratorDefault(
             val values = line.split(delimiter)
             val name = nameCol?.let { values[it] }
             val flow = values[flowCol!!].toDouble()
-            val wkt = values[geometryCol!!]
-            val geometry = omod.transformer.toModelCRS(wktReader.read(wkt))
 
-            val sensor = TrafficSensor(name ?: sensors.size.toString(), flow, geometry)
+            // Get sensor field
+            val wkt = values[geometryCol!!]
+            val latlonGeom = wktReader.read(wkt)
+            val geometry = omod.transformer.toModelCRS(latlonGeom)
+
+            // Get sensor direction
+            val angle = values[dirCol!!].toDouble()
+            val centroid = latlonGeom.centroid.coordinates.first()
+            val direction = Direction(angle, centroid, omod.transformer)
+
+            val sensor = TrafficSensor(name ?: sensors.size.toString(), flow, direction, geometry)
             sensors.add(sensor)
         }
 
@@ -371,6 +382,10 @@ class LinkCalibratorDefault(
                                 val thisAffected = sensorTree.query(routeLine.envelopeInternal)
                                     .map { it as TrafficSensor }
                                     .filter { it.field.envelope.intersects(routeLine) && it.field.intersects(routeLine) }
+                                    .filter {
+                                        val inters = intersection(it.field, routeLine) as LineString
+                                        it.flowDirection.isSameDirection(inters, 30.0)
+                                    }
 
                                 if(thisAffected.isNotEmpty()) {
                                     send(Pair(Pair(origin, destination), thisAffected))
@@ -385,8 +400,8 @@ class LinkCalibratorDefault(
         return affectedLinks
     }
 
-    fun twoPointGrad(parameters: Array<Double>, stepsize: Double =  kotlin.math.sqrt(Double.MIN_VALUE)) : DoubleArray {
-        val gradient = Array<Double>(parameters.size) { 0.0 }
+    fun twoPointGrad(parameters: Array<Double>, stepsize: Double =  sqrt(Double.MIN_VALUE)) : DoubleArray {
+        val gradient = Array(parameters.size) { 0.0 }
         val fx = determineJointOD(parameters).first
 
         for (i in parameters.indices) {
@@ -402,8 +417,64 @@ class LinkCalibratorDefault(
 class TrafficSensor(
     val name: String,
     val measuredFlow: Double,
+    val flowDirection: Direction,
     val field: Geometry
 )
+
+class Direction(
+    azimuth: Double,
+    centroid: Coordinate,
+    transformer: CRSTransformer
+) {
+    private val vector: DoubleArray
+
+    init {
+        // Convert angle
+        var polarAngle = 360.0 - azimuth + 90.0
+        if (polarAngle >= 360.0) {
+            polarAngle -= 360.0
+        }
+
+        // Create vector
+        val dx = 0.01 * cos(polarAngle / 180.0 * PI)
+        val dy = 0.01 * sin(polarAngle / 180.0 * PI)
+        val vCoordsLatLon = GeometryFactory().createLineString(
+            listOf(
+                centroid,
+                Coordinate(centroid.x + dy, centroid.y + dx) // Swap dx and dy because of lat-lon crs
+            ).toTypedArray()
+        )
+
+        val vCoordsUTM = transformer
+            .toModelCRS(vCoordsLatLon)
+            .coordinates
+
+        vector = vecFromCoords(vCoordsUTM)
+    }
+
+    private fun vecFromCoords(coords: Array<Coordinate>) : DoubleArray {
+        require(coords.size == 2)
+
+        val vector = DoubleArray(2) {0.0}
+        vector[0] = coords[1].x - coords[0].x
+        vector[1] = coords[1].y - coords[0].y
+        return vector
+    }
+
+    private fun angleBetween(other: LineString): Double {
+        val oVec = vecFromCoords(arrayOf(other.coordinates.first(), other.coordinates.last()))
+
+        val dot = vector[0] * oVec[0] + vector[1] * oVec[1]
+        val det = vector[0] * oVec[1] - vector[1] * oVec[0]
+        return atan2(det, dot)
+    }
+
+    fun isSameDirection(other: LineString, leeway: Double) : Boolean {
+        val leewayRad = leeway / 180.0 * PI
+        val angleBe = angleBetween(other)
+        return abs(angleBetween(other)) < leewayRad
+    }
+}
 
 class PSOParticle(
    var velocity: Array<Double>,
