@@ -3,6 +3,7 @@ package de.uniwuerzburg.omod.calibration
 import com.graphhopper.GraphHopper
 import de.uniwuerzburg.omod.core.*
 import de.uniwuerzburg.omod.core.models.*
+import de.uniwuerzburg.omod.routing.routeAltCar
 import de.uniwuerzburg.omod.routing.routeWith
 import de.uniwuerzburg.omod.utils.CRSTransformer
 import kotlinx.coroutines.flow.channelFlow
@@ -32,6 +33,23 @@ class LinkCalibratorDefault(
 
     init {
         sensors = readSensorData(linkDataFile)
+
+        // TODO Gurobi test
+        // Pair probability
+        val finder = omod.destinationFinder as DestinationFinderDefault
+        val parameters = Array<Double>(omod.grid.size) {1.0}
+        val fullPopulation = omod.buildings.sumOf { it.population }
+        val od = finder.determinePairProbabilities(
+            omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
+            modeChoiceCalibration, omod.grid.zip(parameters).toMap(),
+            popStrata, carOwnership
+        )
+        val altAffectedLinks = determineAltAffectedLinks(omod.grid, sensors, omod.hopper!!)
+        val m = altAffectedLinks.values.map { it.size }.average()
+        println("Average affected links: $m")
+        optimize(omod.grid, od, fullPopulation, altAffectedLinks, sensors)
+        // TODO Test END
+
         affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
 
         //val bestPosition = runPSO()
@@ -390,6 +408,57 @@ class LinkCalibratorDefault(
                                 if(thisAffected.isNotEmpty()) {
                                     send(Pair(Pair(origin, destination), thisAffected))
                                 }
+                            }
+                        }
+                    }
+                }
+            }.toList()
+        }.toMap()
+
+        return affectedLinks
+    }
+
+    private fun determineAltAffectedLinks(
+        grid: List<Cell>,
+        sensors: List<TrafficSensor>,
+        hopper: GraphHopper
+    ) : Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>> {
+        val geometryFactory = GeometryFactory()
+
+        val sensorTree = HPRtree()
+        for (sensor in sensors) {
+            sensorTree.insert(sensor.field.envelopeInternal, sensor)
+        }
+
+        val affectedLinks: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>> = runBlocking(omod.dispatcher) {
+            channelFlow {
+                for (origin in grid) {
+                    launch {
+                        for (destination in grid) {
+                            val response = routeAltCar(origin, destination, hopper)
+                            val thisAffected = mutableListOf<List<TrafficSensor>>()
+
+                            for (path in response.all) {
+                                val coords = path.points.map { Coordinate(it.lat, it.lon) }.toTypedArray()
+
+                                if (coords.size >= 2) {
+                                    val routeLine = omod.transformer.toModelCRS( geometryFactory.createLineString(coords) )
+
+                                    val thisAltAffected = sensorTree.query(routeLine.envelopeInternal)
+                                        .map { it as TrafficSensor }
+                                        .filter { it.field.envelope.intersects(routeLine) && it.field.intersects(routeLine) }
+                                        .filter {
+                                            val inters = intersection(it.field, routeLine) as LineString
+                                            it.flowDirection.isSameDirection(inters, 30.0)
+                                        }
+
+                                    // Also add paths that do not affect any sensors
+                                    thisAffected.add(thisAltAffected)
+                                }
+                            }
+
+                            if(thisAffected.isNotEmpty()) {
+                                send(Pair(Pair(origin, destination), thisAffected))
                             }
                         }
                     }
