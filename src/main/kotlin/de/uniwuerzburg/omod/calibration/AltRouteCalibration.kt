@@ -1,7 +1,6 @@
 package de.uniwuerzburg.omod.calibration
 
 import com.gurobi.gurobi.*
-import com.sun.tools.javac.tree.TreeInfo.args
 import de.uniwuerzburg.omod.core.models.Cell
 import de.uniwuerzburg.omod.core.models.RealLocation
 
@@ -12,7 +11,7 @@ fun optimize(
     totalPop: Double,
     affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>>,
     sensors: List<TrafficSensor>
-) {
+) :  Map<Pair<RealLocation, RealLocation>, List<Double>> {
 
     try {
         val env = GRBEnv()
@@ -31,7 +30,7 @@ fun optimize(
             sensorCountExpr[sensor] = GRBLinExpr()
         }
 
-        val As = mutableListOf<GRBVar>()
+        val As = mutableMapOf<Pair<RealLocation, RealLocation>, List<GRBVar>>()
 
         for (origin in grid) {
             for (destination in grid) {
@@ -47,7 +46,7 @@ fun optimize(
                         CharArray(altsize) {GRB.CONTINUOUS},
                         Array(altsize) {""}
                     )
-                    As.addAll(a)
+                    As[od] = a.toList()
 
                     for ((i, alt) in altAffect.withIndex()) {
                         for (sensor in alt) {
@@ -124,14 +123,18 @@ fun optimize(
             )
         }
 
+        val out =  As.mapValues { it.value.map { v -> v.get(GRB.DoubleAttr.X) } }
+
         // Dispose of model and environment
         model.dispose()
         env.dispose()
+
+        return out
     } catch (e: GRBException) {
         println(
             ("Error code: " + e.errorCode + ". " +
                     e.message)
         )
     }
-
+    return mapOf()
 }

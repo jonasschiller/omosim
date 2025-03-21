@@ -12,13 +12,8 @@ import de.uniwuerzburg.omod.io.gtfs.getPublicTransitSimDays
 import de.uniwuerzburg.omod.io.json.*
 import de.uniwuerzburg.omod.io.osm.readOSM
 import de.uniwuerzburg.omod.io.readCensus
-import de.uniwuerzburg.omod.routing.RoutingCache
-import de.uniwuerzburg.omod.routing.RoutingMode
-import de.uniwuerzburg.omod.routing.createGraphHopper
-import de.uniwuerzburg.omod.routing.createGraphHopperGTFS
-import de.uniwuerzburg.omod.utils.CRSTransformer
-import de.uniwuerzburg.omod.utils.ProgressBar
-import de.uniwuerzburg.omod.utils.fastCovers
+import de.uniwuerzburg.omod.routing.*
+import de.uniwuerzburg.omod.utils.*
 import kotlinx.coroutines.*
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
@@ -56,6 +51,7 @@ import kotlin.time.TimeSource
  * NULL = Number of CPU-Cores available.
  * @param gtfsFile GTFS location (Directory or .zip file)
  */
+// TODO check what should an shouldn't be private
 class Omod(
     areaFile: File,
     private val osmFile: File,
@@ -92,6 +88,8 @@ class Omod(
     private var gtfsComponents: GTFSComponents? = null
     private val focusArea: Geometry
     private val fullArea: Geometry
+    var altPercentages: Map<Pair<RealLocation, RealLocation>, List<Double>>
+
     init {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
@@ -205,12 +203,13 @@ class Omod(
         logger.get()?.info("Initializing OMOD took: ${timeSource.markNow() - timestampStartInit}")
 
         // TODO: Debug
-        val test = LinkCalibratorDefault(
+        val calibrator = LinkCalibratorDefault(
             File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput_v4.csv"),
             this,
             popStrata,
             carOwnership
         )
+        altPercentages = calibrator.altPercentages
         // TODO: End Debug
     }
 
@@ -582,6 +581,93 @@ class Omod(
             ModeChoiceOption.FAST -> {
                 val modeChoice = ModeChoiceFast(routingCache)
                 modeChoice.doModeChoice(agents, mainRng, dispatcher)
+                // TODO test code
+                /*
+                val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, departureWD, finished ->
+                    val od = Pair(
+                        originActivity.location.getAggLoc()!! as RealLocation,
+                        destinationActivity.location.getAggLoc()!! as RealLocation
+                    )
+                    if ((trip.mode == Mode.CAR_DRIVER) && (od in altPercentages)){
+                        val response = routeAltCar(
+                            originActivity.location.getAggLoc()!! as RealLocation,
+                            destinationActivity.location.getAggLoc()!! as RealLocation,
+                            hopper!!
+                        )
+                        if (!response.hasErrors()) {
+                            val probs = altPercentages[od]!!
+                            val distr = createCumDist(probs.toDoubleArray())
+                            val path = response.all[sampleCumDist(distr, this.mainRng)]
+
+                            val (lats, lons) = Pair(
+                                path.points.map { it.lat },
+                                path.points.map { it.lon }
+                            )
+
+                            trip.lats = lats
+                            trip.lons = lons
+                        }
+                    } else if (trip.mode == Mode.CAR_DRIVER){
+                        val response = routeWith(
+                            "car",
+                            originActivity.location.getAggLoc()!! as RealLocation,
+                            destinationActivity.location.getAggLoc()!! as RealLocation,
+                            hopper!!
+                        )
+                        if (!response.hasErrors()) {
+                            val (lats, lons) = Pair(
+                                response.best.points.map { it.lat },
+                                response.best.points.map { it.lon }
+                            )
+
+                            trip.lats = lats
+                            trip.lons = lons
+                        }
+                    }
+                }
+
+                // Alt trip selection
+                if (altPercentages != null) {
+                    for (agent in agents) {
+                        for (diary in agent.mobilityDemand) {
+                            diary.visitTrips(visitor)
+                        }
+                    }
+                }
+                */
+
+                /*
+                val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, departureWD, finished ->
+                    if ((trip.mode == Mode.CAR_DRIVER)){
+                        val response = routeWith(
+                            "car",
+                            originActivity.location.getAggLoc()!! as RealLocation,
+                            destinationActivity.location.getAggLoc()!! as RealLocation,
+                            hopper!!
+                        )
+                        if (!response.hasErrors()) {
+                            val (lats, lons) = Pair(
+                                response.best.points.map { it.lat },
+                                response.best.points.map { it.lon }
+                            )
+
+                            trip.lats = lats
+                            trip.lons = lons
+                        }
+                    }
+                }
+
+                // Alt trip selection
+                if (altPercentages != null) {
+                    for (agent in agents) {
+                        for (diary in agent.mobilityDemand) {
+                            diary.visitTrips(visitor)
+                        }
+                    }
+                }
+                */
+                // TODO end test code
+
                 return agents
             }
         }

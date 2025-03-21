@@ -7,6 +7,8 @@ import de.uniwuerzburg.omod.core.models.ActivityType
 import de.uniwuerzburg.omod.core.models.LocationOption
 import de.uniwuerzburg.omod.core.models.Mode
 import de.uniwuerzburg.omod.core.models.RealLocation
+import de.uniwuerzburg.omod.utils.createCumDist
+import de.uniwuerzburg.omod.utils.sampleCumDist
 import java.time.Instant
 import java.util.*
 import kotlin.math.ln
@@ -19,6 +21,50 @@ class Route (
     val onlyWalk: Boolean = false
 ) {
     companion object {
+        fun getWithFallbackAlt(
+            mode: Mode, origin: LocationOption, destination: LocationOption, hopper: GraphHopper, withPath: Boolean,
+            departureTime: Instant?, ptRouter: PtRouter?,
+            rng: Random,
+            altPercentages: Map<Pair<RealLocation, RealLocation>, List<Double>>? = null
+        ): Route {
+            // TODO test implementation
+            if (((departureTime == null) || (ptRouter == null)) && (mode == Mode.PUBLIC_TRANSIT)) {
+                throw IllegalArgumentException("A ptRouter and departureTime is required for public transit routing!")
+            }
+
+            val route = if ((origin !is RealLocation) || (destination !is RealLocation)) {
+                routeFallback(mode, origin, destination)
+            } else {
+                var alts = altPercentages?.get(
+                    Pair( origin.getAggLoc()!! as RealLocation, destination.getAggLoc()!! as RealLocation)
+                )
+
+                val response = when (mode) {
+                    Mode.PUBLIC_TRANSIT -> { routeGTFS(origin, destination, departureTime!!, ptRouter!!, hopper) }
+                    Mode.FOOT           -> routeWith("foot", origin, destination, hopper)
+                    Mode.BICYCLE        -> routeWith("bike", origin, destination, hopper)
+                    else                -> {
+                        if (alts == null) {
+                            routeWith("car", origin, destination, hopper)
+                        } else {
+                            // TODO buildings not cells
+                            routeAltCar(
+                                origin.getAggLoc()!! as RealLocation, destination.getAggLoc()!! as RealLocation, hopper
+                            )
+                        }
+                    }
+                }
+                if (response.hasErrors()) {
+                    routeFallback(mode, origin, destination)
+                } else if ((mode == Mode.CAR_DRIVER) && (alts != null)){
+                    fromGHAltResponse(response, withPath, alts, rng)
+                } else {
+                    fromGHResponse(response, withPath)
+                }
+            }
+            return addConstantTimeCost(mode, route)
+        }
+
         fun getWithFallback(
             mode: Mode, origin: LocationOption, destination: LocationOption, hopper: GraphHopper, withPath: Boolean,
             departureTime: Instant?, ptRouter: PtRouter?
@@ -43,6 +89,34 @@ class Route (
                 }
             }
             return addConstantTimeCost(mode, route)
+        }
+
+        private fun fromGHAltResponse(
+            response: GHResponse, withPath: Boolean, probs: List<Double>, rng: Random
+        ) : Route {
+            require(response.all.size == probs.size)
+            val distr = createCumDist(probs.toDoubleArray())
+            val path = response.all[sampleCumDist(distr, rng)]
+
+            val (lats, lons) = if (withPath) {
+                Pair(
+                    path.points.map { it.lat },
+                    path.points.map { it.lon }
+                )
+            } else {
+                Pair(null, null)
+            }
+
+            // Check if only walking occurred
+            val onlyWalk = response.best.legs.all { it.type == "walk" }
+
+            return Route (
+                response.best.distance / 1000,
+                (response.best.time / 1000 / 60).toDouble(),
+                lats,
+                lons,
+                onlyWalk
+            )
         }
 
         private fun fromGHResponse(response: GHResponse, withPath: Boolean) : Route {
