@@ -10,11 +10,13 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.apache.commons.io.filefilter.TrueFileFilter
 import org.geotools.filter.function.StaticGeometry.intersection
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
 import org.locationtech.jts.geom.LineString
+import org.locationtech.jts.geom.MultiLineString
 import org.locationtech.jts.index.hprtree.HPRtree
 import org.locationtech.jts.io.WKTReader
 import java.io.File
@@ -30,12 +32,15 @@ class LinkCalibratorDefault(
     private val sensors: List<TrafficSensor>
     private val affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     private val modeChoiceCalibration = ModeChoiceCalibration()
+    val altPercentages: Map<Pair<RealLocation, RealLocation>, List<Double>> = mapOf()
 
     init {
         sensors = readSensorData(linkDataFile)
+        affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
 
         // TODO Gurobi test
         // Pair probability
+        /*
         val finder = omod.destinationFinder as DestinationFinderDefault
         val parameters = Array<Double>(omod.grid.size) {1.0}
         val fullPopulation = omod.buildings.sumOf { it.population }
@@ -47,44 +52,74 @@ class LinkCalibratorDefault(
         val altAffectedLinks = determineAltAffectedLinks(omod.grid, sensors, omod.hopper!!)
         val m = altAffectedLinks.values.map { it.size }.average()
         println("Average affected links: $m")
-        optimize(omod.grid, od, fullPopulation, altAffectedLinks, sensors)
+        val altPercentages = optimize(omod.grid, od, fullPopulation, altAffectedLinks, sensors)
+
+        val odProbs = optimize(
+            omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
+            modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
+            popStrata, carOwnership, finder,
+            fullPopulation, affectedLinks, sensors
+        )
+        // Determine affected sensors
+        // TODO temporal check
+        val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
+        for(event in odProbs) {
+            val odPair = Pair(omod.grid[event.o], omod.grid[event.d])
+            if (odPair in affectedLinks) {
+                val sensors = affectedLinks[odPair]!!
+                for (sensor in sensors) {
+                    staticCount[sensor] = staticCount[sensor]!! + event.pCar * event.pTransition * event.pChain * fullPopulation
+                }
+            }
+        }
+        val staticFlowLst = mutableMapOf<TrafficSensor, Double>()
+        for (sensor in sensors) {
+            val simFlow = staticCount[sensor]!!
+            staticFlowLst[sensor] = simFlow
+        }
+        */
+
         // TODO Test END
+        //omod.altPercentages = altPercentages
 
-        affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
 
-        //val bestPosition = runPSO()
-        val bestPosition = Array<Double>(omod.grid.size) {1.0}
+        val bestPosition = runPSO(iterations = 1000)
+        //val bestPosition = Array<Double>(omod.grid.size) {1.0}
         //val bestPosition = runGradientDescent(10)
 
         val (_, sFlow, nAgents) = runBatch( bestPosition )
         val (_, staticFlow, staticMap) = determineJointOD( bestPosition )
 
-        val testOrigin = omod.grid[306]
-        val testDestination = omod.grid[307]
-        println("On test count in static map: ${staticMap[Pair(testOrigin, testDestination)]!! * nAgents}")
-        println("Total trips in static map:  ${staticMap.values.sum() * nAgents}")
+        //val testOrigin = omod.grid[306]
+        //val testDestination = omod.grid[307]
+        //println("On test count in static map: ${staticMap[Pair(testOrigin, testDestination)]!! * nAgents}")
+        // println("Total trips in static map:  ${staticMap.values.sum() * nAgents}")
         println("_".repeat(20*4 + 5*3))
         println("${"Sensor".padEnd(20)} | \t" +
                 "${"Flow Simulated".padEnd(20)} | \t" +
                 "${"Flow Deterministic".padEnd(20)} | \t" +
+                //"${"Flow Deterministic Lst".padEnd(20)} | \t" +
                 "Flow Measured".padEnd(20)
         )
         println("_".repeat(20) +
                 " | \t" + "_".repeat(20)  +
                 " | \t" + "_".repeat(20)  +
+                //" | \t" + "_".repeat(20)  +
                 " | \t" + "_".repeat(20))
         for ((i, flow) in sFlow.values.withIndex()) {
             println(
                 "${sensors[i].name.padEnd(20)} | \t" +
                 "${flow.toString().padEnd(20)} | \t" +
                 "${staticFlow[sensors[i]].toString().padEnd(20)} | \t" +
+                //"${staticFlowLst[sensors[i]].toString().padEnd(20)} | \t" +
                 sensors[i].measuredFlow.toString().padEnd(20)
             )
         }
+
     }
 
     private fun runGradientDescent(
-        iterations: Int = 10
+        iterations: Int = 1000
     ) : Array<Double> {
         logger.on = false // Switch off logger for iterative calibration runs
         println("Start GD")
@@ -145,37 +180,36 @@ class LinkCalibratorDefault(
         println("Start iterations")
         for(iteration in 0 until iterations ) {
             val time = measureTime {
-                runBlocking {
-                    for (particle in particles) {
-                        launch {
-                            for (i in 0 until nDimensions) {
-                                val rp = omod.mainRng.nextDouble()
-                                val rg = omod.mainRng.nextDouble()
+                //runBlocking(omod.dispatcher) { // TODO slows things down? RAM issue?
+                for (particle in particles) {
+                    //launch {
+                    for (i in 0 until nDimensions) {
+                        val rp = omod.mainRng.nextDouble()
+                        val rg = omod.mainRng.nextDouble()
 
-                                // Update velocity
-                                particle.velocity[i] =
-                                    w * particle.velocity[i] +
-                                            phiP * rp * (particle.bestPosition[i] - particle.position[i]) +
-                                            phiG * rg * (globalBestPosition[i] - particle.position[i])
+                        // Update velocity
+                        particle.velocity[i] =
+                            w * particle.velocity[i] +
+                                    phiP * rp * (particle.bestPosition[i] - particle.position[i]) +
+                                    phiG * rg * (globalBestPosition[i] - particle.position[i])
 
-                                // Update position
-                                particle.position[i] += particle.velocity[i]
+                        // Update position
+                        particle.position[i] += particle.velocity[i]
 
-                                // Clip position
-                                if (particle.position[i] < 0) {
-                                    particle.position[i] = 0.0
-                                }
-                            }
-
-                            // Check performance
-                            val (mse, _, _) = determineJointOD(particle.position)
-
-                            if (mse < particle.bestMse) {
-                                particle.bestPosition = particle.position.copyOf()
-                                particle.bestMse = mse
-                            }
+                        // Clip position
+                        if (particle.position[i] < 0) {
+                            particle.position[i] = 0.0
                         }
                     }
+
+                    // Check performance
+                    val (mse, _, _) = determineJointOD(particle.position)
+
+                    if (mse < particle.bestMse) {
+                        particle.bestPosition = particle.position.copyOf()
+                        particle.bestMse = mse
+                    }
+
                 }
 
                 for (particle in particles) {
@@ -255,8 +289,8 @@ class LinkCalibratorDefault(
 
         // Determine affected sensors
         var totalTripCount = 0
-        val testOrigin = omod.grid[306]
-        val testDestination = omod.grid[307]
+        //val testOrigin = omod.grid[306]
+        //val testDestination = omod.grid[307]
         var testCount = 0.0
         val simCount = sensors.associateWith { 0.0 }.toMutableMap()
         for (agent in agents) {
@@ -298,9 +332,9 @@ class LinkCalibratorDefault(
             for ((activity, trip) in activities.zip(trips)) {
                 if (trip.mode == Mode.CAR_DRIVER) {
                     totalTripCount += 1
-                    if ((origin.location.getAggLoc() == testOrigin) and (activity.location.getAggLoc() == testDestination)) {
-                        testCount += 1
-                    }
+                    //if ((origin.location.getAggLoc() == testOrigin) and (activity.location.getAggLoc() == testDestination)) {
+                    //    testCount += 1
+                    //}
                     if ((origin.location.getAggLoc() is Cell) and (activity.location.getAggLoc() is Cell)) {
                         val od = Pair(origin.location.getAggLoc() as Cell, activity.location.getAggLoc() as Cell)
                         if (od in affectedLinks) {
@@ -401,8 +435,20 @@ class LinkCalibratorDefault(
                                     .map { it as TrafficSensor }
                                     .filter { it.field.envelope.intersects(routeLine) && it.field.intersects(routeLine) }
                                     .filter {
-                                        val inters = intersection(it.field, routeLine) as LineString
-                                        it.flowDirection.isSameDirection(inters, 30.0)
+                                        val inters = intersection(it.field, routeLine)
+                                        if (inters is LineString) {
+                                            it.flowDirection.isSameDirection(inters, 30.0)
+                                        } else if (inters is MultiLineString) {
+                                            var sameDir = false
+                                            for (n in 0 until inters.numGeometries)
+                                                if (it.flowDirection.isSameDirection(inters.getGeometryN(n) as LineString, 30.0)) {
+                                                    sameDir = true
+                                                    break
+                                                }
+                                            sameDir
+                                        }else {
+                                            false
+                                        }
                                     }
 
                                 if(thisAffected.isNotEmpty()) {
@@ -448,8 +494,20 @@ class LinkCalibratorDefault(
                                         .map { it as TrafficSensor }
                                         .filter { it.field.envelope.intersects(routeLine) && it.field.intersects(routeLine) }
                                         .filter {
-                                            val inters = intersection(it.field, routeLine) as LineString
-                                            it.flowDirection.isSameDirection(inters, 30.0)
+                                            val inters = intersection(it.field, routeLine)
+                                            if (inters is LineString) {
+                                                it.flowDirection.isSameDirection(inters, 30.0)
+                                            } else if (inters is MultiLineString) {
+                                                var sameDir = false
+                                                for (n in 0 until inters.numGeometries)
+                                                    if (it.flowDirection.isSameDirection(inters.getGeometryN(n) as LineString, 30.0)) {
+                                                        sameDir = true
+                                                        break
+                                                    }
+                                                sameDir
+                                            }else {
+                                                false
+                                            }
                                         }
 
                                     // Also add paths that do not affect any sensors

@@ -23,7 +23,7 @@ import java.util.*
  * Gravity model based destination finder.
  */
 class DestinationFinderDefault(
-    private val routingCache: RoutingCache,
+    val routingCache: RoutingCache, // TODO private?
     private var locChoiceWeightFuns: MutableMap<ActivityType, LocationChoiceDCWeightFun>,
 ) : DestinationFinder {
     private var calibrated = false
@@ -367,7 +367,7 @@ class DestinationFinderDefault(
                     }
                     Pair(ActivityType.WORK, ActivityType.HOME) -> {
                         val carP = carProbs[endActivity]!!
-                        val p = homeWorkProbs.times(carP) * chainP
+                        val p = homeWorkProbs.times(carP) * chainP // TODO Transpose?
                         expectedCountPerAgent.plusAssign(p)
                         continue
                     }
