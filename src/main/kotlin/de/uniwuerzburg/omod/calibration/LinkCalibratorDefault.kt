@@ -82,7 +82,7 @@ class LinkCalibratorDefault(
         // TODO Test END
         //omod.altPercentages = altPercentages
 
-
+        runIPF(10)
         val bestPosition = runPSO(iterations = 1000)
         //val bestPosition = Array<Double>(omod.grid.size) {1.0}
         //val bestPosition = runGradientDescent(10)
@@ -116,6 +116,75 @@ class LinkCalibratorDefault(
             )
         }
 
+    }
+
+    private fun runIPF(
+        iterations: Int = 10
+    ){
+        logger.on = false // Switch off logger for iterative calibration runs
+        println("Start IPF")
+        val nDimensions = omod.grid.size
+        // Set Parameters
+        val finder = omod.destinationFinder as DestinationFinderDefault
+        //finder.updateCellCValues(parameters, omod.grid)
+        val fullPopulation = omod.buildings.sumOf { it.population }
+
+        // Initial mse
+        val (mses, _, _) = determineJointOD(Array(nDimensions) { 1.0 })
+        println("MSE start: $mses")
+        val x: MutableMap<Cell, Double> =  omod.grid.zip(Array(nDimensions) { 1.0 }).toMap().toMutableMap()
+        println("Start iterations")
+        for(iteration in 0 until iterations ) {
+            var cnt = 0
+            for (sensor in sensors) {
+                // Pair probability
+                val od = finder.determinePairProbabilities(
+                    omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
+                    modeChoiceCalibration, x,
+                    popStrata, carOwnership
+                )
+                // TODO find sensor sets that can be seen as a single dimension together
+
+                // Determine affected sensors
+                var simCount = 0.0
+                val cells = mutableSetOf<Cell>()
+                for (origin in omod.grid) {
+                    for (destination in omod.grid) {
+                        val odPair = Pair(origin, destination)
+                        if (odPair in affectedLinks) {
+                            val thisSensors = affectedLinks[odPair]!!
+                            if (sensor in thisSensors) {
+                                simCount += od[odPair]!! * fullPopulation
+                                //cells.add(origin)
+                                cells.add(destination)
+                            }
+                        }
+                    }
+                }
+
+                for (cell in cells) {
+                    x[cell] = (x[cell]!! * sensor.measuredFlow) / simCount
+                }
+
+                println("Sensor $cnt done")
+
+                cnt += 1
+            }
+            val tst = Array(nDimensions) { 1.0 }
+            for ((i, cell) in omod.grid.withIndex()) {
+                tst[i] = x[cell]!!
+            }
+
+            val (mse, sFlow, _) = determineJointOD(tst)
+            println("______________________________")
+            println("MSE iteration $iteration: $mse")
+            println("------------------------------")
+            println("Sensor | \t Flow OMOD | \t Flow Measured")
+            for ((i, flow) in sFlow.values.withIndex()) {
+                println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow }")
+            }
+        }
+        logger.on = true
     }
 
     private fun runGradientDescent(
