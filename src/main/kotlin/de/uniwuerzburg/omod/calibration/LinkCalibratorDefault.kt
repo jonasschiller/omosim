@@ -86,22 +86,37 @@ class LinkCalibratorDefault(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
             popStrata, carOwnership, finder
-        ).times(fullPopulation)
-        val (_, _, _, sLocs) = runBatch( Array(omod.grid.size) { 1.0 } )
+        )//.times(fullPopulation)
+        val (_,sFlow, nAgents, sLocs) = runBatch( Array(omod.grid.size) { 1.0 } )
 
-        println(test.toList().take(10))
-        println(sLocs.take(10))
+        // Determine affected sensors
+        // TODO temporal check
+        val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
+        for (origin in omod.grid) {
+            for (destination in omod.grid) {
+                val odPair = Pair(origin, destination)
+                if (odPair in affectedLinks) {
+                    val sensors = affectedLinks[odPair]!!
+                    for (sensor in sensors) {
+                        staticCount[sensor] = staticCount[sensor]!! + test[odPair]!! * nAgents
+                    }
+                }
+            }
+        }
+
+        //println(test.toList().take(10))
+        //println(sLocs.take(10))
 
         // TODO Test END
         //omod.altPercentages = altPercentages
 
         //runIPF(10)
-        val bestPosition = runPSO(iterations = 1000)
+        //val bestPosition = runPSO(iterations = 1000)
         //val bestPosition = Array<Double>(omod.grid.size) {1.0}
         //val bestPosition = runGradientDescent(10)
 
-        val (_, sFlow, nAgents, _) = runBatch( bestPosition )
-        val (_, staticFlow, staticMap) = determineJointOD( bestPosition )
+        //val (_, sFlow, nAgents, _) = runBatch( bestPosition )
+        //val (_, staticFlow, staticMap) = determineJointOD( bestPosition )
 
         //val testOrigin = omod.grid[306]
         //val testDestination = omod.grid[307]
@@ -123,7 +138,7 @@ class LinkCalibratorDefault(
             println(
                 "${sensors[i].name.padEnd(20)} | \t" +
                 "${flow.toString().padEnd(20)} | \t" +
-                "${staticFlow[sensors[i]].toString().padEnd(20)} | \t" +
+                "${staticCount[sensors[i]].toString().padEnd(20)} | \t" +
                 //"${staticFlowLst[sensors[i]].toString().padEnd(20)} | \t" +
                 sensors[i].measuredFlow.toString().padEnd(20)
             )
@@ -315,6 +330,7 @@ class LinkCalibratorDefault(
         logger.on = true
         return globalBestPosition
     }
+
 
     private fun determineJointOD(
         parameters: Array<Double>

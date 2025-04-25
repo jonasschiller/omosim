@@ -9,6 +9,7 @@ import org.jetbrains.kotlinx.multik.api.linalg.dot
 import org.jetbrains.kotlinx.multik.ndarray.data.*
 import org.jetbrains.kotlinx.multik.ndarray.operations.*
 import org.locationtech.jts.geom.Coordinate
+import kotlin.contracts.contract
 
 object WACalibrator {
     fun determinePairProbabilities(
@@ -18,7 +19,7 @@ object WACalibrator {
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership,
         destinationFinder: DestinationFinderDefault,
-    ) : NDArray<Double, D2> {
+    ) : Map<Pair<Cell, Cell>, Double> {
         // Result: Expected trip count on each od-paid of one agent on one day
         val expectedCountPerAgent = mk.zeros<Double>(grid.size, grid.size)
 
@@ -184,7 +185,7 @@ object WACalibrator {
                     }
                     Pair(ActivityType.WORK, ActivityType.HOME) -> {
                         //val carP = carProbs[endActivity]!!
-                        val p = homeWorkProbs * chainP // TODO Transpose?
+                        val p = homeWorkProbs.transpose() * chainP // TODO Transpose?
                         expectedCountPerAgent.plusAssign(p)
                         workMatrix.plusAssign(mk.identity<Double>(grid.size) * chainP)
                         testMatrix.plusAssign(workProbs * chainP)
@@ -193,7 +194,7 @@ object WACalibrator {
                     }
                     Pair(ActivityType.SCHOOL, ActivityType.HOME) -> {
                         //val carP = carProbs[endActivity]!!
-                        val p = homeSchoolProbs * chainP
+                        val p = homeSchoolProbs.transpose() * chainP
                         expectedCountPerAgent.plusAssign(p)
                         fixedMatrix.plusAssign(homeSchoolProbs * chainP)
                         testMatrix.plusAssign(schoolProbs * chainP)
@@ -285,7 +286,7 @@ object WACalibrator {
             ) {
                // val carP = carProbs[endActivity]!!
                 val p = probPositionGivenLastFixed!!.transpose()  * chainP
-                //expectedCountPerAgent.plusAssign(p)
+                expectedCountPerAgent.plusAssign(p)
                 testMatrix.plusAssign(previousProbs * chainP)
             } else {
                 val transitionActivity = if (endActivity == ActivityType.SHOPPING) {
@@ -300,8 +301,8 @@ object WACalibrator {
 
                 testMatrix.plusAssign(previousProbs * chainP)
 
-                /*expectedCountPerAgent.plusAssign(p)
-                if (startActivity == ActivityType.WORK) {
+                expectedCountPerAgent.plusAssign(p)
+                /*if (startActivity == ActivityType.WORK) {
                     cumMatrix = cumMatrix.dot(transitionP)
                     workCumMatrixBack.plusAssign(cumMatrix * chainP)
                 } else {
@@ -310,23 +311,52 @@ object WACalibrator {
             }
         }
 
+        val activityP = mutableMapOf<ActivityType, Double>()
+        for ((chain, chainP) in uniqueSegments) {
+            if (chain.size <= 1) {
+                continue
+            }
+            for (activity in chain.drop(1)) {
+                activityP[activity] = (activityP[activity] ?: 0.0) + chainP /// (chain.size - 1)
+            }
+        }
+        val psum = activityP.values.sum()
+
         val test1 = homeProbs.diagonal().dot(workTransitionP).dot(workMatrix)
-        val test2 = mk.ones<Double>(grid.size).expandDims(0).asDNArray().asD2Array().dot(fixedMatrix.plus(test1))
+        val fixPWork = fixedMatrix.plus(test1)
+        val test2 = mk.ones<Double>(grid.size).expandDims(0).asDNArray().asD2Array().dot(fixPWork)
+
+        // Format output
+        //val out = mutableMapOf<Pair<Cell, Cell>, Double>()
+        //for ((o, origin) in grid.withIndex()) {
+        //    for ((d, destination) in grid.withIndex()) {
+        //        out[Pair(origin, destination)] = expectedCountPerAgent[o][d]
+        //    }
+        //}
+
+        val testFixed = mk.ones<Double>(grid.size).expandDims(0).asDNArray().asD2Array().dot(testFixedMatrix)
+
+        val transitionTest = mk.zeros<Double>(grid.size, grid.size)
+
+        for ((activity, p) in activityP) {
+            if (activity == ActivityType.HOME) {
+                transitionTest.plusAssign(fixPWork.transpose() * p / psum)
+            } else {
+                transitionTest.plusAssign(test2.diagonal().dot(transitionProbs[activity]!!) * p /psum )
+            }
+        }
 
         // Format output
         val out = mutableMapOf<Pair<Cell, Cell>, Double>()
         for ((o, origin) in grid.withIndex()) {
             for ((d, destination) in grid.withIndex()) {
-                out[Pair(origin, destination)] = expectedCountPerAgent[o][d]
+                out[Pair(origin, destination)] = transitionTest[o][d]
             }
         }
 
-        val testFixed = mk.ones<Double>(grid.size).expandDims(0).asDNArray().asD2Array().dot(testFixedMatrix)
-
-        println(testMatrix.toList().take(10))
-        println(testFixed.toList().take(10))
-        println(test2.toList().take(10))
-        return test2
+        println(transitionTest.toList().take(10))
+        println(expectedCountPerAgent.toList().take(10))
+        return out
     }
 
 

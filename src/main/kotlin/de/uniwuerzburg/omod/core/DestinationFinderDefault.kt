@@ -367,7 +367,7 @@ class DestinationFinderDefault(
                     }
                     Pair(ActivityType.WORK, ActivityType.HOME) -> {
                         val carP = carProbs[endActivity]!!
-                        val p = homeWorkProbs.times(carP) * chainP // TODO Transpose?
+                        val p = homeWorkProbs.times(carP) * chainP // TODO Transpose? I think so
                         expectedCountPerAgent.plusAssign(p)
                         continue
                     }
