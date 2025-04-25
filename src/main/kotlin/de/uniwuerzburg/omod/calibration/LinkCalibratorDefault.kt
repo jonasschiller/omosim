@@ -12,6 +12,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.apache.commons.io.filefilter.TrueFileFilter
 import org.geotools.filter.function.StaticGeometry.intersection
+import org.jetbrains.kotlinx.multik.ndarray.operations.times
+import org.jetbrains.kotlinx.multik.ndarray.operations.toList
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
@@ -40,54 +42,65 @@ class LinkCalibratorDefault(
 
         // TODO Gurobi test
         // Pair probability
-        /*
+
         val finder = omod.destinationFinder as DestinationFinderDefault
         val parameters = Array<Double>(omod.grid.size) {1.0}
         val fullPopulation = omod.buildings.sumOf { it.population }
-        val od = finder.determinePairProbabilities(
-            omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
-            modeChoiceCalibration, omod.grid.zip(parameters).toMap(),
-            popStrata, carOwnership
-        )
-        val altAffectedLinks = determineAltAffectedLinks(omod.grid, sensors, omod.hopper!!)
-        val m = altAffectedLinks.values.map { it.size }.average()
-        println("Average affected links: $m")
-        val altPercentages = optimize(omod.grid, od, fullPopulation, altAffectedLinks, sensors)
+        /*
+       val od = finder.determinePairProbabilities(
+           omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
+           modeChoiceCalibration, omod.grid.zip(parameters).toMap(),
+           popStrata, carOwnership
+       )
+       val altAffectedLinks = determineAltAffectedLinks(omod.grid, sensors, omod.hopper!!)
+       val m = altAffectedLinks.values.map { it.size }.average()
+       println("Average affected links: $m")
+       val altPercentages = optimize(omod.grid, od, fullPopulation, altAffectedLinks, sensors)
 
-        val odProbs = optimize(
+       val odProbs = optimize(
+           omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
+           modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
+           popStrata, carOwnership, finder,
+           fullPopulation, affectedLinks, sensors
+       )
+       // Determine affected sensors
+       // TODO temporal check
+       val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
+       for(event in odProbs) {
+           val odPair = Pair(omod.grid[event.o], omod.grid[event.d])
+           if (odPair in affectedLinks) {
+               val sensors = affectedLinks[odPair]!!
+               for (sensor in sensors) {
+                   staticCount[sensor] = staticCount[sensor]!! + event.pCar * event.pTransition * event.pChain * fullPopulation
+               }
+           }
+       }
+       val staticFlowLst = mutableMapOf<TrafficSensor, Double>()
+       for (sensor in sensors) {
+           val simFlow = staticCount[sensor]!!
+           staticFlowLst[sensor] = simFlow
+       }
+       */
+
+        val test = WACalibrator.determinePairProbabilities(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
-            popStrata, carOwnership, finder,
-            fullPopulation, affectedLinks, sensors
-        )
-        // Determine affected sensors
-        // TODO temporal check
-        val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
-        for(event in odProbs) {
-            val odPair = Pair(omod.grid[event.o], omod.grid[event.d])
-            if (odPair in affectedLinks) {
-                val sensors = affectedLinks[odPair]!!
-                for (sensor in sensors) {
-                    staticCount[sensor] = staticCount[sensor]!! + event.pCar * event.pTransition * event.pChain * fullPopulation
-                }
-            }
-        }
-        val staticFlowLst = mutableMapOf<TrafficSensor, Double>()
-        for (sensor in sensors) {
-            val simFlow = staticCount[sensor]!!
-            staticFlowLst[sensor] = simFlow
-        }
-        */
+            popStrata, carOwnership, finder
+        ).times(fullPopulation)
+        val (_, _, _, sLocs) = runBatch( Array(omod.grid.size) { 1.0 } )
+
+        println(test.toList().take(10))
+        println(sLocs.take(10))
 
         // TODO Test END
         //omod.altPercentages = altPercentages
 
-        runIPF(10)
+        //runIPF(10)
         val bestPosition = runPSO(iterations = 1000)
         //val bestPosition = Array<Double>(omod.grid.size) {1.0}
         //val bestPosition = runGradientDescent(10)
 
-        val (_, sFlow, nAgents) = runBatch( bestPosition )
+        val (_, sFlow, nAgents, _) = runBatch( bestPosition )
         val (_, staticFlow, staticMap) = determineJointOD( bestPosition )
 
         //val testOrigin = omod.grid[306]
@@ -346,7 +359,7 @@ class LinkCalibratorDefault(
         return Triple(mse, staticCount, od)
     }
 
-    private fun runBatch(parameters: Array<Double>) : Triple<Double, Map<TrafficSensor, Double>, Int> {
+    private fun runBatch(parameters: Array<Double>) : BatchResult {
         // Set Parameters
         val finder = omod.destinationFinder as DestinationFinderDefault
         finder.updateCellCValues(parameters, omod.grid)
@@ -362,6 +375,7 @@ class LinkCalibratorDefault(
         //val testDestination = omod.grid[307]
         var testCount = 0.0
         val simCount = sensors.associateWith { 0.0 }.toMutableMap()
+        var locBeforeTrip = Array(omod.grid.size) {0.0}.toMutableList()
         for (agent in agents) {
             var origin = agent.mobilityDemand.first().activities.first()
             val activities = agent.mobilityDemand.first().activities.drop(1)
@@ -414,10 +428,14 @@ class LinkCalibratorDefault(
                         }
                     }
                 }
+                if (origin.location.getAggLoc() is Cell) {
+                    val ocell = origin.location.getAggLoc() as Cell
+                    val i = omod.grid.indexOf(ocell)
+                    locBeforeTrip[i] = locBeforeTrip[i] + 1
+                }
                 origin = activity
             }
         }
-
         val fullPopulation = omod.buildings.sumOf { it.population }
 
         var mse = 0.0
@@ -432,7 +450,16 @@ class LinkCalibratorDefault(
 
         println("On test od: $testCount")
         println("Total trip count: $totalTripCount")
-        return Triple(mse, allFlows, agents.size)
+
+        locBeforeTrip = locBeforeTrip.map { it * fullPopulation / agents.size }.toMutableList()
+
+        val rslt = BatchResult(
+            mse,
+            allFlows,
+            agents.size,
+            locBeforeTrip
+        )
+        return rslt
     }
 
     private fun readSensorData(linkData: File) : List<TrafficSensor> {
@@ -677,6 +704,13 @@ class PSOParticle(
    var position: Array<Double>,
    var bestPosition: Array<Double>,
    var bestMse: Double
+)
+
+data class BatchResult (
+    val mse: Double,
+    val sensorCount: MutableMap<TrafficSensor, Double>,
+    val nAgents: Int,
+    val locBeforeTrip: List<Double>
 )
 
 
