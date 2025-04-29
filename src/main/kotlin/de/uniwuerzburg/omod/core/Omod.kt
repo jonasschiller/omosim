@@ -15,6 +15,7 @@ import de.uniwuerzburg.omod.io.readCensus
 import de.uniwuerzburg.omod.routing.*
 import de.uniwuerzburg.omod.utils.*
 import kotlinx.coroutines.*
+import org.locationtech.jts.geom.Envelope
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
 import org.locationtech.jts.index.kdtree.KdNode
@@ -88,7 +89,7 @@ class Omod(
     private var gtfsComponents: GTFSComponents? = null
     private val focusArea: Geometry
     private val fullArea: Geometry
-    var altPercentages: Map<Pair<RealLocation, RealLocation>, List<Double>>
+    //var altPercentages: Map<Pair<RealLocation, RealLocation>, List<Double>>
 
     init {
         val timeSource = TimeSource.Monotonic
@@ -204,13 +205,30 @@ class Omod(
 
         // TODO: Debug
         val calibrator = LinkCalibratorDefault(
-            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput_v4.csv"),
+            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput_v5.csv"),
             this,
             popStrata,
             carOwnership
         )
-        altPercentages = calibrator.altPercentages
+        /*altPercentages = calibrator.altPercentages*/
+
+        // Test impact of C-Values
+        /*val parameters = mutableListOf<Double>()
+        var cntr = 0
+        val bbBox = Envelope(49.78461440197675, 49.78851681813059, 9.972436158810012, 9.979625591824894)
+        for (cell in grid) {
+            if(bbBox.contains(cell.latlonCoord)) {
+                parameters.add(1.0)
+                cntr += 1
+            } else {
+                parameters.add(0.0)
+            }
+        }
+        println(cntr)
+        (destinationFinder as DestinationFinderDefault).updateCellCValues(parameters.toTypedArray(), grid)*/
         // TODO: End Debug
+
+
     }
 
     // Factories

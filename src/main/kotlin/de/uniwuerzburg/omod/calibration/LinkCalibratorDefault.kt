@@ -22,6 +22,7 @@ import org.locationtech.jts.geom.MultiLineString
 import org.locationtech.jts.index.hprtree.HPRtree
 import org.locationtech.jts.io.WKTReader
 import java.io.File
+import java.util.*
 import kotlin.math.*
 import kotlin.time.measureTime
 
@@ -81,7 +82,7 @@ class LinkCalibratorDefault(
            staticFlowLst[sensor] = simFlow
        }
        */
-
+        /*
         val test = WACalibrator.determinePairProbabilities(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
@@ -103,6 +104,7 @@ class LinkCalibratorDefault(
                 }
             }
         }
+        */
 
         //println(test.toList().take(10))
         //println(sLocs.take(10))
@@ -112,6 +114,8 @@ class LinkCalibratorDefault(
 
         //runIPF(10)
         //val bestPosition = runPSO(iterations = 1000)
+        //val bestPosition = spoa(iterations = 1000)
+        val bestPosition = runIPF(iterations = 1000)
         //val bestPosition = Array<Double>(omod.grid.size) {1.0}
         //val bestPosition = runGradientDescent(10)
 
@@ -122,6 +126,7 @@ class LinkCalibratorDefault(
         //val testDestination = omod.grid[307]
         //println("On test count in static map: ${staticMap[Pair(testOrigin, testDestination)]!! * nAgents}")
         // println("Total trips in static map:  ${staticMap.values.sum() * nAgents}")
+        /*
         println("_".repeat(20*4 + 5*3))
         println("${"Sensor".padEnd(20)} | \t" +
                 "${"Flow Simulated".padEnd(20)} | \t" +
@@ -142,7 +147,7 @@ class LinkCalibratorDefault(
                 //"${staticFlowLst[sensors[i]].toString().padEnd(20)} | \t" +
                 sensors[i].measuredFlow.toString().padEnd(20)
             )
-        }
+        }*/
 
     }
 
@@ -158,8 +163,14 @@ class LinkCalibratorDefault(
         val fullPopulation = omod.buildings.sumOf { it.population }
 
         // Initial mse
-        val (mses, _, _) = determineJointOD(Array(nDimensions) { 1.0 })
+        val (mses, startFlow, _) = determineJointOD(Array(nDimensions) { 1.0 })
         println("MSE start: $mses")
+        println("------------------------------")
+        println("Sensor | \t Flow OMOD | \t Flow Measured")
+        for ((i, flow) in startFlow.values.withIndex()) {
+            println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow }")
+        }
+
         val x: MutableMap<Cell, Double> =  omod.grid.zip(Array(nDimensions) { 1.0 }).toMap().toMutableMap()
         println("Start iterations")
         for(iteration in 0 until iterations ) {
@@ -213,6 +224,54 @@ class LinkCalibratorDefault(
             }
         }
         logger.on = true
+    }
+
+    private fun spoa(
+        iterations: Int = 1000,
+        pertbound: Double = 0.1
+    ) {
+        val rng = Random()
+        val nDimensions = omod.grid.size
+        val x = Array(nDimensions) { 1.0 }
+
+        val (mse, sFlow, _) = determineJointOD(x)
+        println("______________________________")
+        println("MSE iteration $-1: $mse")
+        println("------------------------------")
+        println("Sensor | \t Flow OMOD | \t Flow Measured")
+        for ((k, flow) in sFlow.values.withIndex()) {
+            println("${sensors[k].name} | \t $flow | \t ${sensors[k].measuredFlow }")
+        }
+
+        for (i in 1 .. iterations) {
+            val alpha =  1e-7 / i.toDouble() //
+            val beta  =  1e-9 / i.toDouble().pow(1.0 / 3.0) //
+
+            val perturbation = Array(nDimensions) { rng.nextDouble() * pertbound }
+
+            // Check performance
+            val xplus = Array(nDimensions) { j -> max(0.0, x[j] + beta * perturbation[j]) }
+            val (jplus, _, _) = determineJointOD(xplus)
+
+            val xminus = Array(nDimensions) { j -> max(0.0, x[j] - beta * perturbation[j]) }
+            val (jminus, _, _) = determineJointOD(xminus)
+
+            val lossdiff = jplus - jminus
+            val grad  = Array(nDimensions) { j -> lossdiff / (2 * beta * perturbation[j])}
+
+            for (j in 0 until nDimensions) {
+                x[j] = max(0.0, x[j] - alpha*grad[j])
+            }
+
+            val (mse, sFlow, _) = determineJointOD(x)
+            println("______________________________")
+            println("MSE iteration $i: $mse")
+            println("------------------------------")
+            println("Sensor | \t Flow OMOD | \t Flow Measured")
+            for ((k, flow) in sFlow.values.withIndex()) {
+                println("${sensors[k].name} | \t $flow | \t ${sensors[k].measuredFlow }")
+            }
+        }
     }
 
     private fun runGradientDescent(
