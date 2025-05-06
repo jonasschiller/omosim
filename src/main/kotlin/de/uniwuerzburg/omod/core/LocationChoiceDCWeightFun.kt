@@ -1,5 +1,7 @@
 package de.uniwuerzburg.omod.core
 
+import de.uniwuerzburg.omod.core.models.Building
+import de.uniwuerzburg.omod.core.models.Cell
 import de.uniwuerzburg.omod.core.models.Landuse
 import de.uniwuerzburg.omod.core.models.RealLocation
 import de.uniwuerzburg.omod.io.geojson.GeoJsonBuildingProperties
@@ -84,6 +86,37 @@ sealed class LocationChoiceDCWeightFun {
         return attraction * exp(fd)
     }
 
+    fun testFixedAndCoefficient(destination: RealLocation, distance: Double) : Triple<Double, Double, Double> {
+        val distanceAdj = if (distance <= 0.0) {
+            Double.MIN_VALUE
+        } else {
+            distance / 1000
+        }
+        val fd = deterrenceFunction(distanceAdj)
+        var fixed = 0.0
+        var coeff = 0.0
+        var coeffTValue = 0.0
+
+        val properties = if (destination is Cell) {
+            destination.buildings.map { it.osmProperties }
+        } else if (destination is Building) {
+            listOf(destination.osmProperties)
+        } else {
+            println("Error! ${destination} type unkown")
+            listOf()
+        }
+
+        for (prop in properties) {
+            val attraction = calcAttraction(prop)
+            val thisvalue  = coeffShopUnits * prop.number_shops
+            fixed += attraction - thisvalue
+            coeffTValue += thisvalue
+        }
+        coeff = coeffShopUnits
+
+        return Triple(fixed * exp(fd), coeff * exp(fd), coeffTValue * exp(fd))
+    }
+
     /**
      * Calculates the probabilistic weight of a destination without knowledge of the origin.
      * Used for the distribution of HOME locations and for destination choice within a routing cell,
@@ -93,7 +126,14 @@ sealed class LocationChoiceDCWeightFun {
      * @return probabilistic weight
      */
     fun calcForNoOrigin(destination: RealLocation) : Double {
-        return destination.attractions[id]!!
+        //return destination.attractions[id]!! //TODO reinstate
+        return if (destination is Cell) {
+            destination.buildings.map{calcAttraction(it.osmProperties)}.sum()
+        } else if (destination is Building) {
+            calcAttraction(destination.osmProperties)
+        } else {
+            throw NotImplementedError()
+        }
     }
 
     open fun calcAttraction(properties: GeoJsonBuildingProperties) : Double {
@@ -561,12 +601,16 @@ data class CombinedDCUtil(
     override val coeffRetailUnits: Double,
     override val coeffIndustrialUnits: Double,
     // For deterrence function
-    private val coeff0: Double,
+    private var coeff0: Double,
     private val coeff1: Double,
 ) : LocationChoiceDCWeightFun( ) {
 
     override fun deterrenceFunction(distance: Double) : Double {
         return coeff0 * distance  + coeff1 * ln(distance)
+    }
+
+    fun changeCoeff0(to: Double) {
+        coeff0 = to
     }
 
     override fun getCalibrationPosition() : Array<Double> {

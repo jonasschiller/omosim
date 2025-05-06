@@ -24,7 +24,7 @@ import java.util.*
  */
 class DestinationFinderDefault(
     val routingCache: RoutingCache, // TODO private?
-    private var locChoiceWeightFuns: MutableMap<ActivityType, LocationChoiceDCWeightFun>,
+    var locChoiceWeightFuns: MutableMap<ActivityType, LocationChoiceDCWeightFun>,
 ) : DestinationFinder {
     private var calibrated = false
     private var firstOrderCFactors: Map<ActivityType, Map<ODZone, Double>> = mapOf()
@@ -643,6 +643,18 @@ class DestinationFinderDefault(
             }
         }
         return x.toTypedArray()
+    }
+
+    fun dCoeffImpact(newval: Double) {
+        val oldFun = locChoiceWeightFuns[ActivityType.WORK]!!
+        (oldFun as CombinedDCUtil).changeCoeff0(newval)
+    }
+
+    fun nShopsImpact(newval: Double) {
+        val oldFun = locChoiceWeightFuns[ActivityType.WORK]!!
+        val x = oldFun.getCalibrationPosition().copyOf()
+        x[9] = newval
+        locChoiceWeightFuns[ActivityType.WORK] = oldFun.createCopyFromCalibrationPosition(x)
     }
 
     fun updateCalibrationPosition(position: Array<Double>, grid: List<Cell>) {
