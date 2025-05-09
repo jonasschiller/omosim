@@ -158,11 +158,14 @@ object WACalibrator {
 
         val workMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
         val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
+        val hFixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
+        val nthFixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
         val testFixedMatrix = mk.zeros<Double>(grid.size, grid.size)
         val testMatrix = homeProbs.times(0.0)
         val expectedOther = mk.zeros<Double>(grid.size, grid.size)
         val expectedHome = mk.zeros<Double>(grid.size, grid.size)
         val expectedWork = mk.zeros<Double>(grid.size, grid.size)
+        val expectedHomeWork = mk.zeros<Double>(grid.size, grid.size)
         val expectedSchool = mk.zeros<Double>(grid.size, grid.size)
         val expectedShopping = mk.zeros<Double>(grid.size, grid.size)
 
@@ -182,7 +185,11 @@ object WACalibrator {
                         val p = homeWorkProbs * chainP
                         expectedCountPerAgent.plusAssign(p)
                         expectedWork.plusAssign(p)
+                        expectedHomeWork.plusAssign(p)
                         fixedMatrix[ActivityType.WORK]!!.plusAssign(homeProbs.diagonal() * chainP)
+                        //hFixedMatrix[ActivityType.WORK]!!.plusAssign(homeWorkProbs.transpose() * chainP)
+                        //hFixedMatrix[ActivityType.WORK]!!.plusAssign( mk.identity<Double>(grid.size) * chainP)
+                        nthFixedMatrix[ActivityType.WORK]!!.plusAssign( mk.identity<Double>(grid.size) * chainP)
                         testMatrix.plusAssign(homeProbs * chainP)
                         testFixedMatrix.plusAssign(homeProbs.diagonal() * chainP)
                         continue
@@ -193,6 +200,7 @@ object WACalibrator {
                         expectedCountPerAgent.plusAssign(p)
                         expectedSchool.plusAssign(p)
                         fixedMatrix[ActivityType.SCHOOL]!!.plusAssign(homeProbs.diagonal() * chainP)
+                        hFixedMatrix[ActivityType.SCHOOL]!!.plusAssign(homeProbs.diagonal() * chainP)
                         testMatrix.plusAssign(homeProbs * chainP)
                         testFixedMatrix.plusAssign(homeProbs.diagonal() * chainP)
                         continue
@@ -225,12 +233,15 @@ object WACalibrator {
 
             // Setup
             var probPositionGivenLastFixed: D2Array<Double>?
+            var pLastTest: D2Array<Double>? = null
             var previousProbs: D2Array<Double>
             var cumMatrix = mk.identity<Double>(grid.size)
             when(startActivity) {
                 ActivityType.HOME -> {
                     testFixedMatrix.plusAssign(homeProbs.diagonal() * chainP)
                     fixedMatrix[nextActivity]!!.plusAssign(homeProbs.diagonal() * chainP)
+                    pLastTest = mk.identity<Double>(grid.size)
+                    hFixedMatrix[nextActivity]!!.plusAssign(homeWorkProbs * chainP) // TODO Tmp
                     previousProbs = homeProbs
                     probPositionGivenLastFixed = when(endActivity) {
                         ActivityType.HOME -> homeProbs.diagonal()
@@ -290,11 +301,11 @@ object WACalibrator {
                     expectedOther.plusAssign(p)
                 } else if (activity == ActivityType.HOME) {
                     expectedHome.plusAssign(p)
-                }else if (activity == ActivityType.WORK) {
+                } else if (activity == ActivityType.WORK) {
                     expectedWork.plusAssign(p)
-                }else if (activity == ActivityType.SCHOOL) {
+                } else if (activity == ActivityType.SCHOOL) {
                     expectedSchool.plusAssign(p)
-                }else if (activity == ActivityType.SHOPPING) {
+                } else if (activity == ActivityType.SHOPPING) {
                     expectedShopping.plusAssign(p)
                 }
 
@@ -302,6 +313,12 @@ object WACalibrator {
                     cumMatrix = cumMatrix.dot(transitionP)
                     workMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
                 } else {
+                    if (startActivity == ActivityType.HOME) {
+                        if (probPositionGivenLastFixed != null) {
+                            //hFixedMatrix[nextActivity]!!.plusAssign(probPositionGivenLastFixed.dot(transitionP) * chainP)
+                            hFixedMatrix[nextActivity]!!.plusAssign(pLastTest!!.dot(transitionP) * chainP)
+                        }
+                    }
                     fixedMatrix[nextActivity]!!.plusAssign(previousProbs.diagonal().dot(transitionP) * chainP)
                 }
 
@@ -310,6 +327,7 @@ object WACalibrator {
                 previousProbs = previousProbs.dot(transitionP)
 
                 probPositionGivenLastFixed = probPositionGivenLastFixed?.dot(transitionP)
+                pLastTest = pLastTest?.dot(transitionP)
             }
 
 
@@ -319,13 +337,16 @@ object WACalibrator {
                 ((endActivity == ActivityType.WORK) && (startActivity != ActivityType.SCHOOL)) ||
                 ((endActivity == ActivityType.SCHOOL) && (startActivity != ActivityType.WORK))
             ) {
-               // val carP = carProbs[endActivity]!!
+                // val carP = carProbs[endActivity]!!
                 val p = probPositionGivenLastFixed!!.transpose()  * chainP
                 expectedCountPerAgent.plusAssign(p)
                 if (endActivity == ActivityType.HOME) {
                     expectedHome.plusAssign(p)
                 }else if (endActivity == ActivityType.WORK) {
                     expectedWork.plusAssign(p)
+                    if (startActivity == ActivityType.HOME) {
+                        expectedHomeWork.plusAssign(p)
+                    }
                 }else if (endActivity == ActivityType.SCHOOL) {
                     expectedSchool.plusAssign(p)
                 }
@@ -408,6 +429,16 @@ object WACalibrator {
        val test2Work =  mk.ones<Double>(grid.size).expandDims(0).asDNArray()
            .asD2Array().dot(fixPWorkWork.transpose())
            .diagonal().dot(transitionProbs[ActivityType.WORK]!!)
+
+       // Test fix work
+       //val testFixWork = hFixedMatrix[ActivityType.WORK]!!.transpose()
+       val testFixWork = homeProbs.diagonal().dot(workTransitionP).dot(hFixedMatrix[ActivityType.WORK]!!).transpose()
+           .plus(homeProbs.diagonal().dot(workTransitionP).dot(nthFixedMatrix[ActivityType.WORK]!!)) // TODO Works
+
+       //val porigin = mk.ones<Double>(grid.size).expandDims(0).asDNArray()
+       //    .asD2Array().dot(fixedMatrix[ActivityType.WORK]!!).diagonal()
+       //val diag = mk.ones<Double>(grid.size, grid.size).dot(fixedMatrix[ActivityType.WORK]!!.transpose())
+       //val testfixwork = porigin.dot(diag).dot(workTransitionP)
 
        // TODO How
        val test1school = homeProbs.diagonal().dot(workTransitionP).dot(workMatrix[ActivityType.SCHOOL]!!)
@@ -503,16 +534,32 @@ object WACalibrator {
 
        // TEST OTHER
         val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
+        val unexplained = sensors.associateWith { 0.0 }.toMutableMap()
         val othercar = test2Other.times(carProbs[ActivityType.OTHER]!!)
         val shopcar  = test2shop.times(carProbs[ActivityType.SHOPPING]!!)
         val homecar  = test2Home.times(carProbs[ActivityType.HOME]!!)
+        val hwcar = testFixWork.times(carProbs[ActivityType.WORK]!!)
+
+        val expeccarsum = mk.zeros<Double>(grid.size, grid.size).plus(
+            expectedOther.times(carProbs[ActivityType.OTHER]!!)
+        ).plus(
+            expectedHome.times(carProbs[ActivityType.HOME]!!)
+        ).plus(
+            expectedWork.times(carProbs[ActivityType.WORK]!!)
+        ).plus(
+            expectedSchool.times(carProbs[ActivityType.SCHOOL]!!)
+        ).plus(
+            expectedShopping.times(carProbs[ActivityType.SHOPPING]!!)
+        )
         for ((o, origin) in grid.withIndex()) {
             for ((d, destination) in grid.withIndex()) {
                 val odPair = Pair(origin, destination)
                 if (odPair in affectedLinks) {
                     val affected = affectedLinks[odPair]!!
                     for (sensor in affected) {
-                        staticCount[sensor] = staticCount[sensor]!! + othercar[o,d] * totalPop + shopcar[o,d] * totalPop + homecar[o,d] * totalPop
+                        val expecexplained = othercar[o,d] * totalPop + shopcar[o,d] * totalPop + homecar[o,d] * totalPop + hwcar[o,d] * totalPop
+                        staticCount[sensor] = staticCount[sensor]!! + expecexplained
+                        unexplained[sensor] = unexplained[sensor]!! + (expeccarsum[o,d] * totalPop - expecexplained)
                     }
                 }
             }
@@ -529,11 +576,11 @@ object WACalibrator {
 
         println("MSE: $mse")
         println("------------------------------")
-        println("Sensor | \t Flow OMOD | \t Flow Measured")
+        println("Sensor | \t Flow OMOD | \t Flow Measured | \t Flow Unxeplained")
         var tstmse = 0.0
         var n = 0.0
         for ((i, flow) in staticCount.values.withIndex()) {
-            println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow }")
+            println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow}  | \t ${unexplained[sensors[i]]}")
             tstmse += (sensors[i].measuredFlow - flow).pow(2)
             n += 1
         }
@@ -590,6 +637,10 @@ object WACalibrator {
         sensors: List<TrafficSensor>,
         oi: OptimizationInput
     ) :  Map<Pair<RealLocation, RealLocation>, List<Double>> {
+        // TODO Add H-W Tours
+        // TODO Try dimensionality reduction with PCA
+        // TODO Evaluate result and try to find parameters that recreate the optimal matrix
+        // TODO Test parameters in real simulation
 
         println(grid.size)
 
@@ -751,9 +802,20 @@ object WACalibrator {
                 )
             }
 
+            println("Opt Matrix:")
+            for (i in 0 until 5) {
+                println(w[Pair(0, i)]!!.get(GRB.DoubleAttr.X))
+            }
+            println("Old Matrix:")
+            for (i in 0 until 5) {
+                println(oi.transitionMatrix[ActivityType.WORK]!![0,i])
+            }
+
+
             // Dispose of model and environment
             model.dispose()
             env.dispose()
+
 
             return mapOf()
         } catch (e: GRBException) {
