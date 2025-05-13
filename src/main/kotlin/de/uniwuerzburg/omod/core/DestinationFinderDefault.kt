@@ -74,10 +74,15 @@ class DestinationFinderDefault(
         }
 
         // Test
-        val thisCellFactors = customCellFactors ?: cellCFactors
+        val thisCellFactors = if (activityType == ActivityType.WORK) { // TODO Temporary
+           customCellFactors ?: cellCFactors
+        } else {
+            cellCFactors
+        }
         return destinations.mapIndexed { i, destination ->
             thisCellFactors.getOrDefault(destination, 1.0) * weights[i]
         }
+
         /*
         if (!calibrated) { return weights }
 
