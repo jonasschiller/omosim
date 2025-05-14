@@ -8,6 +8,7 @@ import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.models.*
 import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
+import org.jetbrains.kotlinx.multik.api.math.argMax
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
@@ -598,7 +599,7 @@ object WACalibrator {
        val bestT = optimize(grid, totalPop, affectedLinks, sensors, oi)
        //val params = optimizeStep2(grid, bestT!!, workTransitionP)
        //val params = optimizeStep2Smpl(grid, bestT!!, workTransitionP)
-       val params = optimizeStep2SmplParams(grid, bestT!!, workTransitionP, destinationFinder)
+       val params = optimizeStep2SmplParamsTst2(grid, bestT!!, workTransitionP, destinationFinder)
         //val params = optimizeStep2Params(grid, bestT!!, workTransitionP, destinationFinder)
        //val params = oneshotOpt(grid, totalPop, affectedLinks, sensors, oi)
 
@@ -938,7 +939,7 @@ object WACalibrator {
                 val rowsum = GRBLinExpr()
                 for ((d, destination) in grid.withIndex()) {
                     val od = Pair(o, d)
-                    w[od] = model.addVar(0.0, 1.0, 0.0, GRB.CONTINUOUS, "W")
+                    w[od] = model.addVar(0.00, 1.0, 0.0, GRB.CONTINUOUS, "W") //TODO lb back to 0.0
                     demand[od] = GRBLinExpr()
                     rowsum.addTerm(1.0, w[od]!!)
                     //model.addConstr(w[od], GRB.EQUAL, oi.transitionMatrix[ActivityType.WORK]!![o,d], "Test")
@@ -1223,6 +1224,193 @@ object WACalibrator {
             env.dispose()
 
             return  scalerList
+        } catch (e: GRBException) {
+            println(
+                ("Error code: " + e.errorCode + ". " +
+                        e.message)
+            )
+        }
+        return listOf()
+    }
+
+    fun optimizeStep2SmplParamsTst2(
+        grid: List<Cell>,
+        bestT: D2Array<Double>,
+        seedMatrix: D2Array<Double>,
+        finderDefault: DestinationFinderDefault
+    ) : List<Double> {
+        try {
+            val env = GRBEnv()
+            val model = GRBModel(env)
+
+            val theta = model.addVars(
+                null,
+                null,
+                DoubleArray(9) {0.0},
+                CharArray(9) { GRB.CONTINUOUS},
+                Array(9) {"theta"}
+            )
+
+            val scaler = model.addVars(
+                null,
+                null,
+                DoubleArray(grid.size) {0.0},
+                CharArray(grid.size) { GRB.CONTINUOUS},
+                Array(grid.size) {"theta"}
+            )
+
+            val wstar = List(grid.size) {
+                model.addVars(
+                    DoubleArray(grid.size) {0.0},
+                    null,
+                    DoubleArray(grid.size) {0.0},
+                    CharArray(grid.size) { GRB.CONTINUOUS},
+                    Array(grid.size) {"DestScaler"}
+                )
+            }
+
+            for(o in grid.indices) {
+                val distances = finderDefault.routingCache.getDistances(grid[o], grid)
+
+                val pivot = 0//bestT[o].argMax()
+                for(d in grid.indices) {
+                    if (d == pivot) {
+                        continue
+                    }
+                    val dval = distances[d].toDouble() / 1000
+                    val varexpr = GRBLinExpr()
+                    varexpr.addTerm(1.0, theta[7])
+                    varexpr.addTerm(-1* dval, theta[0])
+                    varexpr.addTerm(-1* dval * dval, theta[1])
+                    varexpr.addTerm(-1* ln(dval), theta[2])
+                    varexpr.addTerm(grid[d].buildings.sumOf { it.osmProperties.number_shops }, theta[3])
+                    varexpr.addTerm(grid[d].buildings.sumOf { it.osmProperties.number_offices }, theta[4])
+                    varexpr.addTerm(grid[d].buildings.sumOf { it.osmProperties.number_schools }, theta[5])
+                    varexpr.addTerm(grid[d].buildings.sumOf { it.osmProperties.number_universities }, theta[6])
+                    varexpr.addTerm(grid[d].buildings.count { it.osmProperties.landuse == Landuse.INDUSTRIAL }.toDouble(), theta[8])
+
+                    varexpr.addTerm(1.0, scaler[d])
+                    //if (d == pivot) {
+                        //varexpr.addTerm(1.0, scaler[d])
+                    //}
+
+
+                    model.addConstr(wstar[o][d], GRB.EQUAL, varexpr, "Setnewvar")
+                }
+
+                //model.addConstr(wstar[o][pivot], GRB.EQUAL, 1.0, "Pivot")
+            }
+
+            // Objective
+            val obj = GRBQuadExpr()
+            for(o in grid.indices) {
+                val pivot = 0//bestT[o].argMax()
+                for(d in grid.indices) {
+                    if (d == pivot) {
+                        continue
+                    }
+                    val targetValue = bestT[o,d]
+
+                    val targetProp = targetValue / bestT[o, pivot]
+
+                    obj.addConstant(targetProp * targetProp)
+                    obj.addTerm(-2 * targetProp, wstar[o][d])
+                    obj.addTerm(1.0, wstar[o][d], wstar[o][d])
+                }
+            }
+            model.setObjective(obj, GRB.MINIMIZE)
+
+
+            model.optimize()
+
+            var optimstatus = model[GRB.IntAttr.Status]
+
+            if (optimstatus == GRB.Status.INF_OR_UNBD) {
+                model[GRB.IntParam.Presolve] = 0
+                model.optimize()
+                optimstatus = model[GRB.IntAttr.Status]
+            }
+
+            if (optimstatus == GRB.Status.OPTIMAL) {
+                val objval = model[GRB.DoubleAttr.ObjVal]
+                println("Optimal objective: $objval")
+            } else if (optimstatus == GRB.Status.INFEASIBLE) {
+                println("Model is infeasible")
+            } else if (optimstatus == GRB.Status.UNBOUNDED) {
+                println("Model is unbounded")
+            } else {
+                println(
+                    "Optimization was stopped with status = "
+                            + optimstatus
+                )
+            }
+
+            val isscaler = scaler.map { it.get(GRB.DoubleAttr.X) }
+
+            val istheta = theta.map { it.get(GRB.DoubleAttr.X) }
+
+            val newMatrix = mk.ones<Double>(grid.size, grid.size)
+            for(o in grid.indices) {
+                val pivot = 0//bestT[o].argMax()
+
+                var isrowsum = 0.0
+                for (d in grid.indices) {
+                    if(d== pivot) {
+                        isrowsum += 1
+                    } else {
+                        isrowsum += wstar[o][d].get(GRB.DoubleAttr.X)
+                    }
+
+                }
+
+                for (d in grid.indices) {
+                    if(d== pivot) {
+                        newMatrix[o, d] = 1.0 / isrowsum
+                    } else {
+                        newMatrix[o, d] = wstar[o][d].get(GRB.DoubleAttr.X) / isrowsum
+                    }
+                }
+            }
+
+            FileOutputStream("TargetMatrix.csv").apply {
+                val writer = bufferedWriter()
+                for(o in grid.indices) {
+                    for (d in grid.indices) {
+                        writer.write("${bestT[o, d]};")
+                    }
+                    writer.newLine()
+                }
+                writer.flush()
+            }
+
+            FileOutputStream("FindMatrix.csv").apply {
+                val writer = bufferedWriter()
+                for(o in grid.indices) {
+                    for (d in grid.indices) {
+                        writer.write("${newMatrix[o, d]};")
+                    }
+                    writer.newLine()
+                }
+                writer.flush()
+            }
+
+            FileOutputStream("SeedMatrix.csv").apply {
+                val writer = bufferedWriter()
+                for(o in grid.indices) {
+                    for (d in grid.indices) {
+                        writer.write("${seedMatrix[o, d]};")
+                    }
+                    writer.newLine()
+                }
+                writer.flush()
+            }
+
+
+            // Dispose of model and environment
+            model.dispose()
+            env.dispose()
+
+            return  listOf()
         } catch (e: GRBException) {
             println(
                 ("Error code: " + e.errorCode + ". " +
