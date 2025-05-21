@@ -83,8 +83,13 @@ class LinkCalibratorDefault(
        }
        */
 
+        val oldod = finder.determinePairProbabilities(
+            omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
+            modeChoiceCalibration, omod.grid.zip(parameters).toMap(),
+            popStrata, carOwnership
+        )
 
-        val test = WACalibrator.determinePairProbabilities(
+        val test = TestDivergenceNewMethod.determinePairProbabilities(
            omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
            modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
            popStrata, carOwnership, finder,fullPopulation, affectedLinks,
@@ -101,13 +106,15 @@ class LinkCalibratorDefault(
        // Determine affected sensors
        // TODO temporal check
        val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
+       val oldStaticCount = sensors.associateWith { 0.0 }.toMutableMap()
        for (origin in omod.grid) {
            for (destination in omod.grid) {
                val odPair = Pair(origin, destination)
                if (odPair in affectedLinks) {
                    val sensors = affectedLinks[odPair]!!
                    for (sensor in sensors) {
-                       staticCount[sensor] = staticCount[sensor]!! + test[odPair]!! * nAgents
+                       staticCount[sensor] = staticCount[sensor]!! + test[odPair]!! * fullPopulation
+                       oldStaticCount[sensor] = oldStaticCount[sensor]!! + oldod[odPair]!! * fullPopulation
                    }
                }
            }
@@ -138,20 +145,20 @@ class LinkCalibratorDefault(
        println("${"Sensor".padEnd(20)} | \t" +
                "${"Flow Simulated".padEnd(20)} | \t" +
                "${"Flow Deterministic".padEnd(20)} | \t" +
-               //"${"Flow Deterministic Lst".padEnd(20)} | \t" +
+               "${"Flow Deterministic Old".padEnd(20)} | \t" +
                "Flow Measured".padEnd(20)
        )
        println("_".repeat(20) +
                " | \t" + "_".repeat(20)  +
                " | \t" + "_".repeat(20)  +
-               //" | \t" + "_".repeat(20)  +
+               " | \t" + "_".repeat(20)  +
                " | \t" + "_".repeat(20))
        for ((i, flow) in sFlow.values.withIndex()) {
            println(
                "${sensors[i].name.padEnd(20)} | \t" +
                "${flow.toString().padEnd(20)} | \t" +
                "${staticCount[sensors[i]].toString().padEnd(20)} | \t" +
-               //"${staticFlowLst[sensors[i]].toString().padEnd(20)} | \t" +
+               "${oldStaticCount[sensors[i]].toString().padEnd(20)} | \t" +
                sensors[i].measuredFlow.toString().padEnd(20)
            )
        }
@@ -483,7 +490,7 @@ class LinkCalibratorDefault(
        omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
 
        // Run Simulation
-       val agents = omod.run(1.0)
+       val agents = omod.run(0.1)
        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
 
        // Determine affected sensors
