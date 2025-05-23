@@ -1,26 +1,27 @@
 package de.uniwuerzburg.omod.calibration
 
-import com.github.ajalt.mordant.table.row
 import com.gurobi.gurobi.*
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.models.*
+import org.apache.commons.math3.linear.EigenDecomposition
+import org.apache.commons.math3.linear.MatrixUtils
+import org.apache.commons.math3.linear.SingularValueDecomposition
+import org.apache.commons.math3.stat.correlation.Covariance
 import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
-import org.jetbrains.kotlinx.multik.api.math.argMax
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
 import org.jetbrains.kotlinx.multik.ndarray.data.set
 import org.jetbrains.kotlinx.multik.ndarray.operations.*
 import org.locationtech.jts.geom.Coordinate
-import java.io.BufferedWriter
 import java.io.FileOutputStream
-import java.io.Writer
 import kotlin.math.ln
-import kotlin.math.log
 import kotlin.math.pow
+import kotlin.time.measureTimedValue
+
 
 object WACalibrator {
     fun determinePairProbabilities(
@@ -596,10 +597,16 @@ object WACalibrator {
 
         // END TEST OTHER
 
-       val bestT = optimize(grid, totalPop, affectedLinks, sensors, oi)
+        val (bestT, time) = measureTimedValue {
+            optimize(grid, totalPop, affectedLinks, sensors, oi)
+        }
+        println("------")
+        println(time)
+        println("------")
+       //val bestT = optimize(grid, totalPop, affectedLinks, sensors, oi)
        //val params = optimizeStep2(grid, bestT!!, workTransitionP)
-       //val params = optimizeStep2Smpl(grid, bestT!!, workTransitionP)
-       val params = optimizeStep2SmplParamsTst2(grid, bestT!!, workTransitionP, destinationFinder)
+       val params = optimizeStep2Smpl(grid, bestT!!, workTransitionP)
+       //val params = optimizeStep2SmplParamsTst2(grid, bestT!!, workTransitionP, destinationFinder)
         //val params = optimizeStep2Params(grid, bestT!!, workTransitionP, destinationFinder)
        //val params = oneshotOpt(grid, totalPop, affectedLinks, sensors, oi)
 
@@ -907,7 +914,245 @@ object WACalibrator {
         return listOf()
     }
 
+    fun optimizeSVD(
+        grid: List<Cell>,
+        totalPop: Double,
+        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
+        sensors: List<TrafficSensor>,
+        oi: OptimizationInput
+    ) :  D2Array<Double>? {
+        // TODO Add H-W Tours
+        // TODO Try dimensionality reduction with PCA
+        // TODO Evaluate result and try to find parameters that recreate the optimal matrix
+        // TODO Test parameters in real simulation
+        // TODO think about more rigorous last activity implementation (See notes)
+        println(grid.size)
 
+        // Get SVD
+        val wRealMatrix = MatrixUtils.createRealMatrix( oi.transitionMatrix[ActivityType.WORK]!!.toArray() )
+        val svd = SingularValueDecomposition(wRealMatrix)
+        val U = mk.ndarray(svd.u.data)
+        val VT = mk.ndarray(svd.vt.data)
+        val E = mk.ndarray(svd.singularValues).expandDims(0).asDNArray().asD2Array().diagonal()
+
+        val nfactors = 15
+
+        try {
+            val env = GRBEnv()
+            val model = GRBModel(env)
+
+            val sensorCountExpr = mutableMapOf<TrafficSensor, GRBLinExpr>()
+            for (sensor in sensors) {
+                sensorCountExpr[sensor] = GRBLinExpr()
+            }
+
+            // Demand
+            val optE = model.addVars(
+                null,
+                null,
+                DoubleArray(nfactors) { 0.0 },
+                CharArray(nfactors) { GRB.CONTINUOUS },
+                Array(nfactors) { "OPTE" }
+            )
+            val demand = mutableMapOf<Pair<Int, Int>, GRBLinExpr>()
+            val w = mutableMapOf<Pair<Int, Int>, GRBLinExpr>()
+
+            println("1")
+            for (o in grid.indices) {
+                for (d in grid.indices) {
+                    val od = Pair(o, d)
+                    w[od] = GRBLinExpr()
+                    for (k in 0 until nfactors) {
+                        w[od]!!.addTerm(U[o,k] * VT[d, k], optE[k])
+                    }
+                    model.addConstr(w[od]!!, GRB.GREATER_EQUAL, 0.0, "G0")
+                    model.addConstr(w[od]!!, GRB.LESS_EQUAL, 1.0, "L1")
+                }
+            }
+            println("2")
+
+            for ((o, origin) in grid.withIndex()) {
+                val rowsum = GRBLinExpr()
+                for ((d, destination) in grid.withIndex()) {
+                    val od = Pair(o, d)
+                    demand[od] = GRBLinExpr()
+                    rowsum.add(w[od]!!)
+                    //model.addConstr(w[od], GRB.EQUAL, oi.transitionMatrix[ActivityType.WORK]!![o,d], "Test")
+                }
+                model.addConstr(rowsum, GRB.EQUAL, 1.0, "ProbCondition")
+            }
+            println("3")
+            for (activity in listOf(ActivityType.OTHER, ActivityType.SHOPPING)) { // TODO all
+                val fixed = oi.fixedMatrix[activity]!!
+                val wtm = oi.workMatrix[activity]!!
+                val pHome = oi.homeProbs.flatten()
+                val trans = oi.transitionMatrix[activity]!!
+                val carP = oi.carProbs[activity]!!
+
+                // Case OTHER
+                for ((o, origin) in grid.withIndex()) {
+                    val s = GRBLinExpr()
+
+                    for (j in grid.indices) {
+                        s.addConstant(fixed[j, o])
+                        for (i in grid.indices) {
+                            s.multAdd(pHome[i] * wtm[j, o], w[ Pair(i, j) ] )
+                        }
+                    }
+
+                    for ((d, destination) in grid.withIndex()) {
+                        val t = trans[o, d] * carP[o,d]
+                        val od = Pair(o, d)
+
+                        demand[od]!!.multAdd(t, s)
+                    }
+                }
+            }
+            println("4")
+            for (activity in listOf(ActivityType.HOME)) { // TODO all
+                val fixed = oi.fixedMatrix[activity]!!
+                val wtm = oi.workMatrix[activity]!!
+                val pHome = oi.homeProbs.flatten()
+                val carP = oi.carProbs[activity]!!
+
+                // Case OTHER
+                for ((o, origin) in grid.withIndex()) {
+                    for ((d, destination) in grid.withIndex()) {
+                        val s = GRBLinExpr()
+                        s.addConstant(fixed[o, d])
+
+                        for (j in grid.indices) {
+                            s.multAdd(pHome[o] * wtm[j, d], w[ Pair(o, j) ] )
+                        }
+
+                        val od = Pair(d, o) // Transpose
+
+                        demand[od]!!.multAdd(carP[o,d], s)
+                    }
+                }
+            }
+            println("5")
+            for ((o, origin) in grid.withIndex()) {
+                for ((d, destination) in grid.withIndex()) {
+                    val od = Pair(origin, destination)
+                    if (od in affectedSensors) {
+                        val affected = affectedSensors[od]!!
+
+                        for (sensor in affected) {
+                            val sensorSum = sensorCountExpr[sensor]!!
+                            val dem = demand[Pair(o,d)]!!
+                            sensorSum.multAdd(totalPop, dem)
+                        }
+                    }
+                }
+            }
+            println("6")
+            val sensorSimCount = model.addVars(
+                DoubleArray(sensors.size) {0.0},
+                null,
+                DoubleArray(sensors.size) {0.0},
+                CharArray(sensors.size) {GRB.CONTINUOUS},
+                Array(sensors.size) {""}
+            )
+            for ((i, sensor) in sensors.withIndex()) {
+                val sensorSum = sensorCountExpr[sensor]!!
+                model.addConstr(sensorSum, GRB.EQUAL, sensorSimCount[i], "cnteq")
+            }
+            println("7")
+            // Objective
+            val obj = GRBQuadExpr()
+            for ((i, sensor) in sensors.withIndex()) {
+                // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
+                obj.addConstant(sensor.measuredFlow * sensor.measuredFlow)
+                obj.addTerm(-2 * sensor.measuredFlow, sensorSimCount[i])
+                obj.addTerm(1.0, sensorSimCount[i], sensorSimCount[i])
+            }
+            model.setObjective(obj, GRB.MINIMIZE)
+            println("8")
+            model.optimize()
+
+            var optimstatus = model[GRB.IntAttr.Status]
+
+            if (optimstatus == GRB.Status.INF_OR_UNBD) {
+                model[GRB.IntParam.Presolve] = 0
+                model.optimize()
+                optimstatus = model[GRB.IntAttr.Status]
+            }
+
+            if (optimstatus == GRB.Status.OPTIMAL) {
+                val objval = model[GRB.DoubleAttr.ObjVal]
+                println("Optimal objective: $objval")
+
+                println("_".repeat(20*4 + 5*3))
+                println("${"Sensor".padEnd(20)} | \t" +
+                        "${"Flow AltOpt".padEnd(20)} | \t" +
+                        "Flow Measured".padEnd(20)
+                )
+                println("_".repeat(20) +
+                        " | \t" + "_".repeat(20)  +
+                        " | \t" + "_".repeat(20))
+                var myobjval = 0.0
+                for ((i, sensor) in sensors.withIndex()) {
+                    val optVal = sensorSimCount[i].get(GRB.DoubleAttr.X)
+                    println(
+                        "${sensors[i].name.padEnd(20)} | \t" +
+                                "${optVal.toString().padEnd(20)} | \t" +
+                                sensors[i].measuredFlow.toString().padEnd(20)
+                    )
+                    myobjval += (sensors[i].measuredFlow - optVal) * (sensors[i].measuredFlow - optVal)
+                }
+                println("My Obj val: $myobjval")
+                println("MY MSE: ${myobjval /sensors.size}")
+
+            } else if (optimstatus == GRB.Status.INFEASIBLE) {
+                println("Model is infeasible")
+            } else if (optimstatus == GRB.Status.UNBOUNDED) {
+                println("Model is unbounded")
+            } else {
+                println(
+                    "Optimization was stopped with status = "
+                            + optimstatus
+                )
+            }
+
+            val newE = mk.zeros<Double>(grid.size).expandDims(0).asDNArray().asD2Array().diagonal()
+            for (k in grid.indices) {
+                newE[k,k] = optE[k].get(GRB.DoubleAttr.X)
+            }
+
+
+            val optMatrix = U[0 until grid.size, 0 until nfactors]
+                .dot(E[0 until nfactors, 0 until nfactors])
+                .dot(VT[0 until nfactors, 0 until grid.size])
+
+            println("Opt Matrix:")
+            for (i in 0 until 5) {
+                println(optMatrix[0,i])
+            }
+            println("Old Matrix:")
+            for (i in 0 until 5) {
+                println(oi.transitionMatrix[ActivityType.WORK]!![0,i])
+            }
+
+            val result = mk.ones<Double>(grid.size, grid.size)
+            for(o in grid.indices) {
+                for (d in grid.indices) {
+                    result[o, d] = optMatrix[o,d]
+                }
+            }
+
+            // Dispose of model and environment
+            model.dispose()
+            env.dispose()
+            return result
+        } catch (e: GRBException) {
+            println(
+                ("Error code: " + e.errorCode + ". " +
+                        e.message)
+            )
+        }
+        return null
+    }
     fun optimize(
         grid: List<Cell>,
         totalPop: Double,

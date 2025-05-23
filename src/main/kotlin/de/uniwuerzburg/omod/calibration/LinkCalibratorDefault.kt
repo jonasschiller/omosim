@@ -83,6 +83,13 @@ class LinkCalibratorDefault(
        }
        */
 
+        val opttest = WACalibrator.determinePairProbabilities(
+            omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
+            modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
+            popStrata, carOwnership, finder,fullPopulation, affectedLinks,
+            sensors
+        )
+
         val oldod = finder.determinePairProbabilities(
             omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration, omod.grid.zip(parameters).toMap(),
