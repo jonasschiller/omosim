@@ -10,10 +10,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import org.apache.commons.io.filefilter.TrueFileFilter
 import org.geotools.filter.function.StaticGeometry.intersection
-import org.jetbrains.kotlinx.multik.ndarray.operations.times
-import org.jetbrains.kotlinx.multik.ndarray.operations.toList
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
@@ -82,8 +79,7 @@ class LinkCalibratorDefault(
            staticFlowLst[sensor] = simFlow
        }
        */
-
-        val opttest = WACalibrator.determinePairProbabilities(
+        val (calVals, test) = WACalClean.run(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
             popStrata, carOwnership, finder,fullPopulation, affectedLinks,
@@ -96,19 +92,16 @@ class LinkCalibratorDefault(
             popStrata, carOwnership
         )
 
-        val test = TestDivergenceNewMethod.determinePairProbabilities(
-           omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
-           modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
-           popStrata, carOwnership, finder,fullPopulation, affectedLinks,
-            sensors
-       )//.times(fullPopulation)
+
+       //.times(fullPopulation)
        /*val test = SPCalibrator.determinePairProbabilities(
            omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
            modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
            popStrata, carOwnership, finder
        )//.times(fullPopulation)
        println(test)*/
-       val (_,sFlow, nAgents, sLocs) = runBatch( Array(omod.grid.size) { 1.0 } )
+       val (_, sFlowBase, nAgentsVBase, sLocsBase) = runBatch( Array(omod.grid.size) { 1.0 } )
+       val (_, sFlow, nAgents, sLocs) = runBatch( calVals.toTypedArray() )
 
        // Determine affected sensors
        // TODO temporal check
@@ -148,13 +141,34 @@ class LinkCalibratorDefault(
        //val testDestination = omod.grid[307]
        //println("On test count in static map: ${staticMap[Pair(testOrigin, testDestination)]!! * nAgents}")
        // println("Total trips in static map:  ${staticMap.values.sum() * nAgents}")
+
+        var mseSim = 0.0
+        var mseSimBase = 0.0
+        var mseExpec = 0.0
+        for (sensor in sensors) {
+            mseSim += (sFlow[sensor]!! - sensor.measuredFlow).pow(2)
+            mseSimBase += (sFlowBase[sensor]!! - sensor.measuredFlow).pow(2)
+            mseExpec += (staticCount[sensor]!! - sensor.measuredFlow).pow(2)
+        }
+
        println("_".repeat(20*4 + 5*3))
        println("${"Sensor".padEnd(20)} | \t" +
                "${"Flow Simulated".padEnd(20)} | \t" +
+               "${"Flow Simulated Base".padEnd(20)} | \t" +
                "${"Flow Deterministic".padEnd(20)} | \t" +
-               "${"Flow Deterministic Old".padEnd(20)} | \t" +
                "Flow Measured".padEnd(20)
        )
+        println("_".repeat(20) +
+                " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20))
+        println(" ".repeat(20) +
+                " | \t" + "%.2f e6".format(mseSim/sensors.size / 1e6).padEnd(20)  +
+                " | \t" + "%.2f e6".format(mseSimBase/sensors.size / 1e6).padEnd(20)  +
+                " | \t" + "%.2f e6".format(mseExpec/sensors.size / 1e6).padEnd(20) +
+                " | \t" + " ".repeat(20)
+        )
        println("_".repeat(20) +
                " | \t" + "_".repeat(20)  +
                " | \t" + "_".repeat(20)  +
@@ -164,8 +178,8 @@ class LinkCalibratorDefault(
            println(
                "${sensors[i].name.padEnd(20)} | \t" +
                "${flow.toString().padEnd(20)} | \t" +
+               "${sFlowBase[sensors[i]].toString().padEnd(20)} | \t" +
                "${staticCount[sensors[i]].toString().padEnd(20)} | \t" +
-               "${oldStaticCount[sensors[i]].toString().padEnd(20)} | \t" +
                sensors[i].measuredFlow.toString().padEnd(20)
            )
        }

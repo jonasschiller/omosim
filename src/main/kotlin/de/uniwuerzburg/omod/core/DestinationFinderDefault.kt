@@ -77,7 +77,7 @@ class DestinationFinderDefault(
         val thisCellFactors = if (activityType == ActivityType.WORK) { // TODO Temporary
            customCellFactors ?: cellCFactors
         } else {
-            cellCFactors
+            mapOf()
         }
         return destinations.mapIndexed { i, destination ->
             thisCellFactors.getOrDefault(destination, 1.0) * weights[i]
