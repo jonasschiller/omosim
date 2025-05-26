@@ -431,8 +431,12 @@ object WACalClean {
                     for (a in 0 until n) {
                         cnst += mFixed[a, o]
                         for (b in 0 until n) {
-                            // TODO remove very small terms maybe
-                            s.addTerm(pHome[a] * mWDep[b, o], w[a][b]) // TODO Store coeffs in matrix
+                            val coeff = pHome[a] * mWDep[b, o]
+                            if (abs(coeff) <= (1/n.toDouble()).pow(2)) {
+                                continue
+                            }
+
+                            s.addTerm(coeff, w[a][b]) // TODO Store coeffs in matrix
                         }
                     }
                     s.addConstant(cnst)
@@ -676,11 +680,16 @@ object WACalClean {
                     if (right[i, col] == 0.0) { continue }
                     for (j in 0 until n) {
                         if (left[row, j] == 0.0) { continue }
+                        val coeff = left[row, j] * right[i, col]
+
+                        if (abs(coeff) <= (1/n.toDouble()).pow(2)) {
+                            continue
+                        }
 
                         if (transpose) {
-                            activeEntry.addTerm(left[row, j] * right[i, col], mVar[i][j])
+                            activeEntry.addTerm(coeff, mVar[i][j])
                         } else {
-                            activeEntry.addTerm(left[row, j] * right[i, col], mVar[j][i])
+                            activeEntry.addTerm(coeff, mVar[j][i])
                         }
                     }
                 }
