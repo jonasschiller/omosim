@@ -18,7 +18,10 @@ import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
 import java.io.FileOutputStream
+import kotlin.math.abs
 import kotlin.math.pow
+import kotlin.time.measureTime
+import kotlin.time.measureTimedValue
 
 object WACalClean {
     fun run(
@@ -32,14 +35,22 @@ object WACalClean {
         totalPop: Double,
         affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>
-    ) : Pair<List<Double>, Map<Pair<Cell, Cell>, Double>> {
+    ) : Triple<List<Double>, Map<Pair<Cell, Cell>, Double>, D2Array<Double>> {
         val oi = prepareOptInputWorkDep(
             grid, activityGenerator, modeChoiceCalibration, customCellFactors, popStrata, carOwnership,
             destinationFinder
         )
         val expected = getExpectedCountPerAgent(oi, grid)
         eval(expected, sensors, totalPop, grid, affectedLinks)
-        val wMatrix = optimize(grid, totalPop, affectedLinks, sensors, oi)
+
+        val (wMatrix, time) = measureTimedValue {
+            optimize(grid, totalPop, affectedLinks, sensors, oi)
+        }
+
+        println("-----")
+        println(time)
+        println("-----")
+
         val calvals = optimizeStep2Smpl(grid, wMatrix!!, oi.transitionMatrix[ActivityType.WORK]!!)
 
         // Optimized
@@ -58,7 +69,7 @@ object WACalClean {
                 out[Pair(origin, destination)] = expectedOpt[o][d]
             }
         }
-        return Pair(calvals, out)
+        return Triple(calvals, out, wMatrix)
     }
 
     fun prepareOptInputWorkDep(
@@ -462,7 +473,6 @@ object WACalClean {
                     for (d in 0 until n) {
                         demand[o][d].multAdd(carP[o, d], wExpr[o][d])
                         demand[o][d].addConstant(fix[o, d])
-
                     }
                 }
             }

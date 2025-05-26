@@ -1,5 +1,6 @@
 package de.uniwuerzburg.omod.calibration
 
+import com.github.ajalt.mordant.table.grid
 import com.graphhopper.GraphHopper
 import de.uniwuerzburg.omod.core.*
 import de.uniwuerzburg.omod.core.models.*
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.geotools.filter.function.StaticGeometry.intersection
+import org.jetbrains.kotlinx.multik.ndarray.operations.toArray
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
@@ -79,7 +81,7 @@ class LinkCalibratorDefault(
            staticFlowLst[sensor] = simFlow
        }
        */
-        val (calVals, test) = WACalClean.run(
+        val (calVals, test, woptmatrix) = WACalClean.run(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
             popStrata, carOwnership, finder,fullPopulation, affectedLinks,
@@ -101,6 +103,13 @@ class LinkCalibratorDefault(
        )//.times(fullPopulation)
        println(test)*/
        val (_, sFlowBase, nAgentsVBase, sLocsBase) = runBatch( Array(omod.grid.size) { 1.0 } )
+
+       val wforce = mutableMapOf<Cell, DoubleArray>()
+       for ((i, cell) in omod.grid.withIndex()) {
+           wforce[cell] = woptmatrix.toArray()[i]
+       }
+       finder.forceWMatrix = wforce
+
        val (_, sFlow, nAgents, sLocs) = runBatch( calVals.toTypedArray() )
 
        // Determine affected sensors

@@ -1,5 +1,6 @@
 package de.uniwuerzburg.omod.core
 
+import com.github.ajalt.mordant.table.grid
 import de.uniwuerzburg.omod.calibration.ModeChoiceCalibration
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.routing.RoutingCache
@@ -32,6 +33,7 @@ class DestinationFinderDefault(
 
     private val cellCFactors = mutableMapOf<Cell, Double>()
 
+    var forceWMatrix: Map<Cell, DoubleArray>? = null
     /**
      * Determine the probabilistic weight that a location is a destination given an origin and activity type
      * for all possible destinations.
@@ -185,9 +187,15 @@ class DestinationFinderDefault(
         origin: AggLocation, destinations: List<AggLocation>,
         activityType: ActivityType, rng: Random
     ) : LocationOption {
-        // Get agg zone (might be cell or dummy is node)
-        val aggCumDist = getDistr(origin, destinations, activityType)
-        val aggZone = destinations[sampleCumDist(aggCumDist, rng)]
+        // TODO Test
+        val aggZone = if ((forceWMatrix != null) && (destinations.size == forceWMatrix?.size) && activityType == ActivityType.WORK) {
+            val distr = createCumDist(forceWMatrix!![origin]!!)
+            destinations[sampleCumDist(distr, rng)]
+        } else {
+            // Get agg zone (might be cell or dummy is node)
+            val aggCumDist = getDistr(origin, destinations, activityType)
+            destinations[sampleCumDist(aggCumDist, rng)]
+        }
 
         // Get fine-grained location
         val destination = if (aggZone is Cell) {
