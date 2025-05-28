@@ -35,7 +35,7 @@ object WACalClean {
         totalPop: Double,
         affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>
-    ) : Triple<List<Double>, Map<Pair<Cell, Cell>, Double>, D2Array<Double>> {
+    ) : D2Array<Double> {
         val oi = prepareOptInputWorkDep(
             grid, activityGenerator, modeChoiceCalibration, customCellFactors, popStrata, carOwnership,
             destinationFinder
@@ -44,17 +44,28 @@ object WACalClean {
         eval(expected, sensors, totalPop, grid, affectedLinks)
 
         val (wMatrix, time) = measureTimedValue {
-            optimize(grid, totalPop, affectedLinks, sensors, oi)
+            optimize(grid, totalPop, affectedLinks, sensors, oi, destinationFinder)
+        }
+
+        FileOutputStream("TargetMatrix.csv").apply {
+            val writer = bufferedWriter()
+            for(o in grid.indices) {
+                for (d in grid.indices) {
+                    writer.write("${wMatrix!![o, d]};")
+                }
+                writer.newLine()
+            }
+            writer.flush()
         }
 
         println("-----")
         println(time)
         println("-----")
 
-        val calvals = optimizeStep2Smpl(grid, wMatrix!!, oi.transitionMatrix[ActivityType.WORK]!!)
+        //val calvals = optimizeStep2Smpl(grid, wMatrix!!, oi.transitionMatrix[ActivityType.WORK]!!)
 
         // Optimized
-        val newCellFactors = grid.zip(calvals).toMap()
+        /*val newCellFactors = grid.zip(calvals).toMap()
         val oiopt = prepareOptInputWorkDep(
             grid, activityGenerator, modeChoiceCalibration, newCellFactors, popStrata, carOwnership,
             destinationFinder
@@ -68,8 +79,8 @@ object WACalClean {
             for ((d, destination) in grid.withIndex()) {
                 out[Pair(origin, destination)] = expectedOpt[o][d]
             }
-        }
-        return Triple(calvals, out, wMatrix)
+        }*/
+        return wMatrix!!
     }
 
     fun prepareOptInputWorkDep(
@@ -385,11 +396,23 @@ object WACalClean {
         totalPop: Double,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>,
-        oi: OptimizationInput
+        oi: OptimizationInput,
+        destinationFinder: DestinationFinderDefault
     ) : D2Array<Double>? {
         val n = grid.size
         println("Optimization 1 start with grid size: ${n}")
 
+        val relevantODs = mutableSetOf<Pair<Int, Int>>()
+        for ((o, origin) in grid.withIndex()) {
+            for ((d, destination) in grid.withIndex()) {
+                val od = Pair(origin, destination)
+                if (od in affectedSensors) {
+                    if (affectedSensors[od]!!.isNotEmpty()) {
+                        relevantODs.add(Pair(o, d))
+                    }
+                }
+            }
+        }
         try {
             // Setup
             val env = GRBEnv()
@@ -402,11 +425,31 @@ object WACalClean {
                 }
             }
 
+            /*
+           val nvars = 9
+           val theta = model.addVars(
+               DoubleArray(nvars) { 0.0 },
+               null,
+               DoubleArray(nvars) { 0.0},
+               CharArray(nvars) {GRB.CONTINUOUS},
+               Array(nvars) { d -> "x_$d"}
+           )
+
+
+           val scaler = model.addVars(
+               DoubleArray(n) { 0.0 },
+               null,
+               DoubleArray(n) { 0.0},
+               CharArray(n) {GRB.CONTINUOUS},
+               Array(n) { d -> "x_$d"}
+           )
+           */
+
             val w = Array<Array<GRBVar>> (n) { o ->
                 model.addVars(
                     DoubleArray(n) { 0.0 },
                     DoubleArray(n) { 1.0 },
-                    DoubleArray(n) { 0.0},
+                    DoubleArray(n) { 0.0 },
                     CharArray(n) {GRB.CONTINUOUS},
                     Array(n) { d -> "W_${o}_$d"}
                 )
@@ -415,8 +458,33 @@ object WACalClean {
             // Ensure that each row of W is a proper probability distribution
             for (o in 0 until n) {
                 val rowSum = GRBLinExpr()
+                val distances = destinationFinder.routingCache.getDistances(grid[o], grid)
+
                 for (d in 0 until n) {
+                    // TEST
+                    /*val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops }
+                    val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices }
+                    val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools }
+                    val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities }
+                    val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship }
+                    val retailArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RETAIL }.sumOf { it.osmProperties.area }
+                    val indArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.INDUSTRIAL }.sumOf { it.osmProperties.area }
+                    val commArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.COMMERCIAL }.sumOf { it.osmProperties.area }
+                    val resArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RESIDENTIAL }.sumOf { it.osmProperties.area }
+                    val weight = GRBLinExpr()
+                    weight.addTerm(nShops, theta[0])
+                    weight.addTerm(nOffice, theta[1])
+                    weight.addTerm(nSchool, theta[2])
+                    weight.addTerm(nUni, theta[3])
+                    weight.addTerm(nPOW, theta[4])
+                    weight.addTerm(retailArea, theta[5])
+                    weight.addTerm(indArea, theta[6])
+                    weight.addTerm(commArea, theta[7])
+                    weight.addTerm(resArea, theta[8])*/
+                    //TEST
+
                     rowSum.addTerm(1.0, w[o][d])
+                    //model.addConstr(w[o][d], GRB.EQUAL, weight, "Test")
                     //model.addConstr(w[o][d], GRB.EQUAL, oi.transitionMatrix[ActivityType.WORK]!![o,d], "Test")
                 }
                 model.addConstr(rowSum, GRB.EQUAL, 1.0, "ProbCondition")
@@ -443,7 +511,7 @@ object WACalClean {
                         cnst += mFixed[a, o]
                         for (b in 0 until n) {
                             val coeff = pHome[a] * mWDep[b, o]
-                            if (abs(coeff) <= (1/n.toDouble()).pow(2)) {
+                            if (abs(coeff) <= (1/n.toDouble()).pow(1.5)) {
                                 continue
                             }
 
@@ -453,6 +521,7 @@ object WACalClean {
                     s.addConstant(cnst)
 
                     for (d in 0 until n) {
+                        if (Pair(o, d) !in relevantODs) { continue }
                         val t = mTransition[o, d] * mCarP[o, d]
                         demand[o][d].multAdd(t, s)
                     }
@@ -465,12 +534,13 @@ object WACalClean {
 
                 val left = oi.workMatrix[fixActivity]!!.transpose()
                 val right = oi.homeProbs.diagonal().transpose()
-                val wExpr = exprFromMatrixSandwichT(w, left, right)
+                val wExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
 
                 val fix = oi.fixedMatrix[fixActivity]!!.transpose().times(carP)
 
                 for (o in 0 until n) {
                     for (d in 0 until n) {
+                        if (Pair(o, d) !in relevantODs) { continue }
                         demand[o][d].multAdd(carP[o, d], wExpr[o][d])
                         demand[o][d].addConstant(fix[o, d])
                     }
@@ -486,7 +556,7 @@ object WACalClean {
                     .diagonal()
                     .transpose()
                     .dot(oi.transitionMatrix[fixActivity]!!)
-                val wExpr = exprFromMatrixSandwichT(w, left, right)
+                val wExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
 
                 val fix = oi.fixedMatrix[fixActivity]!!.transpose()
                     .dot(oi.transitionMatrix[fixActivity]!!)
@@ -494,6 +564,7 @@ object WACalClean {
 
                 for (o in 0 until n) {
                     for (d in 0 until n) {
+                        if (Pair(o, d) !in relevantODs) { continue }
                         demand[o][d].multAdd(carP[o, d], wExpr[o][d])
                         demand[o][d].addConstant(fix[o, d])
                     }
@@ -517,10 +588,11 @@ object WACalClean {
                 // Not start at work
                 val left = oi.fixedMatrix[fixActivity]!!.transpose()
                 val right = mk.identity<Double>(n)
-                val wExprNSW = exprFromMatrixSandwichT(w, left, right, transpose = false)
+                val wExprNSW = exprFromMatrixSandwichT(w, left, right, transpose = false, relevantRCs = relevantODs)
 
                 for (o in 0 until n) {
                     for (d in 0 until n) {
+                        if (Pair(o, d) !in relevantODs) { continue }
                         demand[o][d].multAdd(carP[o, d], wExprNSW[o][d])
                         demand[o][d].multAdd(mWT[o][d] * carP[o, d], wProbs[d])
                     }
@@ -672,6 +744,7 @@ object WACalClean {
         left: D2Array<Double>,
         right: D2Array<Double>,
         transpose: Boolean = true,
+        relevantRCs: Set<Pair<Int, Int>>? = null
         ) : Array<Array<GRBLinExpr>> {
         val n = left.shape[0] // Assume all matrices are square and same size
 
@@ -683,6 +756,12 @@ object WACalClean {
 
         for (row in 0 until n) {
             for (col in 0 until  n) {
+                if (relevantRCs != null) {
+                    if (Pair(row, col) !in relevantRCs) {
+                        continue
+                    }
+                }
+
                 val activeEntry = result[row][col]
 
                 // TODO store coeff in matrix and get rid of too small ones
@@ -692,7 +771,7 @@ object WACalClean {
                         if (left[row, j] == 0.0) { continue }
                         val coeff = left[row, j] * right[i, col]
 
-                        if (abs(coeff) <= (1/n.toDouble()).pow(2)) {
+                        if (abs(coeff) <= (1/n.toDouble()).pow(1.5)) {
                             continue
                         }
 
@@ -744,129 +823,5 @@ object WACalClean {
         for ((i, flow) in simCount.values.withIndex()) {
             println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow}")
         }
-    }
-
-    fun optimizeStep2Smpl(
-        grid: List<Cell>,
-        bestT: D2Array<Double>,
-        seedMatrix: D2Array<Double>,
-    ) : List<Double> {
-        try {
-            val env = GRBEnv()
-            val model = GRBModel(env)
-
-            val dScaler = model.addVars(
-                DoubleArray(grid.size - 1) {0.0}, // TODO doesn't work if unbounded at the upper limit
-                null,//DoubleArray(grid.size - 1) {15.0},
-                DoubleArray(grid.size - 1) {0.0},
-                CharArray(grid.size - 1) { GRB.CONTINUOUS},
-                Array(grid.size - 1) {"DestScaler"}
-            )
-
-
-            // Objective
-            val obj = GRBQuadExpr()
-            for(o in grid.indices) {
-                for(d in grid.indices.drop(1)) {
-                    val targetValue = bestT[o,d]
-                    val seedvalue = seedMatrix[o,d]
-
-                    val targetProp = targetValue / bestT[o, 0]
-                    val seedProp = seedvalue/ seedMatrix[o,0]
-
-                    obj.addConstant(targetProp * targetProp)
-                    obj.addTerm(-2 * targetProp * seedProp, dScaler[d-1])
-                    obj.addTerm(seedProp * seedProp, dScaler[d-1], dScaler[d-1])
-                }
-            }
-            model.setObjective(obj, GRB.MINIMIZE)
-
-
-            model.optimize()
-
-            var optimstatus = model[GRB.IntAttr.Status]
-
-            if (optimstatus == GRB.Status.INF_OR_UNBD) {
-                model[GRB.IntParam.Presolve] = 0
-                model.optimize()
-                optimstatus = model[GRB.IntAttr.Status]
-            }
-
-            if (optimstatus == GRB.Status.OPTIMAL) {
-                val objval = model[GRB.DoubleAttr.ObjVal]
-                println("Optimal objective: $objval")
-            } else if (optimstatus == GRB.Status.INFEASIBLE) {
-                println("Model is infeasible")
-            } else if (optimstatus == GRB.Status.UNBOUNDED) {
-                println("Model is unbounded")
-            } else {
-                println(
-                    "Optimization was stopped with status = "
-                            + optimstatus
-                )
-            }
-
-            val scalerList = listOf(1.0) + dScaler.map { it.get(GRB.DoubleAttr.X) }
-
-            val newMatrix = mk.ones<Double>(grid.size, grid.size)
-            for(o in grid.indices) {
-                var isrowsum = 0.0
-                for (d in grid.indices) {
-                    isrowsum += seedMatrix[o, d] * scalerList[d]
-                }
-
-                for (d in grid.indices) {
-                    newMatrix[o, d] = seedMatrix[o, d] *  scalerList[d] / isrowsum
-                }
-            }
-
-
-
-            FileOutputStream("TargetMatrix.csv").apply {
-                val writer = bufferedWriter()
-                for(o in grid.indices) {
-                    for (d in grid.indices) {
-                        writer.write("${bestT[o, d]};")
-                    }
-                    writer.newLine()
-                }
-                writer.flush()
-            }
-
-            FileOutputStream("FindMatrix.csv").apply {
-                val writer = bufferedWriter()
-                for(o in grid.indices) {
-                    for (d in grid.indices) {
-                        writer.write("${newMatrix[o, d]};")
-                    }
-                    writer.newLine()
-                }
-                writer.flush()
-            }
-
-            FileOutputStream("SeedMatrix.csv").apply {
-                val writer = bufferedWriter()
-                for(o in grid.indices) {
-                    for (d in grid.indices) {
-                        writer.write("${seedMatrix[o, d]};")
-                    }
-                    writer.newLine()
-                }
-                writer.flush()
-            }
-
-
-            // Dispose of model and environment
-            model.dispose()
-            env.dispose()
-
-            return  scalerList
-        } catch (e: GRBException) {
-            println(
-                ("Error code: " + e.errorCode + ". " +
-                        e.message)
-            )
-        }
-        return listOf()
     }
 }

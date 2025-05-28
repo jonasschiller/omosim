@@ -205,7 +205,7 @@ class Omod(
 
         // TODO: Debug
         val calibrator = LinkCalibratorDefault(
-            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput_v5.csv"),
+            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput_v5_all.csv"),
             this,
             popStrata,
             carOwnership

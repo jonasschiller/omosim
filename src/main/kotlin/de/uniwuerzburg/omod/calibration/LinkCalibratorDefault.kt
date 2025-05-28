@@ -81,7 +81,7 @@ class LinkCalibratorDefault(
            staticFlowLst[sensor] = simFlow
        }
        */
-        val (calVals, test, woptmatrix) = WACalClean.run(
+        val woptmatrix = WACalClean.run(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
             popStrata, carOwnership, finder,fullPopulation, affectedLinks,
@@ -110,11 +110,11 @@ class LinkCalibratorDefault(
        }
        finder.forceWMatrix = wforce
 
-       val (_, sFlow, nAgents, sLocs) = runBatch( calVals.toTypedArray() )
+       val (_, sFlow, nAgents, sLocs) = runBatch(  Array(omod.grid.size) { 1.0 } )
 
        // Determine affected sensors
        // TODO temporal check
-       val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
+       //val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
        val oldStaticCount = sensors.associateWith { 0.0 }.toMutableMap()
        for (origin in omod.grid) {
            for (destination in omod.grid) {
@@ -122,7 +122,7 @@ class LinkCalibratorDefault(
                if (odPair in affectedLinks) {
                    val sensors = affectedLinks[odPair]!!
                    for (sensor in sensors) {
-                       staticCount[sensor] = staticCount[sensor]!! + test[odPair]!! * fullPopulation
+                       //staticCount[sensor] = staticCount[sensor]!! + test[odPair]!! * fullPopulation
                        oldStaticCount[sensor] = oldStaticCount[sensor]!! + oldod[odPair]!! * fullPopulation
                    }
                }
@@ -153,42 +153,42 @@ class LinkCalibratorDefault(
 
         var mseSim = 0.0
         var mseSimBase = 0.0
-        var mseExpec = 0.0
+        //var mseExpec = 0.0
         for (sensor in sensors) {
             mseSim += (sFlow[sensor]!! - sensor.measuredFlow).pow(2)
             mseSimBase += (sFlowBase[sensor]!! - sensor.measuredFlow).pow(2)
-            mseExpec += (staticCount[sensor]!! - sensor.measuredFlow).pow(2)
+            //mseExpec += (staticCount[sensor]!! - sensor.measuredFlow).pow(2)
         }
 
        println("_".repeat(20*4 + 5*3))
        println("${"Sensor".padEnd(20)} | \t" +
                "${"Flow Simulated".padEnd(20)} | \t" +
                "${"Flow Simulated Base".padEnd(20)} | \t" +
-               "${"Flow Deterministic".padEnd(20)} | \t" +
+              // "${"Flow Deterministic".padEnd(20)} | \t" +
                "Flow Measured".padEnd(20)
        )
         println("_".repeat(20) +
                 " | \t" + "_".repeat(20)  +
                 " | \t" + "_".repeat(20)  +
-                " | \t" + "_".repeat(20)  +
+                //" | \t" + "_".repeat(20)  +
                 " | \t" + "_".repeat(20))
         println(" ".repeat(20) +
                 " | \t" + "%.2f e6".format(mseSim/sensors.size / 1e6).padEnd(20)  +
                 " | \t" + "%.2f e6".format(mseSimBase/sensors.size / 1e6).padEnd(20)  +
-                " | \t" + "%.2f e6".format(mseExpec/sensors.size / 1e6).padEnd(20) +
+                //" | \t" + "%.2f e6".format(mseExpec/sensors.size / 1e6).padEnd(20) +
                 " | \t" + " ".repeat(20)
         )
        println("_".repeat(20) +
                " | \t" + "_".repeat(20)  +
                " | \t" + "_".repeat(20)  +
-               " | \t" + "_".repeat(20)  +
+               //" | \t" + "_".repeat(20)  +
                " | \t" + "_".repeat(20))
        for ((i, flow) in sFlow.values.withIndex()) {
            println(
                "${sensors[i].name.padEnd(20)} | \t" +
                "${flow.toString().padEnd(20)} | \t" +
                "${sFlowBase[sensors[i]].toString().padEnd(20)} | \t" +
-               "${staticCount[sensors[i]].toString().padEnd(20)} | \t" +
+               //"${staticCount[sensors[i]].toString().padEnd(20)} | \t" +
                sensors[i].measuredFlow.toString().padEnd(20)
            )
        }
