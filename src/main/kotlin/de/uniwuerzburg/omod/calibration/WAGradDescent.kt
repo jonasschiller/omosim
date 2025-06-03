@@ -1,29 +1,27 @@
 package de.uniwuerzburg.omod.calibration
 
 import com.gurobi.gurobi.*
-import de.uniwuerzburg.omod.calibration.WACalClean.diagonal
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.models.*
+import de.uniwuerzburg.omod.utils.ProgressBar
 import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
 import org.jetbrains.kotlinx.multik.ndarray.data.set
-import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
-import org.jetbrains.kotlinx.multik.ndarray.operations.plus
-import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
-import org.jetbrains.kotlinx.multik.ndarray.operations.times
+import org.jetbrains.kotlinx.multik.ndarray.operations.*
 import org.locationtech.jts.geom.Coordinate
 import java.io.FileOutputStream
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.pow
 import kotlin.time.measureTime
 import kotlin.time.measureTimedValue
 
-object WACalClean {
+object WAGradDescent {
     fun run(
         grid: List<Cell>,
         activityGenerator: ActivityGeneratorDefault,
@@ -35,7 +33,7 @@ object WACalClean {
         totalPop: Double,
         affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>
-    ) : D2Array<Double> {
+    )  : D2Array<Double> {
         val oi = prepareOptInputWorkDep(
             grid, activityGenerator, modeChoiceCalibration, customCellFactors, popStrata, carOwnership,
             destinationFinder
@@ -43,44 +41,81 @@ object WACalClean {
         val expected = getExpectedCountPerAgent(oi, grid)
         eval(expected, sensors, totalPop, grid, affectedLinks)
 
-        val (wMatrix, time) = measureTimedValue {
-            optimize(grid, totalPop, affectedLinks, sensors, oi, destinationFinder)
-        }
-
-        FileOutputStream("TargetMatrix.csv").apply {
-            val writer = bufferedWriter()
-            for(o in grid.indices) {
-                for (d in grid.indices) {
-                    writer.write("${wMatrix!![o, d]};")
-                }
-                writer.newLine()
-            }
-            writer.flush()
+        val (diffModel, time) = measureTimedValue {
+            buildDiffModel(grid, totalPop, affectedLinks, sensors, oi, destinationFinder)
         }
 
         println("-----")
         println(time)
         println("-----")
 
-        //val calvals = optimizeStep2Smpl(grid, wMatrix!!, oi.transitionMatrix[ActivityType.WORK]!!)
+        val seedVals = DoubleArray(5) {0.01} //(280.688, 727.141, 611.394, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
-        // Optimized
-        /*val newCellFactors = grid.zip(calvals).toMap()
-        val oiopt = prepareOptInputWorkDep(
-            grid, activityGenerator, modeChoiceCalibration, newCellFactors, popStrata, carOwnership,
-            destinationFinder
-        )
-        val expectedOpt = getExpectedCountPerAgent(oiopt, grid)
-        eval(expectedOpt, sensors, totalPop, grid, affectedLinks)
-
-        // Format output
-        val out = mutableMapOf<Pair<Cell, Cell>, Double>()
-        for ((o, origin) in grid.withIndex()) {
-            for ((d, destination) in grid.withIndex()) {
-                out[Pair(origin, destination)] = expectedOpt[o][d]
+        val parameters = gradDescent(diffModel, seedVals, iterations = 100, lr = 1.0e-8)
+        println("Parameters:")
+        println(parameters.toList())
+        val matrix = mk.zeros<Double>(grid.size, grid.size)
+        for (o in 0 until grid.size) {
+            val weights = mutableListOf<Double>()
+            for (d in 0 until grid.size) {
+                val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops /1000 }
+                val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices /1000}
+                val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools /1000}
+                val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities /1000}
+                val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship /1000}
+                /*val retailArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RETAIL }.sumOf { it.osmProperties.area }
+                val indArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.INDUSTRIAL }.sumOf { it.osmProperties.area }
+                val commArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.COMMERCIAL }.sumOf { it.osmProperties.area }
+                val resArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RESIDENTIAL }.sumOf { it.osmProperties.area }*/
+                var weight = 0.0
+                weight += parameters[0] * nShops
+                weight += parameters[1] * nOffice
+                weight += parameters[2] * nSchool
+                weight += parameters[3] * nUni
+                weight += parameters[4] * nPOW
+                /*weight += parameters[5] * retailArea
+                weight += parameters[6] * indArea
+                weight += parameters[7] * commArea
+                weight += parameters[8] * resArea*/
+                weights.add(exp(weight))
             }
-        }*/
-        return wMatrix!!
+            val wsum = weights.sum()
+            for (d in 0 until grid.size) {
+                matrix[o, d] = weights[d] / wsum
+            }
+        }
+        return  matrix
+    }
+
+    fun gradDescent(model: DifferentiableModel, vals: DoubleArray, iterations: Int = 10, lr: Double = 1.0e-9) :
+        DoubleArray
+    {
+        val currentValues = vals.copyOf()
+        val gradients = DoubleArray(vals.size) { 0.0 }
+
+        val evaltime = measureTime {
+            val loss = model.evaluate(currentValues)
+            println("Start loss: $loss")
+        }
+        println("Eval time: $evaltime")
+
+
+        for (i in 0 until iterations) {
+            val (loss, time) = measureTimedValue {
+                // Determine gradients
+                for ((i, value) in currentValues.withIndex()) {
+                    gradients[i] = model.gradient(i, currentValues)
+                }
+
+                for ((i, value) in currentValues.withIndex()) {
+                    currentValues[i] -= lr * gradients[i]
+                }
+                val loss = model.evaluate(currentValues)
+                loss
+            }
+            print("Iteration $i, loss: $loss \t took $time \r")
+        }
+        return currentValues
     }
 
     fun prepareOptInputWorkDep(
@@ -391,16 +426,16 @@ object WACalClean {
         return expectedCountPerAgent
     }
 
-    fun optimize(
+    fun buildDiffModel(
         grid: List<Cell>,
         totalPop: Double,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>,
         oi: OptimizationInput,
         destinationFinder: DestinationFinderDefault
-    ) : D2Array<Double>? {
+    ) : DifferentiableModel {
         val n = grid.size
-        println("Optimization 1 start with grid size: ${n}")
+        println("Building diff model with grid size: $n")
 
         val relevantODs = mutableSetOf<Pair<Int, Int>>()
         for ((o, origin) in grid.withIndex()) {
@@ -413,347 +448,215 @@ object WACalClean {
                 }
             }
         }
-        try {
-            // Setup
-            val env = GRBEnv()
-            val model = GRBModel(env)
 
-            // Create demand matrix dependent on the work matrix: demand(o, d | W)
-            val demand = Array(n) {
-                Array(n) {
-                    GRBLinExpr()
-                }
+        val diffModel = DifferentiableModel(5)
+
+        // Create demand matrix dependent on the work matrix: demand(o, d | W)
+        val demand = Array(n) {
+            Array(n) {
+                LinearTerm(diffModel.nVars)
             }
+        }
 
+        val w = mutableListOf<List<Term>>()
+        for (o in 0 until n) {
+            val ow = mutableListOf<Term>()
 
-           val nvars = 5
-           val theta = model.addVars(
-               DoubleArray(nvars) { 0.0 },
-               null,
-               DoubleArray(nvars) { 0.0},
-               CharArray(nvars) {GRB.CONTINUOUS},
-               Array(nvars) { d -> "x_$d"}
-           )
+            val weightTerms = mutableListOf<Term>()
+            val rowSumTerm = LinearTerm(diffModel.nVars)
+            for (d in 0 until n) {
+               val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops /1000}
+               val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices /1000}
+               val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools /1000}
+               val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities /1000}
+               val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship /1000}
+               /*val retailArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RETAIL }.sumOf { it.osmProperties.area }
+               val indArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.INDUSTRIAL }.sumOf { it.osmProperties.area }
+               val commArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.COMMERCIAL }.sumOf { it.osmProperties.area }
+               val resArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RESIDENTIAL }.sumOf { it.osmProperties.area }*/
+               val weight = LinearBaseTerm(diffModel.nVars)
+               weight.addTerm(0, nShops)
+               weight.addTerm(1,nOffice)
+               weight.addTerm(2, nSchool)
+               weight.addTerm(3, nUni)
+               weight.addTerm(4, nPOW)
+               /*weight.addTerm(5, retailArea)
+               weight.addTerm(6, indArea)
+               weight.addTerm(7, commArea)
+               weight.addTerm(8, resArea)*/
+               val eWeight = ExponentialTerm(diffModel.nVars, weight)
 
-            /*
-           val scaler = model.addVars(
-               DoubleArray(n) { 0.0 },
-               null,
-               DoubleArray(n) { 0.0},
-               CharArray(n) {GRB.CONTINUOUS},
-               Array(n) { d -> "x_$d"}
-           )
-           */
-
-            val w = Array<Array<GRBVar>> (n) { o ->
-                model.addVars(
-                    DoubleArray(n) { 0.0 },
-                    DoubleArray(n) { 1.0 },
-                    DoubleArray(n) { 0.0 },
-                    CharArray(n) {GRB.CONTINUOUS},
-                    Array(n) { d -> "W_${o}_$d"}
-                )
+               rowSumTerm.addTerm(eWeight, 1.0)
+               weightTerms.add(eWeight)
             }
+            for (d in 0 until n) {
+                val scaledWeight = DivisionTerm(diffModel.nVars, weightTerms[d], rowSumTerm)
+                ow.add(scaledWeight)
+            }
+            w.add(ow)
+        }
 
-            // Ensure that each row of W is a proper probability distribution
+        // Demand with flexible destination
+        for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
+            val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
+                ActivityType.OTHER
+            } else {
+                flexActivity
+            }
+            val mFixed = oi.fixedMatrix[flexActivity]!!
+            val mWDep = oi.workMatrix[flexActivity]!!
+            val pHome = oi.homeProbs.flatten()
+            val mTransition = oi.transitionMatrix[transitionActivity]!!
+            val mCarP = oi.carProbs[transitionActivity]!!
+
             for (o in 0 until n) {
-                val rowSum = GRBLinExpr()
-                val distances = destinationFinder.routingCache.getDistances(grid[o], grid)
+                val s = LinearTerm(diffModel.nVars)
+                var cnst = 0.0
+
+                for (a in 0 until n) {
+                    cnst += mFixed[a, o]
+                    for (b in 0 until n) {
+                        val coeff = pHome[a] * mWDep[b, o]
+                        if (abs(coeff) <= (1/n.toDouble()).pow(1.5)) {
+                            continue
+                        }
+                        s.addTerm(w[a][b], coeff)
+                    }
+                }
+                s.addConstant(cnst)
 
                 for (d in 0 until n) {
-                    // TEST
-                    val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops }
-                    val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices }
-                    val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools }
-                    val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities }
-                    val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship }
-                    /*val retailArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RETAIL }.sumOf { it.osmProperties.area }
-                    val indArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.INDUSTRIAL }.sumOf { it.osmProperties.area }
-                    val commArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.COMMERCIAL }.sumOf { it.osmProperties.area }
-                    val resArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RESIDENTIAL }.sumOf { it.osmProperties.area }*/
-                    val weight = GRBLinExpr()
-                    weight.addTerm(nShops, theta[0])
-                    weight.addTerm(nOffice, theta[1])
-                    weight.addTerm(nSchool, theta[2])
-                    weight.addTerm(nUni, theta[3])
-                    weight.addTerm(nPOW, theta[4])
-                    /*weight.addTerm(retailArea, theta[5])
-                    weight.addTerm(indArea, theta[6])
-                    weight.addTerm(commArea, theta[7])
-                    weight.addTerm(resArea, theta[8])*/
-                    //TEST
-
-                    rowSum.addTerm(1.0, w[o][d])
-                    model.addConstr(w[o][d], GRB.EQUAL, weight, "Test")
-                    //model.addConstr(w[o][d], GRB.EQUAL, oi.transitionMatrix[ActivityType.WORK]!![o,d], "Test")
-                }
-                model.addConstr(rowSum, GRB.EQUAL, 1.0, "ProbCondition")
-            }
-
-            // Demand with flexible destination
-            for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
-                val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
-                    ActivityType.OTHER
-                } else {
-                    flexActivity
-                }
-                val mFixed = oi.fixedMatrix[flexActivity]!!
-                val mWDep = oi.workMatrix[flexActivity]!!
-                val pHome = oi.homeProbs.flatten()
-                val mTransition = oi.transitionMatrix[transitionActivity]!!
-                val mCarP = oi.carProbs[transitionActivity]!! // TODO transition or flex?
-
-                for (o in 0 until n) {
-                    val s = GRBLinExpr()
-                    var cnst = 0.0
-
-                    for (a in 0 until n) {
-                        cnst += mFixed[a, o]
-                        for (b in 0 until n) {
-                            val coeff = pHome[a] * mWDep[b, o]
-                            if (abs(coeff) <= (1/n.toDouble()).pow(1.5)) {
-                                continue
-                            }
-
-                            s.addTerm(coeff, w[a][b]) // TODO Store coeffs in matrix
-                        }
-                    }
-                    s.addConstant(cnst)
-
-                    for (d in 0 until n) {
-                        if (Pair(o, d) !in relevantODs) { continue }
-                        val t = mTransition[o, d] * mCarP[o, d]
-                        demand[o][d].multAdd(t, s)
-                    }
+                    if (Pair(o, d) !in relevantODs) { continue }
+                    val t = mTransition[o, d] * mCarP[o, d]
+                    demand[o][d].addTerm(s, t)
                 }
             }
-
-            // Demand for home
-            for (fixActivity in listOf(ActivityType.HOME)) {
-                val carP = oi.carProbs[fixActivity]!!
-
-                val left = oi.workMatrix[fixActivity]!!.transpose()
-                val right = oi.homeProbs.diagonal().transpose()
-                val wExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
-
-                val fix = oi.fixedMatrix[fixActivity]!!.transpose().times(carP)
-
-                for (o in 0 until n) {
-                    for (d in 0 until n) {
-                        if (Pair(o, d) !in relevantODs) { continue }
-                        demand[o][d].multAdd(carP[o, d], wExpr[o][d])
-                        demand[o][d].addConstant(fix[o, d])
-                    }
-                }
-            }
-
-            // School
-            for (fixActivity in listOf(ActivityType.SCHOOL)) {
-                val carP = oi.carProbs[fixActivity]!!
-
-                val left = oi.workMatrix[fixActivity]!!.transpose()
-                val right = oi.homeProbs
-                    .diagonal()
-                    .transpose()
-                    .dot(oi.transitionMatrix[fixActivity]!!)
-                val wExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
-
-                val fix = oi.fixedMatrix[fixActivity]!!.transpose()
-                    .dot(oi.transitionMatrix[fixActivity]!!)
-                    .times(carP)
-
-                for (o in 0 until n) {
-                    for (d in 0 until n) {
-                        if (Pair(o, d) !in relevantODs) { continue }
-                        demand[o][d].multAdd(carP[o, d], wExpr[o][d])
-                        demand[o][d].addConstant(fix[o, d])
-                    }
-                }
-            }
-
-            for (fixActivity in listOf(ActivityType.WORK)) {
-                val carP = oi.carProbs[fixActivity]!!
-                val pHome = oi.homeProbs.flatten()
-
-                // Start at work
-                val mWT = oi.workMatrix[fixActivity]!!.transpose()
-                val wProbs = Array(n) { GRBLinExpr() }
-                for (col in 0 until n) {
-                    val activeExpr = wProbs[col]
-                    for (row in 0 until n) {
-                        activeExpr.addTerm(pHome[row], w[row][col])
-                    }
-                }
-
-                // Not start at work
-                val left = oi.fixedMatrix[fixActivity]!!.transpose()
-                val right = mk.identity<Double>(n)
-                val wExprNSW = exprFromMatrixSandwichT(w, left, right, transpose = false, relevantRCs = relevantODs)
-
-                for (o in 0 until n) {
-                    for (d in 0 until n) {
-                        if (Pair(o, d) !in relevantODs) { continue }
-                        demand[o][d].multAdd(carP[o, d], wExprNSW[o][d])
-                        demand[o][d].multAdd(mWT[o][d] * carP[o, d], wProbs[d])
-                    }
-                }
-            }
-
-            val sensorCountExpr = mutableMapOf<TrafficSensor, GRBLinExpr>()
-            for (sensor in sensors) {
-                sensorCountExpr[sensor] = GRBLinExpr()
-            }
-
-            for ((o, origin) in grid.withIndex()) {
-                for ((d, destination) in grid.withIndex()) {
-                    val od = Pair(origin, destination)
-                    if (od in affectedSensors) {
-                        val affected = affectedSensors[od]!!
-
-                        for (sensor in affected) {
-                            val sensorSum = sensorCountExpr[sensor]!!
-                            val dem = demand[o][d]
-                            sensorSum.multAdd(totalPop, dem)
-                        }
-                    }
-                }
-            }
-
-            val sensorSimCount = model.addVars(
-                DoubleArray(sensors.size) {0.0},
-                null,
-                DoubleArray(sensors.size) {0.0},
-                CharArray(sensors.size) { GRB.CONTINUOUS},
-                Array(sensors.size) {""}
-            )
-            for ((i, sensor) in sensors.withIndex()) {
-                val sensorSum = sensorCountExpr[sensor]!!
-                model.addConstr(sensorSum, GRB.EQUAL, sensorSimCount[i], "cnteq")
-            }
-
-            // Objective
-            val obj = GRBQuadExpr()
-            for ((i, sensor) in sensors.withIndex()) {
-                // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
-                obj.addConstant(sensor.measuredFlow * sensor.measuredFlow)
-                obj.addTerm(-2 * sensor.measuredFlow, sensorSimCount[i])
-                obj.addTerm(1.0, sensorSimCount[i], sensorSimCount[i])
-            }
-            model.setObjective(obj, GRB.MINIMIZE)
-
-            model.optimize()
-
-            var optimstatus = model[GRB.IntAttr.Status]
-
-            if (optimstatus == GRB.Status.INF_OR_UNBD) {
-                model[GRB.IntParam.Presolve] = 0
-                model.optimize()
-                optimstatus = model[GRB.IntAttr.Status]
-            }
-
-            if (optimstatus == GRB.Status.OPTIMAL) {
-                val objval = model[GRB.DoubleAttr.ObjVal]
-                println("Optimal objective: $objval")
-
-
-                println("_".repeat(20*4 + 5*3))
-                println("MSE: ${objval /sensors.size}")
-                println("_".repeat(20*4 + 5*3))
-                println("${"Sensor".padEnd(20)} | \t" +
-                        "${"Flow AltOpt".padEnd(20)} | \t" +
-                        "Flow Measured".padEnd(20)
-                )
-                println("_".repeat(20) +
-                        " | \t" + "_".repeat(20)  +
-                        " | \t" + "_".repeat(20))
-                var myobjval = 0.0
-                for ((i, sensor) in sensors.withIndex()) {
-                    val optVal = sensorSimCount[i].get(GRB.DoubleAttr.X)
-                    println(
-                        "${sensors[i].name.padEnd(20)} | \t" +
-                                "${optVal.toString().padEnd(20)} | \t" +
-                                sensors[i].measuredFlow.toString().padEnd(20)
-                    )
-                    myobjval += (sensors[i].measuredFlow - optVal) * (sensors[i].measuredFlow - optVal)
-                }
-
-            } else if (optimstatus == GRB.Status.INFEASIBLE) {
-                println("Model is infeasible")
-            } else if (optimstatus == GRB.Status.UNBOUNDED) {
-                println("Model is unbounded")
-            } else {
-                println(
-                    "Optimization was stopped with status = "
-                            + optimstatus
-                )
-            }
-
-            val result = mk.ones<Double>(grid.size, grid.size)
-            for(o in grid.indices) {
-                for (d in grid.indices) {
-                    result[o, d] = w[o][d].get(GRB.DoubleAttr.X)
-                }
-            }
-
-            println("theta")
-            println(theta.map { it.get(GRB.DoubleAttr.X)})
-
-            // Dispose of model and environment
-            model.dispose()
-            env.dispose()
-            return result
-        } catch (e: GRBException) {
-            println(
-                ("Error code: " + e.errorCode + ". " +
-                        e.message)
-            )
         }
-        return null
-    }
 
-    fun exprFromMatrixSandwichTTester(
-        mVarTest: D2Array<Double>,
-        left: D2Array<Double>,
-        right: D2Array<Double>,
-        transpose: Boolean = true,
-    ) : D2Array<Double> {
-        val n = left.shape[0] // Assume all matrices are square and same size
+        // Demand for home
+        for (fixActivity in listOf(ActivityType.HOME)) {
+            val carP = oi.carProbs[fixActivity]!!
 
-        val result = mk.zeros<Double>(n,n)
+            val left = oi.workMatrix[fixActivity]!!.transpose()
+            val right = oi.homeProbs.diagonal().transpose()
+            val wExprTest = diffModelFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
 
-        for (row in 0 until n) {
-            for (col in 0 until  n) {
-                // TODO store coeff in matrix and get rid of too small ones
-                for (i in 0 until n) {
-                    if (right[i, col] == 0.0) { continue }
-                    for (j in 0 until n) {
-                        if (left[row, j] == 0.0) { continue }
-                        if (transpose) {
-                            result[row, col] += left[row, j] * right[i, col] * mVarTest[i, j]
-                        } else {
-                            result[row, col] += left[row, j] * right[i, col] * mVarTest[j, i]
-                        }
+            val fix = oi.fixedMatrix[fixActivity]!!.transpose().times(carP)
 
+            for (o in 0 until n) {
+                for (d in 0 until n) {
+                    if (Pair(o, d) !in relevantODs) { continue }
+                    demand[o][d].addTerm(wExprTest[o][d], carP[o,d])
+                    demand[o][d].addConstant(fix[o, d])
+                }
+            }
+        }
 
+        // School
+        for (fixActivity in listOf(ActivityType.SCHOOL)) {
+            val carP = oi.carProbs[fixActivity]!!
+
+            val left = oi.workMatrix[fixActivity]!!.transpose()
+            val right = oi.homeProbs
+                .diagonal()
+                .transpose()
+                .dot(oi.transitionMatrix[fixActivity]!!)
+            val wExprTest = diffModelFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
+
+            val fix = oi.fixedMatrix[fixActivity]!!.transpose()
+                .dot(oi.transitionMatrix[fixActivity]!!)
+                .times(carP)
+
+            for (o in 0 until n) {
+                for (d in 0 until n) {
+                    if (Pair(o, d) !in relevantODs) { continue }
+                    demand[o][d].addTerm(wExprTest[o][d], carP[o,d])
+                    demand[o][d].addConstant(fix[o, d])
+                }
+            }
+        }
+
+        for (fixActivity in listOf(ActivityType.WORK)) {
+            val carP = oi.carProbs[fixActivity]!!
+            val pHome = oi.homeProbs.flatten()
+
+            // Start at work
+            val mWT = oi.workMatrix[fixActivity]!!.transpose()
+            val wProbs = Array(n) {LinearTerm(diffModel.nVars)}
+            for (col in 0 until n) {
+                for (row in 0 until n) {
+                    wProbs[col].addTerm(w[row][col], pHome[row])
+                }
+            }
+
+            // Not start at work
+            val left = oi.fixedMatrix[fixActivity]!!.transpose()
+            val right = mk.identity<Double>(n)
+            val wExprTestNSW = diffModelFromMatrixSandwichT(w, left, right, transpose = false, relevantRCs = relevantODs)
+
+            for (o in 0 until n) {
+                for (d in 0 until n) {
+                    if (Pair(o, d) !in relevantODs) { continue }
+
+                    demand[o][d].addTerm(wExprTestNSW[o][d], carP[o,d])
+                    demand[o][d].addTerm(wProbs[d], mWT[o][d] * carP[o, d])
+                }
+            }
+        }
+
+        val simcount = mutableMapOf<TrafficSensor, LinearTerm>()
+        for (sensor in sensors) {
+            simcount[sensor] = LinearTerm(diffModel.nVars)
+        }
+
+        for ((o, origin) in grid.withIndex()) {
+            for ((d, destination) in grid.withIndex()) {
+                val od = Pair(origin, destination)
+                if (od in affectedSensors) {
+                    val affected = affectedSensors[od]!!
+
+                    for (sensor in affected) {
+                        val sensorSumTest = simcount[sensor]!!
+                        val demTest = demand[o][d]
+                        sensorSumTest.addTerm(demTest, totalPop)
                     }
                 }
             }
         }
-        return result
+
+        // Objective
+        val obj = LinearTerm(diffModel.nVars)
+        for ((i, sensor) in sensors.withIndex()) {
+            // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
+            val simCountTerm = simcount[sensor]!!
+            obj.addConstant(sensor.measuredFlow * sensor.measuredFlow)
+            obj.addTerm(simCountTerm, -2 * sensor.measuredFlow)
+            val qTerm = QuadraticTerm(
+                diffModel.nVars,
+                simCountTerm,
+                simCountTerm,
+                1.0
+            )
+            obj.addTerm(qTerm, 1.0)
+
+        }
+
+        diffModel.setRootTerm(obj)
+        return diffModel
     }
 
-    fun exprFromMatrixSandwichT(
-        mVar: Array<Array<GRBVar>>,
+    fun diffModelFromMatrixSandwichT(
+        mVar: List<List<Term>>,
         left: D2Array<Double>,
         right: D2Array<Double>,
         transpose: Boolean = true,
         relevantRCs: Set<Pair<Int, Int>>? = null
-        ) : Array<Array<GRBLinExpr>> {
+    ) : Array<Array<LinearTerm>> {
         val n = left.shape[0] // Assume all matrices are square and same size
 
         val result = Array(n) {
             Array(n) {
-                GRBLinExpr()
+                LinearTerm(n * n)
             }
         }
 
@@ -767,7 +670,6 @@ object WACalClean {
 
                 val activeEntry = result[row][col]
 
-                // TODO store coeff in matrix and get rid of too small ones
                 for (i in 0 until n) {
                     if (right[i, col] == 0.0) { continue }
                     for (j in 0 until n) {
@@ -779,9 +681,9 @@ object WACalClean {
                         }
 
                         if (transpose) {
-                            activeEntry.addTerm(coeff, mVar[i][j])
+                            activeEntry.addTerm(mVar[i][j], coeff)
                         } else {
-                            activeEntry.addTerm(coeff, mVar[j][i])
+                            activeEntry.addTerm(mVar[i][j], coeff)
                         }
                     }
                 }
@@ -818,6 +720,7 @@ object WACalClean {
 
             allFlows[sensor] = simFlow
         }
+        println("OBJ-VAL: $mse")
         mse /= sensors.size
 
         println("MSE: $mse")
