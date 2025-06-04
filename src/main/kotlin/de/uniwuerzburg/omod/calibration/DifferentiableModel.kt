@@ -1,24 +1,8 @@
 package de.uniwuerzburg.omod.calibration
 
-import javax.sound.sampled.Line
 import kotlin.math.exp
 
 fun main () {
-    /*val test = DifferentiableModel(2)
-
-    val lTerm = LinearTerm(2)
-
-    val lbTerm = LinearBaseTerm(2)
-    lbTerm.addTerm(0, 2.0)
-    lbTerm.addTerm(1, 3.0)
-
-    lTerm.addTerm(lbTerm, 2.0)
-
-    val vals = doubleArrayOf(1.0, 1.0)
-    println(lTerm.evaluate(vals))
-    println(lTerm.gradient(0, vals))
-    println(lTerm.gradient(1, vals))*/
-
     linearTest1()
     quadraticTest1()
     quadraticTest2()
@@ -26,6 +10,9 @@ fun main () {
     exponTest2()
     divisionTermTest1()
     divisionTermTest2()
+    cacheTest1()
+    linearRELUTest1()
+    linearRELUTest2()
 }
 
 fun linearTest1() {
@@ -41,7 +28,9 @@ fun linearTest1() {
     term.addTerm(1, 1.0)
 
     val gx = term.gradient(0, vals)
+    term.clearGradientCache()
     val gy = term.gradient(1, vals)
+    term.clearGradientCache()
     val x = term.evaluate(vals)
 
     require(gx == 3.0)
@@ -63,11 +52,12 @@ fun quadraticTest1() {
     val yTerm = LinearBaseTerm(2)
     yTerm.addTerm(1, 1.0)
 
-
     val qTerm = QuadraticTerm(2, xTerm, yTerm, 3.0)
 
     val gx = qTerm.gradient(0, vals)
+    qTerm.clearGradientCache()
     val gy = qTerm.gradient(1, vals)
+    qTerm.clearGradientCache()
     val x = qTerm.evaluate(vals)
 
     require(gx == 15.0)
@@ -89,7 +79,9 @@ fun quadraticTest2() {
     val qTerm = QuadraticTerm(2, xTerm, xTerm, 1.5)
 
     val gx = qTerm.gradient(0, vals)
+    qTerm.clearGradientCache()
     val gy = qTerm.gradient(1, vals)
+    qTerm.clearGradientCache()
     val x = qTerm.evaluate(vals)
 
     require(gx == 3 * 0.3)
@@ -119,7 +111,9 @@ fun exponTest1() {
     fTerm.addTerm(eTerm, 2.0)
 
     val gx = fTerm.gradient(0, vals)
+    fTerm.clearGradientCache()
     val gy = fTerm.gradient(1, vals)
+    fTerm.clearGradientCache()
     val x = fTerm.evaluate(vals)
 
     require(gx == 1484.131591025766)
@@ -157,7 +151,9 @@ fun exponTest2() {
     fTerm.addTerm(eTerm, 3.3)
 
     val gx = fTerm.gradient(0, vals)
+    fTerm.clearGradientCache()
     val gy = fTerm.gradient(1, vals)
+    fTerm.clearGradientCache()
     val x = fTerm.evaluate(vals)
 
     require(gx == -0.001107026672078289)
@@ -183,7 +179,9 @@ fun divisionTermTest1() {
     val dTerm = DivisionTerm(2, xTerm, yTerm)
 
     val gx = dTerm.gradient(0, vals)
+    dTerm.clearGradientCache()
     val gy = dTerm.gradient(1, vals)
+    dTerm.clearGradientCache()
     val x = dTerm.evaluate(vals)
 
     require(gx == -0.8333333333333334)
@@ -210,13 +208,117 @@ fun divisionTermTest2() {
     val dTerm = DivisionTerm(2, dividend, divisor)
 
     val gx = dTerm.gradient(0, vals)
+    dTerm.clearGradientCache()
     val gy = dTerm.gradient(1, vals)
+    dTerm.clearGradientCache()
     val x = dTerm.evaluate(vals)
 
     require(gx == (-6.0 / 16.0))
     require(gy == -0.25)
     require(x ==  -0.5)
     println("divisionTermTest2 OK")
+}
+
+fun cacheTest1() {
+    // f: 2e(xy)
+    // value: x=1, y=5
+    // expected gradient: d/dx = 10e(5) = 1484.131591025766, d/dy = 2e(5) = 296.8263182051532
+    // expected value: 2e(5) = 296.8263182051532
+    val vals = doubleArrayOf(1.0, 5.0)
+
+    val xTerm = LinearBaseTerm(2)
+    xTerm.addTerm(0, 1.0)
+
+    val yTerm = LinearBaseTerm(2)
+    yTerm.addTerm(1, 1.0)
+
+    val qTerm = QuadraticTerm(2, xTerm, yTerm, 1.0)
+
+    val eTerm = ExponentialTerm(2, qTerm)
+
+    val fTerm = LinearTerm(2)
+    fTerm.addTerm(eTerm, 2.0)
+
+    val gx = fTerm.gradient(0, vals)
+    fTerm.clearGradientCache()
+    val gy = fTerm.gradient(1, vals)
+    fTerm.clearGradientCache()
+    val x = fTerm.evaluate(vals)
+    fTerm.clearEvalCache()
+
+    require(gx == 1484.131591025766)
+    require(gy == 296.8263182051532)
+    require(x == 296.8263182051532)
+
+    // TEST 2
+
+    // f: 2e(xy)
+    // value: x=1, y=-1
+    // expected gradient: d/dx = -2e(-1) = -0.7357588823428847
+    //                    d/dy = 2e(-1) = 0.7357588823428847
+    // expected value: 2e(-1) = 0.7357588823428847
+    val vals2 = doubleArrayOf(1.0, -1.0)
+
+    val gx2 = fTerm.gradient(0, vals2)
+    fTerm.clearGradientCache()
+    val gy2 = fTerm.gradient(1, vals2)
+    fTerm.clearGradientCache()
+    val x2 = fTerm.evaluate(vals)
+    fTerm.clearEvalCache()
+
+    require(gx2 == -0.7357588823428847)
+    require(gy2 == 0.7357588823428847)
+    require(x2  == 0.7357588823428847)
+
+    println("cacheTest1 OK")
+}
+
+fun linearRELUTest1() {
+    // f: 3 RELU(x) + 1 RELU(y)
+    // value: x=1, y=1
+    // expected gradient: d/dx = 3, d/dy = 1
+    // expected value: 4
+    val vals = doubleArrayOf(1.0, 1.0)
+
+    val term = LinearBaseRELUTerm(2)
+
+    term.addTerm(0, 3.0)
+    term.addTerm(1, 1.0)
+
+    val gx = term.gradient(0, vals)
+    term.clearGradientCache()
+    val gy = term.gradient(1, vals)
+    term.clearGradientCache()
+    val x = term.evaluate(vals)
+
+    require(gx == 3.0)
+    require(gy == 1.0)
+    require(x == 4.0)
+    println("linearRELUTest1 OK")
+}
+
+fun linearRELUTest2() {
+    // f: 2.2 RELU(x) + 1 RELU(y)
+    // value: x=-1.2, y=1
+    // expected gradient: d/dx = 0, d/dy = 1
+    // expected value: 1
+    val vals = doubleArrayOf(-1.2, 1.0)
+
+    val term = LinearBaseRELUTerm(2)
+
+    term.addTerm(0, 3.0)
+    term.addTerm(1, 1.0)
+
+    val gx = term.gradient(0, vals)
+    term.clearGradientCache()
+    val gy = term.gradient(1, vals)
+    term.clearGradientCache()
+    val x = term.evaluate(vals)
+
+    require(gx == 0.0)
+    require(gy == 1.0)
+    require(x == 1.0)
+    println("linearRELUTest2 OK")
 }
 
 interface Term {
@@ -503,6 +605,51 @@ class LinearBaseTerm(nVars: Int): Term {
 
     override fun clearGradientCache() { }
 }
+
+class LinearBaseRELUTerm(nVars: Int): Term {
+    val coefficients = DoubleArray(nVars) {0.0}
+    var intercept = 0.0
+    var evalCacheHot = false
+    var evalCache: Double = 0.0
+
+    fun addTerm(variable: Int, coefficient: Double) {
+        coefficients[variable] += coefficient
+    }
+
+    fun addConstant(value: Double) {
+        intercept += value
+    }
+
+    override fun gradient(variable: Int, vals: DoubleArray) : Double {
+        return if(vals[variable] <= 0.0) {
+            0.0
+        } else {
+            coefficients[variable]
+        }
+    }
+
+    override fun evaluate(vals: DoubleArray) : Double {
+        if (evalCacheHot) {
+            return evalCache
+        }
+        var result = intercept
+        for (i in coefficients.indices) {
+            if (vals[i] > 0.0) {
+                result += coefficients[i] * vals[i]
+            }
+        }
+        evalCacheHot = true
+        evalCache = result
+        return result
+    }
+
+    override fun clearEvalCache() {
+        evalCacheHot = false
+    }
+
+    override fun clearGradientCache() { }
+}
+
 
 /*
 class QuadraticBaseTerm(nVars: Int): Term {
