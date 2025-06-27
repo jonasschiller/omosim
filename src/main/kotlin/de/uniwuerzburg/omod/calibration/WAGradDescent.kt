@@ -683,7 +683,7 @@ object WAGradDescent {
                         if (transpose) {
                             activeEntry.addTerm(mVar[i][j], coeff)
                         } else {
-                            activeEntry.addTerm(mVar[i][j], coeff)
+                            activeEntry.addTerm(mVar[j][i], coeff)
                         }
                     }
                 }
