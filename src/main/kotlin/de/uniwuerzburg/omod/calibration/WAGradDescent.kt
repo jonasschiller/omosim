@@ -1,22 +1,23 @@
 package de.uniwuerzburg.omod.calibration
 
-import com.gurobi.gurobi.*
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.models.*
-import de.uniwuerzburg.omod.utils.ProgressBar
 import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
 import org.jetbrains.kotlinx.multik.ndarray.data.set
-import org.jetbrains.kotlinx.multik.ndarray.operations.*
+import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
+import org.jetbrains.kotlinx.multik.ndarray.operations.plus
+import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
+import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
+import smile.math.BFGS
 import java.io.FileOutputStream
 import kotlin.math.abs
-import kotlin.math.exp
 import kotlin.math.pow
 import kotlin.time.measureTime
 import kotlin.time.measureTimedValue
@@ -41,28 +42,57 @@ object WAGradDescent {
         val expected = getExpectedCountPerAgent(oi, grid)
         eval(expected, sensors, totalPop, grid, affectedLinks)
 
-        val (diffModel, time) = measureTimedValue {
+        val (pair, time) = measureTimedValue {
             buildDiffModel(grid, totalPop, affectedLinks, sensors, oi, destinationFinder)
         }
+        val (diffModel, simCount) = pair
+
+        val optObj = diffModel.evaluate(doubleArrayOf(1.6663025844909633E-14, 1.2115405027742734E-13, 0.001677852326036581, 2.147830690058413E-14, 1.5356215925314123E-11))
+        println("OptObj $optObj")
+        println("should be 9.197306505472426E8")
 
         println("-----")
         println(time)
         println("-----")
 
-        val seedVals = DoubleArray(5) {0.01} //(280.688, 727.141, 611.394, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        val seedVals = doubleArrayOf(280.688, 727.141, 611.394, 0.0, 0.0)//DoubleArray(5) {0.01} //(280.688, 727.141, 611.394, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
-        val parameters = gradDescent(diffModel, seedVals, iterations = 100, lr = 1.0e-8)
+        //val parameters = gradDescent(diffModel, seedVals, iterations = 100, lr = 1.0e-8)
+        //gradDescent(diffModel, seedVals, iterations = 100, lr = 1.0e-8)
+        val parameters = lbfgs(diffModel, seedVals)
         println("Parameters:")
         println(parameters.toList())
+
+        println("_".repeat(20*4 + 5*3))
+        println("${"Sensor".padEnd(20)} | \t" +
+                "${"Flow AltOpt".padEnd(20)} | \t" +
+                "Flow Measured".padEnd(20)
+        )
+        println("_".repeat(20) +
+                " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20))
+        var myobjval = 0.0
+        for ((i, sensor) in sensors.withIndex()) {
+            val optVal = simCount[sensor]!!.evaluate(parameters)
+            println(
+                "${sensors[i].name.padEnd(20)} | \t" +
+                        "${optVal.toString().padEnd(20)} | \t" +
+                        sensors[i].measuredFlow.toString().padEnd(20)
+            )
+            myobjval += (sensors[i].measuredFlow - optVal) * (sensors[i].measuredFlow - optVal)
+        }
+        println("MSE: ${myobjval /sensors.size}")
+
+
         val matrix = mk.zeros<Double>(grid.size, grid.size)
         for (o in 0 until grid.size) {
             val weights = mutableListOf<Double>()
             for (d in 0 until grid.size) {
-                val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops /1000 }
-                val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices /1000}
-                val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools /1000}
-                val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities /1000}
-                val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship /1000}
+                val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops }
+                val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices}
+                val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools }
+                val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities }
+                val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship }
                 /*val retailArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RETAIL }.sumOf { it.osmProperties.area }
                 val indArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.INDUSTRIAL }.sumOf { it.osmProperties.area }
                 val commArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.COMMERCIAL }.sumOf { it.osmProperties.area }
@@ -77,14 +107,36 @@ object WAGradDescent {
                 weight += parameters[6] * indArea
                 weight += parameters[7] * commArea
                 weight += parameters[8] * resArea*/
-                weights.add(exp(weight))
+                weights.add(weight)
             }
             val wsum = weights.sum()
             for (d in 0 until grid.size) {
                 matrix[o, d] = weights[d] / wsum
             }
         }
+
+
+        FileOutputStream("LBFGSTargetMatrix.csv").apply {
+            val writer = bufferedWriter()
+            for(o in grid.indices) {
+                for (d in grid.indices) {
+                    writer.write("${matrix!![o, d]};")
+                }
+                writer.newLine()
+            }
+            writer.flush()
+        }
+
         return  matrix
+    }
+
+    fun lbfgs(model: DifferentiableModel, vals: DoubleArray) : DoubleArray {
+        println("LBFGS-B")
+        println("Start: ${model.evaluate(vals)}")
+        val solution = BFGS.minimize(model, 5, vals, DoubleArray(model.nVars){0.0},  DoubleArray(model.nVars){1e6}, 1e-9, 100)
+        println("Solution: $solution")
+        println("Confirm: ${model.evaluate(vals)}")
+        return vals
     }
 
     fun gradDescent(model: DifferentiableModel, vals: DoubleArray, iterations: Int = 10, lr: Double = 1.0e-9) :
@@ -113,8 +165,11 @@ object WAGradDescent {
                 val loss = model.evaluate(currentValues)
                 loss
             }
-            print("Iteration $i, loss: $loss \t took $time \r")
+
+            print("Iteration $i, vals ${currentValues.toList().toString()}, loss: $loss \t took $time \r")
         }
+        val loss = model.evaluate(currentValues)
+        println("Solution loss: $loss")
         return currentValues
     }
 
@@ -433,7 +488,7 @@ object WAGradDescent {
         sensors: List<TrafficSensor>,
         oi: OptimizationInput,
         destinationFinder: DestinationFinderDefault
-    ) : DifferentiableModel {
+    ) : Pair<DifferentiableModel, Map<TrafficSensor, LinearTerm>> {
         val n = grid.size
         println("Building diff model with grid size: $n")
 
@@ -465,11 +520,11 @@ object WAGradDescent {
             val weightTerms = mutableListOf<Term>()
             val rowSumTerm = LinearTerm(diffModel.nVars)
             for (d in 0 until n) {
-               val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops /1000}
-               val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices /1000}
-               val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools /1000}
-               val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities /1000}
-               val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship /1000}
+               val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops}
+               val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices}
+               val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools}
+               val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities}
+               val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship}
                /*val retailArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RETAIL }.sumOf { it.osmProperties.area }
                val indArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.INDUSTRIAL }.sumOf { it.osmProperties.area }
                val commArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.COMMERCIAL }.sumOf { it.osmProperties.area }
@@ -484,10 +539,10 @@ object WAGradDescent {
                weight.addTerm(6, indArea)
                weight.addTerm(7, commArea)
                weight.addTerm(8, resArea)*/
-               val eWeight = ExponentialTerm(diffModel.nVars, weight)
+               //val eWeight = ExponentialTerm(diffModel.nVars, weight)
 
-               rowSumTerm.addTerm(eWeight, 1.0)
-               weightTerms.add(eWeight)
+               rowSumTerm.addTerm(weight, 1.0)
+               weightTerms.add(weight)
             }
             for (d in 0 until n) {
                 val scaledWeight = DivisionTerm(diffModel.nVars, weightTerms[d], rowSumTerm)
@@ -642,7 +697,7 @@ object WAGradDescent {
         }
 
         diffModel.setRootTerm(obj)
-        return diffModel
+        return diffModel to simcount
     }
 
     fun diffModelFromMatrixSandwichT(

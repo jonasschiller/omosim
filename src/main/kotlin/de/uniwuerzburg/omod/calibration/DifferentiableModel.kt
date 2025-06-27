@@ -330,7 +330,7 @@ interface Term {
 
 class DifferentiableModel (
     val nVars: Int
-) : Term {
+) : Term, smile.util.function.DifferentiableMultivariateFunction {
     var root: Term = LinearBaseTerm(nVars)
 
     fun setRootTerm(term: Term) {
@@ -355,6 +355,21 @@ class DifferentiableModel (
 
     override fun clearGradientCache() {
         root.clearGradientCache()
+    }
+
+    // SMILE interface
+    override fun f(p0: DoubleArray?): Double {
+        return evaluate(p0!!)
+    }
+
+    override fun g(x: DoubleArray?, gradient: DoubleArray?): Double {
+        val result = evaluate(x!!)
+        for (i in 0 until nVars) {
+            gradient!![i] = gradient(i, x)
+        }
+        clearGradientCache()
+        clearEvalCache()
+        return result
     }
 }
 

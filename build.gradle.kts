@@ -43,6 +43,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:multik-core:0.2.3")
     implementation("org.jetbrains.kotlinx:multik-default:0.2.3")
     implementation("com.gurobi:gurobi:11.0.2")
+    implementation("com.github.haifengl:smile-core:4.4.0")
 }
 
 tasks.test {
