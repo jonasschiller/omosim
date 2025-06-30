@@ -17,8 +17,7 @@ import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
 import smile.math.BFGS
 import java.io.FileOutputStream
-import kotlin.math.abs
-import kotlin.math.pow
+import kotlin.math.*
 import kotlin.time.measureTime
 import kotlin.time.measureTimedValue
 
@@ -47,19 +46,18 @@ object WAGradDescent {
         }
         val (diffModel, simCount) = pair
 
-        val optObj = diffModel.evaluate(doubleArrayOf(1.6663025844909633E-14, 1.2115405027742734E-13, 0.001677852326036581, 2.147830690058413E-14, 1.5356215925314123E-11))
-        println("OptObj $optObj")
-        println("should be 9.197306505472426E8")
-
         println("-----")
         println(time)
         println("-----")
 
-        val seedVals = doubleArrayOf(280.688, 727.141, 611.394, 0.0, 0.0)//DoubleArray(5) {0.01} //(280.688, 727.141, 611.394, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+        val seedVals = doubleArrayOf(-0.01, -0.01, 0.01, 0.01, 0.01, 0.01, 0.01)//DoubleArray(5) {0.01} //(280.688, 727.141, 611.394, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
         //val parameters = gradDescent(diffModel, seedVals, iterations = 100, lr = 1.0e-8)
         //gradDescent(diffModel, seedVals, iterations = 100, lr = 1.0e-8)
-        val parameters = lbfgs(diffModel, seedVals)
+        val (parameters, lbfgstime) = measureTimedValue { lbfgs(diffModel, seedVals) }
+        println("LBFGS time: $lbfgstime")
+
         println("Parameters:")
         println(parameters.toList())
 
@@ -84,31 +82,52 @@ object WAGradDescent {
         println("MSE: ${myobjval /sensors.size}")
 
 
-        val matrix = mk.zeros<Double>(grid.size, grid.size)
+        val shopMax = grid.maxOf { it.buildings.sumOf { it.osmProperties.number_shops } }
+        val officeMax = grid.maxOf { it.buildings.sumOf { it.osmProperties.number_offices } }
+        val schoolMax = grid.maxOf { it.buildings.sumOf { it.osmProperties.number_schools } }
+        val uniMax = grid.maxOf { it.buildings.sumOf { it.osmProperties.number_universities } }
+        val powMax = grid.maxOf { it.buildings.sumOf { it.osmProperties.number_place_of_worship } }
+        val allDistance = mutableListOf<Float>()
         for (o in 0 until grid.size) {
+            val distances = destinationFinder.routingCache.getDistances(grid[o], grid)
+            allDistance.addAll(distances.toList())
+        }
+        val distanceMax = allDistance.max()
+
+        val matrix = mk.zeros<Double>(grid.size, grid.size)
+
+        for (o in 0 until grid.size) {
+            val distances = destinationFinder.routingCache.getDistances(grid[o], grid)
             val weights = mutableListOf<Double>()
             for (d in 0 until grid.size) {
-                val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops }
-                val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices}
-                val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools }
-                val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities }
-                val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship }
+                val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops / shopMax}
+                val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices / officeMax}
+                val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools  /schoolMax}
+                val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities / uniMax}
+                val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship / powMax}
                 /*val retailArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RETAIL }.sumOf { it.osmProperties.area }
                 val indArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.INDUSTRIAL }.sumOf { it.osmProperties.area }
                 val commArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.COMMERCIAL }.sumOf { it.osmProperties.area }
                 val resArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RESIDENTIAL }.sumOf { it.osmProperties.area }*/
-                var weight = 0.0
-                weight += parameters[0] * nShops
-                weight += parameters[1] * nOffice
-                weight += parameters[2] * nSchool
-                weight += parameters[3] * nUni
-                weight += parameters[4] * nPOW
+                var attraction = 0.0
+                attraction += parameters[2] * nShops
+                attraction += parameters[3] * nOffice
+                attraction += parameters[4] * nSchool
+                attraction += parameters[5] * nUni
+                attraction += parameters[6] * nPOW
                 /*weight += parameters[5] * retailArea
                 weight += parameters[6] * indArea
                 weight += parameters[7] * commArea
                 weight += parameters[8] * resArea*/
+
+                val distance = max(Double.MIN_VALUE, distances[d].toDouble() / distanceMax)
+                val deterrence = exp(parameters[0] * distance + parameters[1] * ln(distance))
+
+                val weight = attraction * deterrence
+
                 weights.add(weight)
             }
+
             val wsum = weights.sum()
             for (d in 0 until grid.size) {
                 matrix[o, d] = weights[d] / wsum
@@ -133,7 +152,13 @@ object WAGradDescent {
     fun lbfgs(model: DifferentiableModel, vals: DoubleArray) : DoubleArray {
         println("LBFGS-B")
         println("Start: ${model.evaluate(vals)}")
-        val solution = BFGS.minimize(model, 5, vals, DoubleArray(model.nVars){0.0},  DoubleArray(model.nVars){1e6}, 1e-9, 100)
+        val l = DoubleArray(model.nVars){0.0}
+        val u = DoubleArray(model.nVars){1e5}
+        l[0] = -1e3
+        l[1] = -1e3
+        u[0] = 0.0
+        u[1] = 0.0
+        val solution = BFGS.minimize(model, 5, vals, l, u, 1e-5, 1500)
         println("Solution: $solution")
         println("Confirm: ${model.evaluate(vals)}")
         return vals
@@ -504,7 +529,7 @@ object WAGradDescent {
             }
         }
 
-        val diffModel = DifferentiableModel(5)
+        val diffModel = DifferentiableModel(7)
 
         // Create demand matrix dependent on the work matrix: demand(o, d | W)
         val demand = Array(n) {
@@ -513,33 +538,54 @@ object WAGradDescent {
             }
         }
 
+        val shopMax = grid.maxOf { it.buildings.sumOf { it.osmProperties.number_shops } }
+        val officeMax = grid.maxOf { it.buildings.sumOf { it.osmProperties.number_offices } }
+        val schoolMax = grid.maxOf { it.buildings.sumOf { it.osmProperties.number_schools } }
+        val uniMax = grid.maxOf { it.buildings.sumOf { it.osmProperties.number_universities } }
+        val powMax = grid.maxOf { it.buildings.sumOf { it.osmProperties.number_place_of_worship } }
+        val allDistance = mutableListOf<Float>()
+        for (o in 0 until n) {
+            val distances = destinationFinder.routingCache.getDistances(grid[o], grid)
+            allDistance.addAll(distances.toList())
+        }
+        val distanceMax = allDistance.max()
+
         val w = mutableListOf<List<Term>>()
         for (o in 0 until n) {
             val ow = mutableListOf<Term>()
+            val distances = destinationFinder.routingCache.getDistances(grid[o], grid)
 
             val weightTerms = mutableListOf<Term>()
             val rowSumTerm = LinearTerm(diffModel.nVars)
             for (d in 0 until n) {
-               val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops}
-               val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices}
-               val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools}
-               val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities}
-               val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship}
+               val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops / shopMax}
+               val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices / officeMax}
+               val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools / schoolMax}
+               val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities / uniMax}
+               val nPOW = grid[d].buildings.sumOf { it.osmProperties.number_place_of_worship / powMax}
                /*val retailArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RETAIL }.sumOf { it.osmProperties.area }
                val indArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.INDUSTRIAL }.sumOf { it.osmProperties.area }
                val commArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.COMMERCIAL }.sumOf { it.osmProperties.area }
                val resArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RESIDENTIAL }.sumOf { it.osmProperties.area }*/
-               val weight = LinearBaseTerm(diffModel.nVars)
-               weight.addTerm(0, nShops)
-               weight.addTerm(1,nOffice)
-               weight.addTerm(2, nSchool)
-               weight.addTerm(3, nUni)
-               weight.addTerm(4, nPOW)
+               val attraction = LinearBaseTerm(diffModel.nVars)
+                attraction.addTerm(2, nShops)
+                attraction.addTerm(3, nOffice)
+                attraction.addTerm(4, nSchool)
+                attraction.addTerm(5, nUni)
+                attraction.addTerm(6, nPOW)
                /*weight.addTerm(5, retailArea)
                weight.addTerm(6, indArea)
                weight.addTerm(7, commArea)
                weight.addTerm(8, resArea)*/
-               //val eWeight = ExponentialTerm(diffModel.nVars, weight)
+
+               val distance = max(Double.MIN_VALUE, distances[d].toDouble() / distanceMax)
+               val detUtil = LinearBaseTerm(diffModel.nVars)
+               detUtil.addTerm(0, distance)
+               detUtil.addTerm(1, ln(distance))
+               val deterrence = ExponentialTerm(diffModel.nVars, detUtil)
+
+
+               val weight = QuadraticTerm(diffModel.nVars, attraction, deterrence, 1.0)
 
                rowSumTerm.addTerm(weight, 1.0)
                weightTerms.add(weight)
