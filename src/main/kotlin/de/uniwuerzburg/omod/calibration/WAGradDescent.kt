@@ -51,7 +51,8 @@ object WAGradDescent {
         println("-----")
 
 
-        val seedVals = doubleArrayOf(-0.01, -0.01, 0.01, 0.01, 0.01, 0.01, 0.01)//DoubleArray(5) {0.01} //(280.688, 727.141, 611.394, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        val seedVals = DoubleArray(grid.size) { 1.0 }
+            //doubleArrayOf(-0.01, -0.01, 0.01, 0.01, 0.01, 0.01, 0.01)//DoubleArray(5) {0.01} //(280.688, 727.141, 611.394, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
         //val parameters = gradDescent(diffModel, seedVals, iterations = 100, lr = 1.0e-8)
         //gradDescent(diffModel, seedVals, iterations = 100, lr = 1.0e-8)
@@ -100,7 +101,7 @@ object WAGradDescent {
             val distances = destinationFinder.routingCache.getDistances(grid[o], grid)
             val weights = mutableListOf<Double>()
             for (d in 0 until grid.size) {
-                val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops / shopMax}
+                /*val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops / shopMax}
                 val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices / officeMax}
                 val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools  /schoolMax}
                 val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities / uniMax}
@@ -123,7 +124,9 @@ object WAGradDescent {
                 val distance = max(Double.MIN_VALUE, distances[d].toDouble() / distanceMax)
                 val deterrence = exp(parameters[0] * distance + parameters[1] * ln(distance))
 
-                val weight = attraction * deterrence
+                val weight = attraction * deterrence*/
+
+                val weight = parameters[d]
 
                 weights.add(weight)
             }
@@ -153,12 +156,12 @@ object WAGradDescent {
         println("LBFGS-B")
         println("Start: ${model.evaluate(vals)}")
         val l = DoubleArray(model.nVars){0.0}
-        val u = DoubleArray(model.nVars){1e5}
-        l[0] = -1e3
+        val u = DoubleArray(model.nVars){1e3}
+        /*l[0] = -1e3
         l[1] = -1e3
         u[0] = 0.0
-        u[1] = 0.0
-        val solution = BFGS.minimize(model, 5, vals, l, u, 1e-5, 1500)
+        u[1] = 0.0*/
+        val solution = BFGS.minimize(model, 5, vals, l, u, 1e-5, 30)
         println("Solution: $solution")
         println("Confirm: ${model.evaluate(vals)}")
         return vals
@@ -529,7 +532,7 @@ object WAGradDescent {
             }
         }
 
-        val diffModel = DifferentiableModel(7)
+        val diffModel = DifferentiableModel(grid.size)
 
         // Create demand matrix dependent on the work matrix: demand(o, d | W)
         val demand = Array(n) {
@@ -558,7 +561,7 @@ object WAGradDescent {
             val weightTerms = mutableListOf<Term>()
             val rowSumTerm = LinearTerm(diffModel.nVars)
             for (d in 0 until n) {
-               val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops / shopMax}
+               /*val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops / shopMax}
                val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices / officeMax}
                val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools / schoolMax}
                val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities / uniMax}
@@ -582,10 +585,12 @@ object WAGradDescent {
                val detUtil = LinearBaseTerm(diffModel.nVars)
                detUtil.addTerm(0, distance)
                detUtil.addTerm(1, ln(distance))
-               val deterrence = ExponentialTerm(diffModel.nVars, detUtil)
+               val deterrence = ExponentialTerm(diffModel.nVars, detUtil)*
 
 
-               val weight = QuadraticTerm(diffModel.nVars, attraction, deterrence, 1.0)
+               val weight = QuadraticTerm(diffModel.nVars, attraction, deterrence, 1.0)*/
+               val weight = LinearBaseTerm(diffModel.nVars)
+               weight.addTerm(d, 1.0)
 
                rowSumTerm.addTerm(weight, 1.0)
                weightTerms.add(weight)
