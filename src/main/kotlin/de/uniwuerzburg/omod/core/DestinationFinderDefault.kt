@@ -34,6 +34,8 @@ class DestinationFinderDefault(
     private val cellCFactors = mutableMapOf<Cell, Double>()
 
     var forceWMatrix: Map<Cell, DoubleArray>? = null
+    var forceSMatrix: Map<Cell, DoubleArray>? = null
+    var forceOMatrix: Map<Cell, DoubleArray>? = null
     /**
      * Determine the probabilistic weight that a location is a destination given an origin and activity type
      * for all possible destinations.
@@ -190,6 +192,12 @@ class DestinationFinderDefault(
         // TODO Test
         val aggZone = if ((forceWMatrix != null) && (destinations.size == forceWMatrix?.size) && activityType == ActivityType.WORK) {
             val distr = createCumDist(forceWMatrix!![origin]!!)
+            destinations[sampleCumDist(distr, rng)]
+        } else if ((forceSMatrix != null) && (destinations.size == forceSMatrix?.size) && activityType == ActivityType.SCHOOL) {
+            val distr = createCumDist(forceSMatrix!![origin]!!)
+            destinations[sampleCumDist(distr, rng)]
+        } else if ((forceOMatrix != null) && (destinations.size == forceOMatrix?.size) && activityType == ActivityType.OTHER) {
+            val distr = createCumDist(forceOMatrix!![origin]!!)
             destinations[sampleCumDist(distr, rng)]
         } else {
             // Get agg zone (might be cell or dummy is node)
