@@ -76,19 +76,19 @@ class LinkCalibratorDefault(
            staticFlowLst[sensor] = simFlow
        }
        */
-        /*val woptmatrix = WACalClean.run(
-            omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
-            modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
-            popStrata, carOwnership, finder,fullPopulation, affectedLinks,
-            sensors
-        )*/
-
-        val woptmatrixgg = WAGradDescent.run(
+        val soptmatrix = SACalClean.run(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
             popStrata, carOwnership, finder,fullPopulation, affectedLinks,
             sensors
         )
+        /*
+        val woptmatrixgg = OGradDescent.run(
+            omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
+            modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
+            popStrata, carOwnership, finder,fullPopulation, affectedLinks,
+            sensors
+        )*/
 
         val oldod = finder.determinePairProbabilities(
             omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
@@ -106,13 +106,16 @@ class LinkCalibratorDefault(
        println(test)*/
        val (_, sFlowBase, nAgentsVBase, sLocsBase) = runBatch( Array(omod.grid.size) { 1.0 } )
 
-       val wforce = mutableMapOf<Cell, DoubleArray>()
+       val sforce = mutableMapOf<Cell, DoubleArray>()
+       //val sforce = mutableMapOf<Cell, DoubleArray>()
        for ((i, cell) in omod.grid.withIndex()) {
-           wforce[cell] = woptmatrixgg.toArray()[i]
+           sforce[cell] = soptmatrix.toArray()[i]
+           //sforce[cell] = woptmatrixgg.second.toArray()[i]
        }
-       finder.forceWMatrix = wforce
+       //finder.forceWMatrix = wforce
+       finder.forceSMatrix = sforce
 
-       val (_, sFlow, nAgents, sLocs) = runBatch(  Array(omod.grid.size) { 1.0 } )
+        val (_, sFlow, nAgents, sLocs) = runBatch(  Array(omod.grid.size) { 1.0 } )
 
        // Determine affected sensors
        // TODO temporal check

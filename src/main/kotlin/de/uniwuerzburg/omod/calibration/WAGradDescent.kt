@@ -38,6 +38,7 @@ object WAGradDescent {
             grid, activityGenerator, modeChoiceCalibration, customCellFactors, popStrata, carOwnership,
             destinationFinder
         )
+        println("WORK")
         val expected = getExpectedCountPerAgent(oi, grid)
         eval(expected, sensors, totalPop, grid, affectedLinks)
 

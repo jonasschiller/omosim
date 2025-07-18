@@ -1,7 +1,6 @@
 package de.uniwuerzburg.omod.calibration
 
 import com.gurobi.gurobi.*
-import de.uniwuerzburg.omod.calibration.WACalClean.diagonal
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
@@ -23,7 +22,7 @@ import kotlin.math.pow
 import kotlin.time.measureTime
 import kotlin.time.measureTimedValue
 
-object WACalClean {
+object SACalClean {
     fun run(
         grid: List<Cell>,
         activityGenerator: ActivityGeneratorDefault,
@@ -36,18 +35,18 @@ object WACalClean {
         affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>
     ) : D2Array<Double> {
-        val oi = prepareOptInputWorkDep(
+        val oi = prepareOptInputSchoolDep(
             grid, activityGenerator, modeChoiceCalibration, customCellFactors, popStrata, carOwnership,
             destinationFinder
         )
         val expected = getExpectedCountPerAgent(oi, grid)
         eval(expected, sensors, totalPop, grid, affectedLinks)
 
-        val (wMatrix, time) = measureTimedValue {
+        val (sMatrix, time) = measureTimedValue {
             optimize(grid, totalPop, affectedLinks, sensors, oi, destinationFinder)
         }
 
-        FileOutputStream("TargetMatrix.csv").apply {
+        /*FileOutputStream("TargetMatrix.csv").apply {
             val writer = bufferedWriter()
             for(o in grid.indices) {
                 for (d in grid.indices) {
@@ -56,7 +55,7 @@ object WACalClean {
                 writer.newLine()
             }
             writer.flush()
-        }
+        }*/
 
         println("-----")
         println(time)
@@ -80,10 +79,10 @@ object WACalClean {
                 out[Pair(origin, destination)] = expectedOpt[o][d]
             }
         }*/
-        return wMatrix!!
+        return sMatrix!!
     }
 
-    fun prepareOptInputWorkDep(
+    fun prepareOptInputSchoolDep(
         grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
         customCellFactors: Map<Cell, Double>,
@@ -214,7 +213,7 @@ object WACalClean {
             )
         }
 
-        val workMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
+        val schoolMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
         val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
 
         // Determine od pair probabilities
@@ -237,11 +236,11 @@ object WACalClean {
                         continue
                     }
                     Pair(ActivityType.WORK, ActivityType.HOME) -> {
-                        workMatrix[ActivityType.HOME]!!.plusAssign(mk.identity<Double>(grid.size) * chainP)
+                        fixedMatrix[ActivityType.HOME]!!.plusAssign(homeWorkProbs * chainP)
                         continue
                     }
                     Pair(ActivityType.SCHOOL, ActivityType.HOME) -> {
-                        fixedMatrix[ActivityType.HOME]!!.plusAssign(homeSchoolProbs * chainP)
+                        schoolMatrix[ActivityType.HOME]!!.plusAssign(mk.identity<Double>(grid.size) * chainP)
                         continue
                     }
                     else -> {}
@@ -260,11 +259,11 @@ object WACalClean {
                 }
                 ActivityType.WORK -> {
                     previousProbsH = homeWorkProbs
-                    workMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
+                    fixedMatrix[nextActivity]!!.plusAssign(homeWorkProbs * chainP)
                 }
                 ActivityType.SCHOOL -> {
                     previousProbsH = homeSchoolProbs
-                    fixedMatrix[nextActivity]!!.plusAssign(homeSchoolProbs * chainP)
+                    schoolMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
                 }
                 else -> {
                     throw IllegalStateException(
@@ -286,9 +285,9 @@ object WACalClean {
                 }
                 val transitionP = transitionProbs[transitionActivity]!!
 
-                if (startActivity == ActivityType.WORK) {
+                if (startActivity == ActivityType.SCHOOL) {
                     cumMatrix = cumMatrix.dot(transitionP)
-                    workMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
+                    schoolMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
                 } else {
                     fixedMatrix[nextActivity]!!.plusAssign(previousProbsH.dot(transitionP) * chainP)
                 }
@@ -299,7 +298,7 @@ object WACalClean {
 
         val oi = OptimizationInput(
             homeProbs,
-            workMatrix,
+            schoolMatrix,
             fixedMatrix,
             transitionProbs,
             carProbs
@@ -324,7 +323,7 @@ object WACalClean {
 
     data class OptimizationInput (
         val homeProbs: D2Array<Double>,
-        val workMatrix: Map<ActivityType,  D2Array<Double>>,
+        val schoolMatrix: Map<ActivityType,  D2Array<Double>>,
         val fixedMatrix: Map<ActivityType,  D2Array<Double>>,
         val transitionMatrix: Map<ActivityType,  D2Array<Double>>,
         val carProbs: Map<ActivityType,  D2Array<Double>>,
@@ -334,8 +333,8 @@ object WACalClean {
         // Result: Expected trip count on each od-paid of one agent on one day
         val expectedCountPerAgent = mk.zeros<Double>(grid.size, grid.size)
 
-        val wTMatrix = oi.transitionMatrix[ActivityType.WORK]!!
-        val workProbs = oi.homeProbs.dot(wTMatrix)
+        val sTMatrix = oi.transitionMatrix[ActivityType.SCHOOL]!!
+        val schoolProbs = oi.homeProbs.dot(sTMatrix)
 
         // Flex
         for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
@@ -346,10 +345,10 @@ object WACalClean {
             }
             val carP = oi.carProbs[transitionActivity]!!
 
-            val wDep = oi.homeProbs.diagonal().dot(wTMatrix).dot(oi.workMatrix[flexActivity]!!)
+            val sDep = oi.homeProbs.diagonal().dot(sTMatrix).dot(oi.schoolMatrix[flexActivity]!!)
             val fix = oi.fixedMatrix[flexActivity]!!
             val total = mk.ones<Double>(grid.size).expandDims(0).asDNArray()
-                .asD2Array().dot(wDep.plus(fix))
+                .asD2Array().dot(sDep.plus(fix))
                 .diagonal().dot(oi.transitionMatrix[transitionActivity]!!)
 
             expectedCountPerAgent.plusAssign(total.times(carP))
@@ -359,31 +358,31 @@ object WACalClean {
         for (fixActivity in listOf(ActivityType.HOME)) {
             val carP = oi.carProbs[fixActivity]!!
 
-            val wDep = oi.homeProbs.diagonal().dot(wTMatrix).dot(oi.workMatrix[fixActivity]!!)
+            val sDep = oi.homeProbs.diagonal().dot(sTMatrix).dot(oi.schoolMatrix[fixActivity]!!)
             val fix = oi.fixedMatrix[fixActivity]!!
-            val total = wDep.plus(fix).transpose()
+            val total = sDep.plus(fix).transpose()
 
             expectedCountPerAgent.plusAssign(total.times(carP))
         }
 
         // School
         for (fixActivity in listOf(ActivityType.SCHOOL)) {
-           val carP = oi.carProbs[fixActivity]!!
+            val carP = oi.carProbs[fixActivity]!!
 
-           val wDep = oi.homeProbs.diagonal().dot(wTMatrix).dot(oi.workMatrix[fixActivity]!!)
-           val fix = oi.fixedMatrix[fixActivity]!!
-           val total = wDep.plus(fix).transpose().dot(oi.transitionMatrix[fixActivity]!!)
+            val sDep = schoolProbs.diagonal().dot(oi.schoolMatrix[fixActivity]!!).transpose()
+            val fix = oi.fixedMatrix[fixActivity]!!.transpose().dot(oi.transitionMatrix[fixActivity]!!)
+            val total = sDep.plus(fix)
 
-           expectedCountPerAgent.plusAssign(total.times(carP))
+            expectedCountPerAgent.plusAssign(total.times(carP))
         }
 
         // Work
         for (fixActivity in listOf(ActivityType.WORK)) {
             val carP = oi.carProbs[fixActivity]!!
 
-            val wDep = workProbs.diagonal().dot(oi.workMatrix[fixActivity]!!).transpose()
-            val fix = oi.fixedMatrix[fixActivity]!!.transpose().dot(oi.transitionMatrix[fixActivity]!!)
-            val total = wDep.plus(fix)
+            val sDep = oi.homeProbs.diagonal().dot(sTMatrix).dot(oi.schoolMatrix[fixActivity]!!)
+            val fix = oi.fixedMatrix[fixActivity]!!
+            val total = sDep.plus(fix).transpose().dot(oi.transitionMatrix[fixActivity]!!)
 
             expectedCountPerAgent.plusAssign(total.times(carP))
         }
@@ -485,7 +484,7 @@ object WACalClean {
 
                     rowSum.addTerm(1.0, w[o][d])
                     //model.addConstr(w[o][d], GRB.EQUAL, weight, "Test")
-                    //model.addConstr(w[o][d], GRB.EQUAL, oi.transitionMatrix[ActivityType.WORK]!![o,d], "Test")
+                    //model.addConstr(w[o][d], GRB.EQUAL, oi.transitionMatrix[ActivityType.SCHOOL]!![o,d], "Test")
                 }
                 model.addConstr(rowSum, GRB.EQUAL, 1.0, "ProbCondition")
             }
@@ -498,7 +497,7 @@ object WACalClean {
                     flexActivity
                 }
                 val mFixed = oi.fixedMatrix[flexActivity]!!
-                val mWDep = oi.workMatrix[flexActivity]!!
+                val mSDep = oi.schoolMatrix[flexActivity]!!
                 val pHome = oi.homeProbs.flatten()
                 val mTransition = oi.transitionMatrix[transitionActivity]!!
                 val mCarP = oi.carProbs[transitionActivity]!! // TODO transition or flex?
@@ -510,7 +509,7 @@ object WACalClean {
                     for (a in 0 until n) {
                         cnst += mFixed[a, o]
                         for (b in 0 until n) {
-                            val coeff = pHome[a] * mWDep[b, o]
+                            val coeff = pHome[a] * mSDep[b, o]
                             if (abs(coeff) <= (1/n.toDouble()).pow(1.5)) {
                                 continue
                             }
@@ -532,16 +531,16 @@ object WACalClean {
             for (fixActivity in listOf(ActivityType.HOME)) {
                 val carP = oi.carProbs[fixActivity]!!
 
-                val left = oi.workMatrix[fixActivity]!!.transpose()
+                val left = oi.schoolMatrix[fixActivity]!!.transpose()
                 val right = oi.homeProbs.diagonal().transpose()
-                val wExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
+                val sExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
 
                 val fix = oi.fixedMatrix[fixActivity]!!.transpose().times(carP)
 
                 for (o in 0 until n) {
                     for (d in 0 until n) {
                         if (Pair(o, d) !in relevantODs) { continue }
-                        demand[o][d].multAdd(carP[o, d], wExpr[o][d])
+                        demand[o][d].multAdd(carP[o, d], sExpr[o][d])
                         demand[o][d].addConstant(fix[o, d])
                     }
                 }
@@ -550,36 +549,13 @@ object WACalClean {
             // School
             for (fixActivity in listOf(ActivityType.SCHOOL)) {
                 val carP = oi.carProbs[fixActivity]!!
-
-                val left = oi.workMatrix[fixActivity]!!.transpose()
-                val right = oi.homeProbs
-                    .diagonal()
-                    .transpose()
-                    .dot(oi.transitionMatrix[fixActivity]!!)
-                val wExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
-
-                val fix = oi.fixedMatrix[fixActivity]!!.transpose()
-                    .dot(oi.transitionMatrix[fixActivity]!!)
-                    .times(carP)
-
-                for (o in 0 until n) {
-                    for (d in 0 until n) {
-                        if (Pair(o, d) !in relevantODs) { continue }
-                        demand[o][d].multAdd(carP[o, d], wExpr[o][d])
-                        demand[o][d].addConstant(fix[o, d])
-                    }
-                }
-            }
-
-            for (fixActivity in listOf(ActivityType.WORK)) {
-                val carP = oi.carProbs[fixActivity]!!
                 val pHome = oi.homeProbs.flatten()
 
                 // Start at work
-                val mWT = oi.workMatrix[fixActivity]!!.transpose()
-                val wProbs = Array(n) { GRBLinExpr() }
+                val mST = oi.schoolMatrix[fixActivity]!!.transpose()
+                val sProbs = Array(n) { GRBLinExpr() }
                 for (col in 0 until n) {
-                    val activeExpr = wProbs[col]
+                    val activeExpr = sProbs[col]
                     for (row in 0 until n) {
                         activeExpr.addTerm(pHome[row], w[row][col])
                     }
@@ -588,13 +564,37 @@ object WACalClean {
                 // Not start at work
                 val left = oi.fixedMatrix[fixActivity]!!.transpose()
                 val right = mk.identity<Double>(n)
-                val wExprNSW = exprFromMatrixSandwichT(w, left, right, transpose = false, relevantRCs = relevantODs)
+                val sExprNSW = exprFromMatrixSandwichT(w, left, right, transpose = false, relevantRCs = relevantODs)
 
                 for (o in 0 until n) {
                     for (d in 0 until n) {
                         if (Pair(o, d) !in relevantODs) { continue }
-                        demand[o][d].multAdd(carP[o, d], wExprNSW[o][d])
-                        demand[o][d].multAdd(mWT[o][d] * carP[o, d], wProbs[d])
+                        demand[o][d].multAdd(carP[o, d], sExprNSW[o][d])
+                        demand[o][d].multAdd(mST[o][d] * carP[o, d], sProbs[d])
+                    }
+                }
+            }
+
+            // Work
+            for (fixActivity in listOf(ActivityType.WORK)) {
+                val carP = oi.carProbs[fixActivity]!!
+
+                val left = oi.schoolMatrix[fixActivity]!!.transpose()
+                val right = oi.homeProbs
+                    .diagonal()
+                    .transpose()
+                    .dot(oi.transitionMatrix[fixActivity]!!)
+                val sExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
+
+                val fix = oi.fixedMatrix[fixActivity]!!.transpose()
+                    .dot(oi.transitionMatrix[fixActivity]!!)
+                    .times(carP)
+
+                for (o in 0 until n) {
+                    for (d in 0 until n) {
+                        if (Pair(o, d) !in relevantODs) { continue }
+                        demand[o][d].multAdd(carP[o, d], sExpr[o][d])
+                        demand[o][d].addConstant(fix[o, d])
                     }
                 }
             }
