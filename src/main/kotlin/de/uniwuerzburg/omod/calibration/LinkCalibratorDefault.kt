@@ -76,7 +76,7 @@ class LinkCalibratorDefault(
            staticFlowLst[sensor] = simFlow
        }
        */
-        val soptmatrix = SACalClean.run(
+        val ooptmatrix = OACalClean.run(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
             popStrata, carOwnership, finder,fullPopulation, affectedLinks,
@@ -106,14 +106,14 @@ class LinkCalibratorDefault(
        println(test)*/
        val (_, sFlowBase, nAgentsVBase, sLocsBase) = runBatch( Array(omod.grid.size) { 1.0 } )
 
-       val sforce = mutableMapOf<Cell, DoubleArray>()
+       val oforce = mutableMapOf<Cell, DoubleArray>()
        //val sforce = mutableMapOf<Cell, DoubleArray>()
        for ((i, cell) in omod.grid.withIndex()) {
-           sforce[cell] = soptmatrix.toArray()[i]
+           oforce[cell] = ooptmatrix.toArray()[i]
            //sforce[cell] = woptmatrixgg.second.toArray()[i]
        }
        //finder.forceWMatrix = wforce
-       finder.forceSMatrix = sforce
+       finder.forceOMatrix = oforce
 
         val (_, sFlow, nAgents, sLocs) = runBatch(  Array(omod.grid.size) { 1.0 } )
 
