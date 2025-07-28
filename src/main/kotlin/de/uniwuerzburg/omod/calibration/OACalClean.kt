@@ -16,10 +16,8 @@ import org.jetbrains.kotlinx.multik.ndarray.operations.plus
 import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
-import java.io.FileOutputStream
 import kotlin.math.abs
 import kotlin.math.pow
-import kotlin.time.measureTime
 import kotlin.time.measureTimedValue
 
 object OACalClean {
@@ -215,6 +213,7 @@ object OACalClean {
         }
 
         val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
+        val otherMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
 
         // Determine od pair probabilities
         // TODO time
@@ -252,17 +251,21 @@ object OACalClean {
             // Setup
             var cumMatrix = mk.identity<Double>(grid.size)
             var previousProbsH: D2Array<Double>
+            var previousProbsHnotO: D2Array<Double>
             when(startActivity) {
                 ActivityType.HOME -> {
                     previousProbsH = homeProbs.diagonal()
+                    previousProbsHnotO = homeProbs.diagonal()
                     fixedMatrix[nextActivity]!!.plusAssign(homeProbs.diagonal() * chainP)
                 }
                 ActivityType.WORK -> {
                     previousProbsH = homeWorkProbs
+                    previousProbsHnotO = homeWorkProbs
                     fixedMatrix[nextActivity]!!.plusAssign(homeWorkProbs * chainP)
                 }
                 ActivityType.SCHOOL -> {
                     previousProbsH = homeSchoolProbs
+                    previousProbsHnotO = homeSchoolProbs
                     fixedMatrix[nextActivity]!!.plusAssign(homeSchoolProbs * chainP)
                 }
                 else -> {
@@ -285,14 +288,23 @@ object OACalClean {
                 }
                 val transitionP = transitionProbs[transitionActivity]!!
 
-                fixedMatrix[nextActivity]!!.plusAssign(previousProbsH.dot(transitionP) * chainP)
+                val oBefore = chain.take(next-1).count { it == ActivityType.OTHER }
+                if ((oBefore >= 1) and (nextActivity != ActivityType.OTHER)) {
+                    otherMatrix[nextActivity]!!.plusAssign(previousProbsHnotO * chainP)
+                } else {
+                    fixedMatrix[nextActivity]!!.plusAssign(previousProbsH.dot(transitionP) * chainP)
+                }
 
                 previousProbsH = previousProbsH.dot(transitionP)
+                if (activity != ActivityType.OTHER) {
+                    previousProbsHnotO = previousProbsHnotO.dot(transitionP)
+                }
             }
         }
 
         val oi = OptimizationInput(
             homeProbs,
+            otherMatrix,
             fixedMatrix,
             transitionProbs,
             carProbs
@@ -317,6 +329,7 @@ object OACalClean {
 
     data class OptimizationInput (
         val homeProbs: D2Array<Double>,
+        val otherMatrix: Map<ActivityType, D2Array<Double>>,
         val fixedMatrix: Map<ActivityType,  D2Array<Double>>,
         val transitionMatrix: Map<ActivityType,  D2Array<Double>>,
         val carProbs: Map<ActivityType,  D2Array<Double>>,
@@ -325,6 +338,8 @@ object OACalClean {
     private fun getExpectedCountPerAgent(oi: OptimizationInput, grid: List<Cell>) : D2Array<Double> {
         // Result: Expected trip count on each od-paid of one agent on one day
         val expectedCountPerAgent = mk.zeros<Double>(grid.size, grid.size)
+
+        val oTMatrix = oi.transitionMatrix[ActivityType.OTHER]!!
 
         // Flex
         for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
@@ -335,20 +350,29 @@ object OACalClean {
             }
             val carP = oi.carProbs[transitionActivity]!!
 
-            val fix = oi.fixedMatrix[flexActivity]!!
-            val total = mk.ones<Double>(grid.size).expandDims(0).asDNArray()
-                .asD2Array().dot(fix)
-                .diagonal().dot(oi.transitionMatrix[transitionActivity]!!)
-
-            expectedCountPerAgent.plusAssign(total.times(carP))
+            if (flexActivity == ActivityType.OTHER) {
+                val fix = oi.fixedMatrix[flexActivity]!!
+                val total = mk.ones<Double>(grid.size).expandDims(0).asDNArray()
+                    .asD2Array().dot(fix)
+                    .diagonal().dot(oi.transitionMatrix[transitionActivity]!!)
+                expectedCountPerAgent.plusAssign(total.times(carP))
+            } else {
+                val oDep = oi.otherMatrix[flexActivity]!!.dot(oTMatrix)
+                val fix = oi.fixedMatrix[flexActivity]!!
+                val total = mk.ones<Double>(grid.size).expandDims(0).asDNArray()
+                    .asD2Array().dot(oDep.plus(fix))
+                    .diagonal().dot(oi.transitionMatrix[transitionActivity]!!)
+                expectedCountPerAgent.plusAssign(total.times(carP))
+            }
         }
 
         // Home
         for (fixActivity in listOf(ActivityType.HOME)) {
             val carP = oi.carProbs[fixActivity]!!
 
+            val oDep = oi.otherMatrix[fixActivity]!!.dot(oTMatrix)
             val fix = oi.fixedMatrix[fixActivity]!!
-            val total = fix.transpose()
+            val total = oDep.plus(fix).transpose()
 
             expectedCountPerAgent.plusAssign(total.times(carP))
         }
@@ -357,8 +381,9 @@ object OACalClean {
         for (fixActivity in listOf(ActivityType.SCHOOL)) {
             val carP = oi.carProbs[fixActivity]!!
 
-            val fix = oi.fixedMatrix[fixActivity]!!.transpose().dot(oi.transitionMatrix[fixActivity]!!)
-            val total = fix
+            val oDep = oi.otherMatrix[fixActivity]!!.dot(oTMatrix)
+            val fix = oi.fixedMatrix[fixActivity]!!
+            val total = oDep.plus(fix).transpose().dot(oi.transitionMatrix[fixActivity]!!)
 
             expectedCountPerAgent.plusAssign(total.times(carP))
         }
@@ -367,8 +392,9 @@ object OACalClean {
         for (fixActivity in listOf(ActivityType.WORK)) {
             val carP = oi.carProbs[fixActivity]!!
 
-            val fix = oi.fixedMatrix[fixActivity]!!.transpose().dot(oi.transitionMatrix[fixActivity]!!)
-            val total = fix
+            val oDep = oi.otherMatrix[fixActivity]!!.dot(oTMatrix)
+            val fix = oi.fixedMatrix[fixActivity]!!
+            val total = oDep.plus(fix).transpose().dot(oi.transitionMatrix[fixActivity]!!)
 
             expectedCountPerAgent.plusAssign(total.times(carP))
         }
@@ -485,7 +511,7 @@ object OACalClean {
                 }
                 val mCarP = oi.carProbs[transitionActivity]!!
 
-                if (flexActivity != ActivityType.SHOPPING) {
+                if (flexActivity == ActivityType.OTHER) {
                     val mFixed = oi.fixedMatrix[flexActivity]!!
                     for (o in 0 until n) {
                         var cnst = 0.0
@@ -499,10 +525,10 @@ object OACalClean {
                             demand[o][d].addTerm(cnst * mCarP[o, d], w[o][d])
                         }
                     }
-
                 } else {
                     val mFixed = oi.fixedMatrix[flexActivity]!!
                     val mTransition = oi.transitionMatrix[transitionActivity]!!
+                    val mODep = oi.otherMatrix[transitionActivity]!!
 
                     for (o in 0 until n) {
                         val s = GRBLinExpr()
@@ -510,6 +536,15 @@ object OACalClean {
 
                         for (a in 0 until n) {
                             cnst += mFixed[a, o]
+                            for (b in 0 until n) {
+                                val coeff = mODep[a, b]
+
+                                if (abs(coeff) <= (1/n.toDouble()).pow(1.5)) {
+                                    continue
+                                }
+
+                                s.addTerm(coeff, w[b][o]) // TODO Store coeffs in matrix
+                            }
                         }
                         s.addConstant(cnst)
 
@@ -526,11 +561,16 @@ object OACalClean {
             for (fixActivity in listOf(ActivityType.HOME)) {
                 val carP = oi.carProbs[fixActivity]!!
 
+                val left = mk.identity<Double>(n)
+                val right = oi.otherMatrix[fixActivity]!!.transpose()
+                val oExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs, transpose = true)
+
                 val fix = oi.fixedMatrix[fixActivity]!!.transpose().times(carP)
 
                 for (o in 0 until n) {
                     for (d in 0 until n) {
                         if (Pair(o, d) !in relevantODs) { continue }
+                        demand[o][d].multAdd(carP[o, d], oExpr[o][d])
                         demand[o][d].addConstant(fix[o, d])
                     }
                 }
@@ -540,6 +580,10 @@ object OACalClean {
             for (fixActivity in listOf(ActivityType.SCHOOL)) {
                 val carP = oi.carProbs[fixActivity]!!
 
+                val left = mk.identity<Double>(n)
+                val right = oi.otherMatrix[fixActivity]!!.transpose().dot(oi.transitionMatrix[fixActivity]!!)
+                val oExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
+
                 val fix = oi.fixedMatrix[fixActivity]!!.transpose()
                     .dot(oi.transitionMatrix[fixActivity]!!)
                     .times(carP)
@@ -547,6 +591,7 @@ object OACalClean {
                 for (o in 0 until n) {
                     for (d in 0 until n) {
                         if (Pair(o, d) !in relevantODs) { continue }
+                        demand[o][d].multAdd(carP[o, d], oExpr[o][d])
                         demand[o][d].addConstant(fix[o, d])
                     }
                 }
@@ -556,6 +601,10 @@ object OACalClean {
             for (fixActivity in listOf(ActivityType.WORK)) {
                 val carP = oi.carProbs[fixActivity]!!
 
+                val left = mk.identity<Double>(n)
+                val right = oi.otherMatrix[fixActivity]!!.transpose().dot(oi.transitionMatrix[fixActivity]!!)
+                val oExpr = exprFromMatrixSandwichT(w, left, right, relevantRCs = relevantODs)
+
                 val fix = oi.fixedMatrix[fixActivity]!!.transpose()
                     .dot(oi.transitionMatrix[fixActivity]!!)
                     .times(carP)
@@ -563,6 +612,7 @@ object OACalClean {
                 for (o in 0 until n) {
                     for (d in 0 until n) {
                         if (Pair(o, d) !in relevantODs) { continue }
+                        demand[o][d].multAdd(carP[o, d], oExpr[o][d])
                         demand[o][d].addConstant(fix[o, d])
                     }
                 }

@@ -511,6 +511,7 @@ object WACalClean {
                         cnst += mFixed[a, o]
                         for (b in 0 until n) {
                             val coeff = pHome[a] * mWDep[b, o]
+
                             if (abs(coeff) <= (1/n.toDouble()).pow(1.5)) {
                                 continue
                             }
