@@ -1,5 +1,7 @@
 package de.uniwuerzburg.omod.calibration
 
+import com.gurobi.gurobi.GRBLinExpr
+import de.uniwuerzburg.omod.calibration.OACalClean.exprFromMatrixSandwichT
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
@@ -33,12 +35,12 @@ object OGradDescent {
         totalPop: Double,
         affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>
-    )  : D2Array<Double> {
-        val oi = prepareOptInputWorkDep(
+    )  : Pair<D2Array<Double>, DoubleArray> {
+        val oi = prepareOptInputSchoolDep(
             grid, activityGenerator, modeChoiceCalibration, customCellFactors, popStrata, carOwnership,
             destinationFinder
         )
-        println("OTHER")
+        println("OGradDescent")
         val expected = getExpectedCountPerAgent(oi, grid)
         eval(expected, sensors, totalPop, grid, affectedLinks)
 
@@ -51,7 +53,6 @@ object OGradDescent {
         println(time)
         println("-----")
 
-
         val seedVals = DoubleArray(grid.size) { 1.0 }
             //doubleArrayOf(-0.01, -0.01, 0.01, 0.01, 0.01, 0.01, 0.01)//DoubleArray(5) {0.01} //(280.688, 727.141, 611.394, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
@@ -62,7 +63,7 @@ object OGradDescent {
 
         println("Parameters:")
         println(parameters.toList())
-        //val parameters = DoubleArray(grid.size) { 1.0 }
+
 
         println("_".repeat(20*4 + 5*3))
         println("${"Sensor".padEnd(20)} | \t" +
@@ -128,7 +129,7 @@ object OGradDescent {
 
                 val weight = attraction * deterrence*/
 
-                val weight = parameters[d]
+                val weight = parameters[d] * oi.transitionMatrix[ActivityType.OTHER]!![o, d]
 
                 weights.add(weight)
             }
@@ -151,7 +152,7 @@ object OGradDescent {
             writer.flush()
         }
 
-        return  matrix
+        return Pair(matrix, parameters)
     }
 
     fun lbfgs(model: DifferentiableModel, vals: DoubleArray) : DoubleArray {
@@ -163,7 +164,7 @@ object OGradDescent {
         l[1] = -1e3
         u[0] = 0.0
         u[1] = 0.0*/
-        val solution = BFGS.minimize(model, 5, vals, l, u, 1e-5, 30)
+        val solution = BFGS.minimize(model, 5, vals, l, u, 1e-5, 10)
         println("Solution: $solution")
         println("Confirm: ${model.evaluate(vals)}")
         return vals
@@ -203,7 +204,7 @@ object OGradDescent {
         return currentValues
     }
 
-    fun prepareOptInputWorkDep(
+    fun prepareOptInputSchoolDep(
         grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
         customCellFactors: Map<Cell, Double>,
@@ -335,6 +336,7 @@ object OGradDescent {
         }
 
         val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
+        val otherMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) }
 
         // Determine od pair probabilities
         // TODO time
@@ -372,17 +374,21 @@ object OGradDescent {
             // Setup
             var cumMatrix = mk.identity<Double>(grid.size)
             var previousProbsH: D2Array<Double>
+            var previousProbsHnotO: D2Array<Double>
             when(startActivity) {
                 ActivityType.HOME -> {
                     previousProbsH = homeProbs.diagonal()
+                    previousProbsHnotO = homeProbs.diagonal()
                     fixedMatrix[nextActivity]!!.plusAssign(homeProbs.diagonal() * chainP)
                 }
                 ActivityType.WORK -> {
                     previousProbsH = homeWorkProbs
+                    previousProbsHnotO = homeWorkProbs
                     fixedMatrix[nextActivity]!!.plusAssign(homeWorkProbs * chainP)
                 }
                 ActivityType.SCHOOL -> {
                     previousProbsH = homeSchoolProbs
+                    previousProbsHnotO = homeSchoolProbs
                     fixedMatrix[nextActivity]!!.plusAssign(homeSchoolProbs * chainP)
                 }
                 else -> {
@@ -405,15 +411,23 @@ object OGradDescent {
                 }
                 val transitionP = transitionProbs[transitionActivity]!!
 
-                fixedMatrix[nextActivity]!!.plusAssign(previousProbsH.dot(transitionP) * chainP)
+                val oBefore = chain.take(next-1).count { it == ActivityType.OTHER }
+                if ((oBefore >= 1) and (nextActivity != ActivityType.OTHER)) {
+                    otherMatrix[nextActivity]!!.plusAssign(previousProbsHnotO * chainP)
+                } else {
+                    fixedMatrix[nextActivity]!!.plusAssign(previousProbsH.dot(transitionP) * chainP)
+                }
 
                 previousProbsH = previousProbsH.dot(transitionP)
+                if (activity != ActivityType.OTHER) {
+                    previousProbsHnotO = previousProbsHnotO.dot(transitionP)
+                }
             }
         }
 
         val oi = OptimizationInput(
             homeProbs,
-            ActivityType.entries.associateWith { mk.zeros<Double>(grid.size, grid.size) },
+            otherMatrix,
             fixedMatrix,
             transitionProbs,
             carProbs
@@ -438,7 +452,7 @@ object OGradDescent {
 
     data class OptimizationInput (
         val homeProbs: D2Array<Double>,
-        val workMatrix: Map<ActivityType,  D2Array<Double>>,
+        val otherMatrix: Map<ActivityType, D2Array<Double>>,
         val fixedMatrix: Map<ActivityType,  D2Array<Double>>,
         val transitionMatrix: Map<ActivityType,  D2Array<Double>>,
         val carProbs: Map<ActivityType,  D2Array<Double>>,
@@ -448,6 +462,8 @@ object OGradDescent {
         // Result: Expected trip count on each od-paid of one agent on one day
         val expectedCountPerAgent = mk.zeros<Double>(grid.size, grid.size)
 
+        val oTMatrix = oi.transitionMatrix[ActivityType.OTHER]!!
+
         // Flex
         for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
             val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
@@ -455,43 +471,53 @@ object OGradDescent {
             } else {
                 flexActivity
             }
-
             val carP = oi.carProbs[transitionActivity]!!
 
-            val fix = oi.fixedMatrix[flexActivity]!!
-            val total = mk.ones<Double>(grid.size).expandDims(0).asDNArray()
-                .asD2Array().dot(fix)
-                .diagonal().dot(oi.transitionMatrix[transitionActivity]!!)
-
-            expectedCountPerAgent.plusAssign(total.times(carP))
+            if (flexActivity == ActivityType.OTHER) {
+                val fix = oi.fixedMatrix[flexActivity]!!
+                val total = mk.ones<Double>(grid.size).expandDims(0).asDNArray()
+                    .asD2Array().dot(fix)
+                    .diagonal().dot(oi.transitionMatrix[transitionActivity]!!)
+                expectedCountPerAgent.plusAssign(total.times(carP))
+            } else {
+                val oDep = oi.otherMatrix[flexActivity]!!.dot(oTMatrix)
+                val fix = oi.fixedMatrix[flexActivity]!!
+                val total = mk.ones<Double>(grid.size).expandDims(0).asDNArray()
+                    .asD2Array().dot(oDep.plus(fix))
+                    .diagonal().dot(oi.transitionMatrix[transitionActivity]!!)
+                expectedCountPerAgent.plusAssign(total.times(carP))
+            }
         }
 
         // Home
         for (fixActivity in listOf(ActivityType.HOME)) {
             val carP = oi.carProbs[fixActivity]!!
 
+            val oDep = oi.otherMatrix[fixActivity]!!.dot(oTMatrix)
             val fix = oi.fixedMatrix[fixActivity]!!
-            val total = fix.transpose()
+            val total = oDep.plus(fix).transpose()
 
             expectedCountPerAgent.plusAssign(total.times(carP))
         }
 
         // School
         for (fixActivity in listOf(ActivityType.SCHOOL)) {
-           val carP = oi.carProbs[fixActivity]!!
+            val carP = oi.carProbs[fixActivity]!!
 
-           val fix = oi.fixedMatrix[fixActivity]!!
-           val total = fix.transpose().dot(oi.transitionMatrix[fixActivity]!!)
+            val oDep = oi.otherMatrix[fixActivity]!!.dot(oTMatrix)
+            val fix = oi.fixedMatrix[fixActivity]!!
+            val total = oDep.plus(fix).transpose().dot(oi.transitionMatrix[fixActivity]!!)
 
-           expectedCountPerAgent.plusAssign(total.times(carP))
+            expectedCountPerAgent.plusAssign(total.times(carP))
         }
 
         // Work
         for (fixActivity in listOf(ActivityType.WORK)) {
             val carP = oi.carProbs[fixActivity]!!
 
+            val oDep = oi.otherMatrix[fixActivity]!!.dot(oTMatrix)
             val fix = oi.fixedMatrix[fixActivity]!!
-            val total = fix.transpose().dot(oi.transitionMatrix[fixActivity]!!)
+            val total = oDep.plus(fix).transpose().dot(oi.transitionMatrix[fixActivity]!!)
 
             expectedCountPerAgent.plusAssign(total.times(carP))
         }
@@ -551,7 +577,7 @@ object OGradDescent {
             val weightTerms = mutableListOf<Term>()
             val rowSumTerm = LinearTerm(diffModel.nVars)
             for (d in 0 until n) {
-               /*val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops / shopMax}
+               val nShops = grid[d].buildings.sumOf { it.osmProperties.number_shops / shopMax}
                val nOffice = grid[d].buildings.sumOf { it.osmProperties.number_offices / officeMax}
                val nSchool = grid[d].buildings.sumOf { it.osmProperties.number_schools / schoolMax}
                val nUni = grid[d].buildings.sumOf { it.osmProperties.number_universities / uniMax}
@@ -560,28 +586,29 @@ object OGradDescent {
                val indArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.INDUSTRIAL }.sumOf { it.osmProperties.area }
                val commArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.COMMERCIAL }.sumOf { it.osmProperties.area }
                val resArea = grid[d].buildings.filter { it.osmProperties.landuse == Landuse.RESIDENTIAL }.sumOf { it.osmProperties.area }*/
-               val attraction = LinearBaseTerm(diffModel.nVars)
-                attraction.addTerm(2, nShops)
-                attraction.addTerm(3, nOffice)
-                attraction.addTerm(4, nSchool)
-                attraction.addTerm(5, nUni)
-                attraction.addTerm(6, nPOW)
+               /*val attraction = LinearBaseTerm(diffModel.nVars)
+                attraction.addTerm(0, nShops)
+                attraction.addTerm(1, nOffice)
+                attraction.addTerm(2, nSchool)
+                attraction.addTerm(3, nUni)
+                attraction.addTerm(4, nPOW)*/
                /*weight.addTerm(5, retailArea)
                weight.addTerm(6, indArea)
                weight.addTerm(7, commArea)
                weight.addTerm(8, resArea)*/
 
-               val distance = max(Double.MIN_VALUE, distances[d].toDouble() / distanceMax)
+               /*val distance = max(Double.MIN_VALUE, distances[d].toDouble() / distanceMax)
                val detUtil = LinearBaseTerm(diffModel.nVars)
                detUtil.addTerm(0, distance)
                detUtil.addTerm(1, ln(distance))
-               val deterrence = ExponentialTerm(diffModel.nVars, detUtil)*
+               val deterrence = ExponentialTerm(diffModel.nVars, detUtil)
 
 
                val weight = QuadraticTerm(diffModel.nVars, attraction, deterrence, 1.0)*/
                val weight = LinearBaseTerm(diffModel.nVars)
-               weight.addTerm(d, 1.0)
-
+               //weight.addTerm(d, 1.0)
+               weight.addTerm(d, oi.transitionMatrix[ActivityType.OTHER]!![o, d])
+               //weight.addTerm(d, attraction)
 
                rowSumTerm.addTerm(weight, 1.0)
                weightTerms.add(weight)
@@ -602,29 +629,24 @@ object OGradDescent {
             }
             val mCarP = oi.carProbs[transitionActivity]!!
 
-            if (transitionActivity == ActivityType.OTHER) {
-                val fix = oi.fixedMatrix[flexActivity]!!
-                val left = mk.ones<Double>(grid.size).expandDims(0).asDNArray()
-                    .asD2Array().dot(fix)
-                    .diagonal()
-                val right = mk.identity<Double>(n)
-                val oExprTestNSW = diffModelFromMatrixSandwichT(
-                    O,
-                    left,
-                    right,
-                    transpose = false,
-                    relevantRCs = relevantODs
-                )
-
+            if (flexActivity == ActivityType.OTHER) {
+                val mFixed = oi.fixedMatrix[flexActivity]!!
                 for (o in 0 until n) {
+                    var cnst = 0.0
+
+                    for (a in 0 until n) {
+                        cnst += mFixed[a, o]
+                    }
+
                     for (d in 0 until n) {
                         if (Pair(o, d) !in relevantODs) { continue }
-                        demand[o][d].addTerm(oExprTestNSW[o][d], mCarP[o,d])
+                        demand[o][d].addTerm(O[o][d], cnst * mCarP[o, d])
                     }
                 }
             } else {
                 val mFixed = oi.fixedMatrix[flexActivity]!!
                 val mTransition = oi.transitionMatrix[transitionActivity]!!
+                val mODep = oi.otherMatrix[transitionActivity]!!
 
                 for (o in 0 until n) {
                     val s = LinearTerm(diffModel.nVars)
@@ -632,6 +654,15 @@ object OGradDescent {
 
                     for (a in 0 until n) {
                         cnst += mFixed[a, o]
+                        for (b in 0 until n) {
+                            val coeff = mODep[a, b]
+
+                            if (abs(coeff) <= (1/n.toDouble()).pow(1.5)) {
+                                continue
+                            }
+
+                            s.addTerm(O[b][o], coeff) // TODO Store coeffs in matrix
+                        }
                     }
                     s.addConstant(cnst)
 
@@ -648,11 +679,16 @@ object OGradDescent {
         for (fixActivity in listOf(ActivityType.HOME)) {
             val carP = oi.carProbs[fixActivity]!!
 
+            val left = mk.identity<Double>(n)
+            val right = oi.otherMatrix[fixActivity]!!.transpose()
+            val oExpr = diffModelFromMatrixSandwichT(O, left, right, relevantRCs = relevantODs, transpose = true)
+
             val fix = oi.fixedMatrix[fixActivity]!!.transpose().times(carP)
 
             for (o in 0 until n) {
                 for (d in 0 until n) {
                     if (Pair(o, d) !in relevantODs) { continue }
+                    demand[o][d].addTerm(oExpr[o][d], carP[o, d])
                     demand[o][d].addConstant(fix[o, d])
                 }
             }
@@ -662,6 +698,10 @@ object OGradDescent {
         for (fixActivity in listOf(ActivityType.SCHOOL)) {
             val carP = oi.carProbs[fixActivity]!!
 
+            val left = mk.identity<Double>(n)
+            val right = oi.otherMatrix[fixActivity]!!.transpose().dot(oi.transitionMatrix[fixActivity]!!)
+            val oExpr = diffModelFromMatrixSandwichT(O, left, right, relevantRCs = relevantODs)
+
             val fix = oi.fixedMatrix[fixActivity]!!.transpose()
                 .dot(oi.transitionMatrix[fixActivity]!!)
                 .times(carP)
@@ -669,6 +709,7 @@ object OGradDescent {
             for (o in 0 until n) {
                 for (d in 0 until n) {
                     if (Pair(o, d) !in relevantODs) { continue }
+                    demand[o][d].addTerm(oExpr[o][d], carP[o, d])
                     demand[o][d].addConstant(fix[o, d])
                 }
             }
@@ -677,6 +718,10 @@ object OGradDescent {
         for (fixActivity in listOf(ActivityType.WORK)) {
             val carP = oi.carProbs[fixActivity]!!
 
+            val left = mk.identity<Double>(n)
+            val right = oi.otherMatrix[fixActivity]!!.transpose().dot(oi.transitionMatrix[fixActivity]!!)
+            val oExpr = diffModelFromMatrixSandwichT(O, left, right, relevantRCs = relevantODs)
+
             val fix = oi.fixedMatrix[fixActivity]!!.transpose()
                 .dot(oi.transitionMatrix[fixActivity]!!)
                 .times(carP)
@@ -684,6 +729,7 @@ object OGradDescent {
             for (o in 0 until n) {
                 for (d in 0 until n) {
                     if (Pair(o, d) !in relevantODs) { continue }
+                    demand[o][d].addTerm(oExpr[o][d], carP[o, d])
                     demand[o][d].addConstant(fix[o, d])
                 }
             }

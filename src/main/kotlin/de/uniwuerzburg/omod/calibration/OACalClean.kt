@@ -12,6 +12,8 @@ import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
 import org.jetbrains.kotlinx.multik.ndarray.data.set
 import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
+import org.jetbrains.kotlinx.multik.ndarray.operations.map
+import org.jetbrains.kotlinx.multik.ndarray.operations.mapIndexed
 import org.jetbrains.kotlinx.multik.ndarray.operations.plus
 import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
@@ -32,7 +34,7 @@ object OACalClean {
         totalPop: Double,
         affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>
-    ) : D2Array<Double> {
+    ) : Pair<D2Array<Double>, List<Double>> {
         println("OACalClean")
         val oi = prepareOptInputSchoolDep(
             grid, activityGenerator, modeChoiceCalibration, customCellFactors, popStrata, carOwnership,
@@ -60,6 +62,11 @@ object OACalClean {
         println(time)
         println("-----")
 
+        // Transitions
+        val activityWeights = destinationFinder.getWeightsNoOrigin(grid, activityType = ActivityType.OTHER)
+        val activityProbsOld = activityWeights.map { it / activityWeights.sum() }
+        val k1: List<Double> = activityProbsOld.mapIndexed { i, it -> if (it <= 0.0) 1000.0 else sMatrix!![0, i] / it }
+
         //val calvals = optimizeStep2Smpl(grid, wMatrix!!, oi.transitionMatrix[ActivityType.WORK]!!)
 
         // Optimized
@@ -78,7 +85,7 @@ object OACalClean {
                 out[Pair(origin, destination)] = expectedOpt[o][d]
             }
         }*/
-        return sMatrix!!
+        return Pair(sMatrix!!, k1)
     }
 
     fun prepareOptInputSchoolDep(

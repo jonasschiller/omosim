@@ -76,7 +76,7 @@ class LinkCalibratorDefault(
            staticFlowLst[sensor] = simFlow
        }
        */
-        val ooptmatrix = OACalClean.run(
+        val (ooptmatrix, k1) = OGradDescent.run(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
             popStrata, carOwnership, finder,fullPopulation, affectedLinks,
@@ -97,6 +97,7 @@ class LinkCalibratorDefault(
         )
 
 
+
        //.times(fullPopulation)
        /*val test = SPCalibrator.determinePairProbabilities(
            omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
@@ -113,9 +114,10 @@ class LinkCalibratorDefault(
            //sforce[cell] = woptmatrixgg.second.toArray()[i]
        }
        //finder.forceWMatrix = wforce
-       finder.forceOMatrix = oforce
+       //finder.forceOMatrix = oforce
+       finder.updateCalibrationPosition(k1.toTypedArray(), omod.grid)
 
-        val (_, sFlow, nAgents, sLocs) = runBatch(  Array(omod.grid.size) { 1.0 } )
+       val (_, sFlow, nAgents, sLocs) = runBatch(  Array(omod.grid.size) { 1.0 } )
 
        // Determine affected sensors
        // TODO temporal check

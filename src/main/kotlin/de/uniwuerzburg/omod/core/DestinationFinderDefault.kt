@@ -36,6 +36,7 @@ class DestinationFinderDefault(
     var forceWMatrix: Map<Cell, DoubleArray>? = null
     var forceSMatrix: Map<Cell, DoubleArray>? = null
     var forceOMatrix: Map<Cell, DoubleArray>? = null
+
     /**
      * Determine the probabilistic weight that a location is a destination given an origin and activity type
      * for all possible destinations.
@@ -78,7 +79,7 @@ class DestinationFinderDefault(
         }
 
         // Test
-        val thisCellFactors = if (activityType == ActivityType.WORK) { // TODO Temporary
+        val thisCellFactors = if (activityType == ActivityType.OTHER) { // TODO Temporary
            customCellFactors ?: cellCFactors
         } else {
             mapOf()
