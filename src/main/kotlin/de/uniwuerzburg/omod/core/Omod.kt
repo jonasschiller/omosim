@@ -89,6 +89,8 @@ class Omod(
     private var gtfsComponents: GTFSComponents? = null
     private val focusArea: Geometry
     private val fullArea: Geometry
+    val popStrata: List<PopStratum>
+    val carOwnership: CarOwnership
     //var altPercentages: Map<Pair<RealLocation, RealLocation>, List<Double>>
 
     init {
@@ -96,7 +98,7 @@ class Omod(
         val timestampStartInit = timeSource.markNow()
 
         // Load population distribution
-        val popStrata: List<PopStratum> = if (populationFile != null) {
+        popStrata = if (populationFile != null) {
             readJson(populationFile)
         } else {
             readJsonFromResource("Population.json")
@@ -188,7 +190,7 @@ class Omod(
         }
 
         // Car Ownership
-        val carOwnership = when (carOwnershipOption) {
+        carOwnership = when (carOwnershipOption) {
             CarOwnershipOption.FIX -> {
                 CarOwnershipFixedProbability(17)
             }

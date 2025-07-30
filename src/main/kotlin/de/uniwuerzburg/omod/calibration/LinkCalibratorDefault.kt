@@ -76,12 +76,23 @@ class LinkCalibratorDefault(
            staticFlowLst[sensor] = simFlow
        }
        */
-        val (ooptmatrix, k1) = OGradDescent.run(
+
+        val mModel = DefaultMetaModel(omod)
+        mModel.calibrateK1(ActivityType.WORK, sensors, affectedLinks)
+
+        val balalhbals = WACalClean.run(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
             popStrata, carOwnership, finder,fullPopulation, affectedLinks,
             sensors
         )
+
+        /*val (ooptmatrix, k1) = OGradDescent.run(
+            omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
+            modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
+            popStrata, carOwnership, finder,fullPopulation, affectedLinks,
+            sensors
+        )*/
         /*
         val woptmatrixgg = OGradDescent.run(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
@@ -107,15 +118,15 @@ class LinkCalibratorDefault(
        println(test)*/
        val (_, sFlowBase, nAgentsVBase, sLocsBase) = runBatch( Array(omod.grid.size) { 1.0 } )
 
-       val oforce = mutableMapOf<Cell, DoubleArray>()
+       //val oforce = mutableMapOf<Cell, DoubleArray>()
        //val sforce = mutableMapOf<Cell, DoubleArray>()
        for ((i, cell) in omod.grid.withIndex()) {
-           oforce[cell] = ooptmatrix.toArray()[i]
+           //oforce[cell] = ooptmatrix.toArray()[i]
            //sforce[cell] = woptmatrixgg.second.toArray()[i]
        }
        //finder.forceWMatrix = wforce
        //finder.forceOMatrix = oforce
-       finder.updateCalibrationPosition(k1.toTypedArray(), omod.grid)
+       //finder.updateCalibrationPosition(k1.toTypedArray(), omod.grid)
 
        val (_, sFlow, nAgents, sLocs) = runBatch(  Array(omod.grid.size) { 1.0 } )
 
