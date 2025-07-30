@@ -704,7 +704,6 @@ object WAGradDescent {
             for (o in 0 until n) {
                 for (d in 0 until n) {
                     if (Pair(o, d) !in relevantODs) { continue }
-
                     demand[o][d].addTerm(wExprTestNSW[o][d], carP[o,d])
                     demand[o][d].addTerm(wProbs[d], mWT[o][d] * carP[o, d])
                 }

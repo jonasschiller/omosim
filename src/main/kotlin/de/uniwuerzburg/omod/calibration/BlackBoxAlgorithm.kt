@@ -21,7 +21,7 @@ object BlackBoxAlgorithm {
         affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         iterations: Int = 10
     ){
-        logger.on = false // Switch off logger for iterative calibration runs
+        de.uniwuerzburg.omod.core.logger.on = false // Switch off logger for iterative calibration runs
         println("Start IPF")
         val nDimensions = omod.grid.size
         // Set Parameters
@@ -107,7 +107,7 @@ object BlackBoxAlgorithm {
                 println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow }")
             }
         }
-        logger.on = true
+        de.uniwuerzburg.omod.core.logger.on = true
     }
 
     private fun spoa(
@@ -204,7 +204,7 @@ object BlackBoxAlgorithm {
         carOwnership: CarOwnership,
         affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
     ) : Array<Double> {
-        logger.on = false // Switch off logger for iterative calibration runs
+        de.uniwuerzburg.omod.core.logger.on = false // Switch off logger for iterative calibration runs
         println("Start GD")
         val nDimensions = omod.grid.size
 
@@ -248,7 +248,7 @@ object BlackBoxAlgorithm {
                 println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow }")
             }
         }
-        logger.on = true
+        de.uniwuerzburg.omod.core.logger.on = true
         return x
     }
 
@@ -262,7 +262,7 @@ object BlackBoxAlgorithm {
         affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         iterations: Int = 1000
     ) : Array<Double> {
-        logger.on = false // Switch off logger for iterative calibration runs
+        de.uniwuerzburg.omod.core.logger.on = false // Switch off logger for iterative calibration runs
         println("Start GD")
         val nDimensions = omod.grid.size
 
@@ -303,7 +303,7 @@ object BlackBoxAlgorithm {
                 println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow }")
             }
         }
-        logger.on = true
+        de.uniwuerzburg.omod.core.logger.on = true
         return x
     }
 
@@ -319,7 +319,7 @@ object BlackBoxAlgorithm {
         w: Double = 0.9, phiP: Double = 0.5,
         phiG: Double = 0.3
     ) : Array<Double> {
-        logger.on = false // Switch off logger for iterative calibration runs
+        de.uniwuerzburg.omod.core.logger.on = false // Switch off logger for iterative calibration runs
         println("Start PSO")
         val nDimensions = omod.grid.size
 
@@ -425,7 +425,7 @@ object BlackBoxAlgorithm {
                 println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow }")
             }
         }
-        logger.on = true
+        de.uniwuerzburg.omod.core.logger.on = true
         return globalBestPosition
     }
 
