@@ -22,7 +22,7 @@ import org.locationtech.jts.geom.Coordinate
 fun optimize(
     grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
     modeChoiceCalibration: ModeChoiceCalibration,
-    customCellFactors: Map<Cell, Double>,
+    customCellFactors: Map<ActivityType, Map<Cell, Double>>,
     popStrata: List<PopStratum>,
     carOwnership: CarOwnership,
     destinationFinder: DestinationFinderDefault,
@@ -237,7 +237,7 @@ fun optimize(
 private fun determinePairProbabilities(
     grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
     modeChoiceCalibration: ModeChoiceCalibration,
-    customCellFactors: Map<Cell, Double>,
+    customCellFactors: Map<ActivityType, Map<Cell, Double>>,
     popStrata: List<PopStratum>,
     carOwnership: CarOwnership,
     destinationFinder: DestinationFinderDefault,

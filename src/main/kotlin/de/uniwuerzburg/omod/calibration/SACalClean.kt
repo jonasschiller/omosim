@@ -27,7 +27,7 @@ object SACalClean {
         grid: List<Cell>,
         activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>,
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership,
         destinationFinder: DestinationFinderDefault,
@@ -85,7 +85,7 @@ object SACalClean {
     fun prepareOptInputSchoolDep(
         grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>,
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership,
         destinationFinder: DestinationFinderDefault,

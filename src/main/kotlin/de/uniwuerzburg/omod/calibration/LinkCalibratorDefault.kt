@@ -77,22 +77,26 @@ class LinkCalibratorDefault(
        }
        */
 
-        val mModel = DefaultMetaModel(omod)
-        mModel.calibrateK1(ActivityType.SHOPPING, sensors, affectedLinks)
-
-        val balalhbals = WACalClean.run(
-            omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
-            modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
-            popStrata, carOwnership, finder,fullPopulation, affectedLinks,
-            sensors
+        val oldod = finder.determinePairProbabilities(
+            omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
+            modeChoiceCalibration, mapOf(ActivityType.WORK to omod.grid.zip(parameters).toMap()),
+            popStrata, carOwnership
         )
 
-        /*val (ooptmatrix, k1) = OGradDescent.run(
+       /* val balalhbals = WACalClean.run(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
             modeChoiceCalibration,omod.grid.zip(parameters).toMap(),
             popStrata, carOwnership, finder,fullPopulation, affectedLinks,
             sensors
         )*/
+
+        /*val (ooptmatrix, k1) = OGradDescent.run(
+            omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
+            modeChoiceCalibration, mapOf(ActivityType.OTHER to omod.grid.zip(parameters).toMap()),
+            popStrata, carOwnership, finder,fullPopulation, affectedLinks,
+            sensors
+        )*/
+
         /*
         val woptmatrixgg = OGradDescent.run(
             omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
@@ -100,12 +104,6 @@ class LinkCalibratorDefault(
             popStrata, carOwnership, finder,fullPopulation, affectedLinks,
             sensors
         )*/
-
-        val oldod = finder.determinePairProbabilities(
-            omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
-            modeChoiceCalibration, omod.grid.zip(parameters).toMap(),
-            popStrata, carOwnership
-        )
 
 
 
@@ -118,15 +116,22 @@ class LinkCalibratorDefault(
        println(test)*/
        val (_, sFlowBase, nAgentsVBase, sLocsBase) = runBatch( Array(omod.grid.size) { 1.0 } )
 
-       //val oforce = mutableMapOf<Cell, DoubleArray>()
+        val mModel = DefaultMetaModel(omod)
+        for (activity in listOf(ActivityType.WORK)) {
+            val k1 = mModel.calibrateK1(activity, sensors, affectedLinks)
+            finder.updateCellCValues(activity, k1.toTypedArray(), omod.grid)
+        }
+
+        /*
+       val oforce = mutableMapOf<Cell, DoubleArray>()
        //val sforce = mutableMapOf<Cell, DoubleArray>()
        for ((i, cell) in omod.grid.withIndex()) {
-           //oforce[cell] = ooptmatrix.toArray()[i]
+           oforce[cell] = ooptmatrix.toArray()[i]
            //sforce[cell] = woptmatrixgg.second.toArray()[i]
        }
        //finder.forceWMatrix = wforce
        //finder.forceOMatrix = oforce
-       //finder.updateCalibrationPosition(k1.toTypedArray(), omod.grid)
+       finder.updateCellCValues(ActivityType.OTHER, k1.toTypedArray(), omod.grid)*/
 
        val (_, sFlow, nAgents, sLocs) = runBatch(  Array(omod.grid.size) { 1.0 } )
 
@@ -216,7 +221,7 @@ class LinkCalibratorDefault(
    private fun runBatch(parameters: Array<Double>) : BatchResult {
        // Set Parameters
        val finder = omod.destinationFinder as DestinationFinderDefault
-       finder.updateCellCValues(parameters, omod.grid)
+       finder.updateCellCValues(ActivityType.WORK, parameters, omod.grid)
        omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
 
        // Run Simulation

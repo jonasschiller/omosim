@@ -28,7 +28,7 @@ object OGradDescent {
         grid: List<Cell>,
         activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>,
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership,
         destinationFinder: DestinationFinderDefault,
@@ -207,7 +207,7 @@ object OGradDescent {
     fun prepareOptInputSchoolDep(
         grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>,
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership,
         destinationFinder: DestinationFinderDefault,
@@ -646,7 +646,7 @@ object OGradDescent {
             } else {
                 val mFixed = oi.fixedMatrix[flexActivity]!!
                 val mTransition = oi.transitionMatrix[transitionActivity]!!
-                val mODep = oi.otherMatrix[transitionActivity]!!
+                val mODep = oi.otherMatrix[flexActivity]!!
 
                 for (o in 0 until n) {
                     val s = LinearTerm(diffModel.nVars)

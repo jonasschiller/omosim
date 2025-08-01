@@ -26,7 +26,7 @@ object FixGradDescent {
         grid: List<Cell>,
         activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>,
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership,
         destinationFinder: DestinationFinderDefault,
@@ -210,7 +210,7 @@ object FixGradDescent {
     fun prepareOptInputWorkDep(
         grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>,
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership,
         destinationFinder: DestinationFinderDefault,

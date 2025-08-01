@@ -31,7 +31,7 @@ class DestinationFinderDefault(
     private var firstOrderCFactors: Map<ActivityType, Map<ODZone, Double>> = mapOf()
     private var secondOrderCFactors: Map<Pair<ActivityType, ActivityType>, Map<Pair<ODZone, ODZone>, Double>> = mapOf()
 
-    private val cellCFactors = mutableMapOf<Cell, Double>()
+    private val cellCFactors: MutableMap<ActivityType, MutableMap<Cell, Double>> = mutableMapOf()
 
     var forceWMatrix: Map<Cell, DoubleArray>? = null
     var forceSMatrix: Map<Cell, DoubleArray>? = null
@@ -47,7 +47,7 @@ class DestinationFinderDefault(
      */
     override fun getWeights(
         origin: LocationOption, destinations: List<LocationOption>, activityType: ActivityType,
-        customCellFactors: Map<Cell, Double>?
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>?
     ): List<Double> {
         require(activityType != ActivityType.HOME) { "For HOME activities call getWeightsNoOrigin()!" }
 
@@ -79,13 +79,13 @@ class DestinationFinderDefault(
         }
 
         // Test
-        val thisCellFactors = if (activityType == ActivityType.OTHER) { // TODO Temporary
+        /*val thisCellFactors = if (activityType == ActivityType.OTHER) { // TODO Temporary
            customCellFactors ?: cellCFactors
         } else {
             mapOf()
-        }
+        }*/
         return destinations.mapIndexed { i, destination ->
-            thisCellFactors.getOrDefault(destination, 1.0) * weights[i]
+            (cellCFactors[activityType]?.get(destination) ?: 1.0) * weights[i]
         }
 
         /*
@@ -232,7 +232,7 @@ class DestinationFinderDefault(
     fun determinePairProbabilities(
         grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>,
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership
     ) : Map<Pair<Cell, Cell>, Double> {
@@ -695,10 +695,11 @@ class DestinationFinderDefault(
         grid.forEach{ it.recalculateAttractions(locChoiceWeightFuns) }
     }
 
-    fun updateCellCValues(position: Array<Double>, grid: List<Cell>) {
-       cellCFactors.clear()
+    fun updateCellCValues(activityType: ActivityType, position: Array<Double>, grid: List<Cell>) {
+       cellCFactors[activityType] = mutableMapOf<Cell, Double>() // Clear old values
+
        for((i, cell) in grid.withIndex()) {
-           cellCFactors[cell] = position[i]
+           cellCFactors[activityType]!![cell] = position[i]
        }
     }
 

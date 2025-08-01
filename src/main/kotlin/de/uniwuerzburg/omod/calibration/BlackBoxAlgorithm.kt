@@ -1,6 +1,7 @@
 package de.uniwuerzburg.omod.calibration
 
 import de.uniwuerzburg.omod.core.*
+import de.uniwuerzburg.omod.core.models.ActivityType
 import de.uniwuerzburg.omod.core.models.Cell
 import de.uniwuerzburg.omod.core.models.PopStratum
 import de.uniwuerzburg.omod.core.models.RealLocation
@@ -47,7 +48,9 @@ object BlackBoxAlgorithm {
             println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow }")
         }
 
-        val x: MutableMap<Cell, Double> =  omod.grid.zip(Array(nDimensions) { 1.0 }).toMap().toMutableMap()
+        val x: MutableMap<ActivityType, MutableMap<Cell, Double>> =  mutableMapOf(
+            ActivityType.WORK to omod.grid.zip(Array(nDimensions) { 1.0 }).toMap().toMutableMap()
+        )
         println("Start iterations")
         for(iteration in 0 until iterations ) {
             var cnt = 0
@@ -78,7 +81,7 @@ object BlackBoxAlgorithm {
                 }
 
                 for (cell in cells) {
-                    x[cell] = (x[cell]!! * sensor.measuredFlow) / simCount
+                    x[ActivityType.WORK]!![cell] = (x[ActivityType.WORK]!![cell]!! * sensor.measuredFlow) / simCount
                 }
 
                 println("Sensor $cnt done")
@@ -87,7 +90,7 @@ object BlackBoxAlgorithm {
             }
             val tst = Array(nDimensions) { 1.0 }
             for ((i, cell) in omod.grid.withIndex()) {
-                tst[i] = x[cell]!!
+                tst[i] = x[ActivityType.WORK]!![cell]!!
             }
 
             val (mse, sFlow, _) = determineJointOD(
@@ -447,7 +450,7 @@ object BlackBoxAlgorithm {
         // Pair probability
         val od = finder.determinePairProbabilities(
             omod.grid, omod.activityGenerator as ActivityGeneratorDefault,
-            modeChoiceCalibration, omod.grid.zip(parameters).toMap(),
+            modeChoiceCalibration, mapOf(ActivityType.WORK to omod.grid.zip(parameters).toMap()),
             popStrata, carOwnership
         )
 

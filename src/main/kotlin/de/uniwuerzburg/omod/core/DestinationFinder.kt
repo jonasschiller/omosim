@@ -27,7 +27,7 @@ interface DestinationFinder {
      */
     fun getWeights(
         origin: LocationOption, destinations: List<LocationOption>,
-        activityType: ActivityType, customCellFactors: Map<Cell, Double>? = null
+        activityType: ActivityType, customCellFactors: Map<ActivityType, Map<Cell, Double>>? = null
     ): List<Double> // TODO remove custom cell factors
 
     /**

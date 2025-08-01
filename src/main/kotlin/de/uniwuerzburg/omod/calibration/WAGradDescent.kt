@@ -26,7 +26,7 @@ object WAGradDescent {
         grid: List<Cell>,
         activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>,
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership,
         destinationFinder: DestinationFinderDefault,
@@ -205,7 +205,7 @@ object WAGradDescent {
     fun prepareOptInputWorkDep(
         grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>,
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership,
         destinationFinder: DestinationFinderDefault,

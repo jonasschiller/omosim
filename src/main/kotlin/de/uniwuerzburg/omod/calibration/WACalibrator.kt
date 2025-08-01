@@ -27,7 +27,7 @@ object WACalibrator {
     fun determinePairProbabilities(
         grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
         modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<Cell, Double>,
+        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
         popStrata: List<PopStratum>,
         carOwnership: CarOwnership,
         destinationFinder: DestinationFinderDefault,
@@ -610,7 +610,7 @@ object WACalibrator {
         //val params = optimizeStep2Params(grid, bestT!!, workTransitionP, destinationFinder)
        //val params = oneshotOpt(grid, totalPop, affectedLinks, sensors, oi)
 
-       val cellFactors = grid.zip(params).toMap()
+       val cellFactors = mapOf(ActivityType.WORK to grid.zip(params).toMap())
        val finalod = destinationFinder.determinePairProbabilities(
           grid, activityGenerator, modeChoiceCalibration, cellFactors, popStrata, carOwnership
        )

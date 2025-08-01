@@ -16,6 +16,7 @@ import org.jetbrains.kotlinx.multik.ndarray.operations.plus
 import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
+import smile.math.BFGS
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.time.measureTimedValue
@@ -55,9 +56,11 @@ class DefaultMetaModel(
         println("GENERAL META MODEL")
         eval(exp, sensors, affectedLinks)
         println("Building diff model...")
-        val (model, simCount) = buildDiffModel(m3rep, affectedLinks, sensors, 0.0)
+        val (model, simCount) = buildDiffModel(m3rep, affectedLinks, sensors)
 
-        val parameters = DoubleArray(omod.grid.size) { 1.0 }
+        var parameters = DoubleArray(omod.grid.size - 1) { 1.0 }
+        parameters = (lbfgs(model, parameters).toList() + listOf(1.0)).toDoubleArray()
+
         println("_".repeat(20*4 + 5*3))
         println("${"Sensor".padEnd(20)} | \t" +
                 "${"Flow AltOpt".padEnd(20)} | \t" +
@@ -78,7 +81,18 @@ class DefaultMetaModel(
         }
         println("MSE: ${myobjval /sensors.size}")
 
-        return listOf()
+        return parameters.toList()
+    }
+
+    fun lbfgs(model: DifferentiableModel, vals: DoubleArray) : DoubleArray {
+        println("LBFGS-B")
+        println("Start: ${model.evaluate(vals)}")
+        val l = DoubleArray(model.nVars){0.0}
+        val u = DoubleArray(model.nVars){1e3}
+        val solution = BFGS.minimize(model, 5, vals, l, u, 1e-5, 10)
+        println("Solution: $solution")
+        println("Confirm: ${model.evaluate(vals)}")
+        return vals
     }
 
     fun eval(
@@ -569,7 +583,7 @@ class DefaultMetaModel(
         }
 
         // Init diff model
-        val diffModel = DifferentiableModel(omod.grid.size)
+        val diffModel = DifferentiableModel(omod.grid.size - 1)
 
         // Create demand matrix dependent on the variable transition matrix: demand(o, d | M)
         val demand = Array(n) {
@@ -584,7 +598,11 @@ class DefaultMetaModel(
             val rowSumTerm = LinearTerm(diffModel.nVars)
             for (d in 0 until n) {
                 val weight = LinearBaseTerm(diffModel.nVars)
-                weight.addTerm(d, m3rep.transitionMatrix[m3rep.varActivityType]!![o, d])
+                if ( d != (n-1)) {
+                    weight.addTerm(d, m3rep.transitionMatrix[m3rep.varActivityType]!![o, d])
+                } else {
+                    weight.addConstant(m3rep.transitionMatrix[m3rep.varActivityType]!![o, d])
+                }
                 rowSumTerm.addTerm(weight, 1.0)
                 weightTerms.add(weight)
             }
@@ -637,9 +655,9 @@ class DefaultMetaModel(
                             }
 
                             // Ignore very small terms
-                            //if (abs(coeff) <= irrelevantFactorThreshold) {
-                            //    continue
-                            //}
+                            if (abs(coeff) <= irrelevantFactorThreshold) {
+                                continue
+                            }
 
                             if (m3rep.varActivityType in fixActivities) {
                                 s.addTerm(varTransitionMatrix[a][b], coeff)
@@ -825,9 +843,9 @@ class DefaultMetaModel(
                         if (left[row, j] == 0.0) { continue }
                         val coeff = left[row, j] * right[i, col]
 
-                        //if (abs(coeff) <= irrelevantFactorThreshold) {
-                       //     continue
-                        //}
+                        if (abs(coeff) <= irrelevantFactorThreshold) {
+                            continue
+                        }
 
                         if (transpose) {
                             activeEntry.addTerm(mVar[i][j], coeff)
