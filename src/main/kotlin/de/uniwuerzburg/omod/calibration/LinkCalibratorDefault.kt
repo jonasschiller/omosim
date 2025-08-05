@@ -117,7 +117,7 @@ class LinkCalibratorDefault(
        val (_, sFlowBase, nAgentsVBase, sLocsBase) = runBatch( Array(omod.grid.size) { 1.0 } )
 
         val mModel = DefaultMetaModel(omod)
-        for (activity in listOf(ActivityType.WORK)) {
+        for (activity in listOf(ActivityType.WORK, ActivityType.SCHOOL, ActivityType.OTHER, ActivityType.SHOPPING)) {
             val k1 = mModel.calibrateK1(activity, sensors, affectedLinks)
             finder.updateCellCValues(activity, k1.toTypedArray(), omod.grid)
         }
@@ -221,7 +221,7 @@ class LinkCalibratorDefault(
    private fun runBatch(parameters: Array<Double>) : BatchResult {
        // Set Parameters
        val finder = omod.destinationFinder as DestinationFinderDefault
-       finder.updateCellCValues(ActivityType.WORK, parameters, omod.grid)
+       //finder.updateCellCValues(ActivityType.WORK, parameters, omod.grid)
        omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
 
        // Run Simulation

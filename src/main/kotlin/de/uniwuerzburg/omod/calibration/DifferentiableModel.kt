@@ -4,6 +4,7 @@ import kotlin.math.exp
 import kotlin.math.pow
 
 fun main () {
+    println("Backwards test")
     bbLinearTest1()
     bbQuadraticTest1()
     bbQuadraticTest2()
@@ -11,7 +12,9 @@ fun main () {
     bbExponTest2()
     bbDivisionTermTest1()
     bbDivisionTermTest2()
-    /*linearTest1()
+
+    println("Forwards test")
+    linearTest1()
     quadraticTest1()
     quadraticTest2()
     exponTest1()
@@ -20,7 +23,7 @@ fun main () {
     divisionTermTest2()
     cacheTest1()
     linearRELUTest1()
-    linearRELUTest2()*/
+    linearRELUTest2()
 }
 
 fun bbLinearTest1() {
@@ -37,11 +40,10 @@ fun bbLinearTest1() {
 
     val gradient = DoubleArray(2) { 0.0 }
     val x = term.evaluate(vals)
-    term.derive(vals, gradient, 1.0)
+    term.chainBackward(vals, gradient, 1.0)
 
     val gx = gradient[0]
     val gy = gradient[1]
-
 
     require(gx == 3.0)
     require(gy == 1.0)
@@ -67,12 +69,10 @@ fun bbQuadraticTest1() {
 
     val gradient = DoubleArray(2) { 0.0 }
     val x = qTerm.evaluate(vals)
-    qTerm.derive(vals, gradient, 1.0)
+    qTerm.chainBackward(vals, gradient, 1.0)
 
     val gx = gradient[0]
     val gy = gradient[1]
-
-    println(gradient.toList())
 
     require(gx == 15.0)
     require(gy == 6.0)
@@ -94,12 +94,10 @@ fun bbQuadraticTest2() {
 
     val gradient = DoubleArray(2) { 0.0 }
     val x = qTerm.evaluate(vals)
-    qTerm.derive(vals, gradient, 1.0)
+    qTerm.chainBackward(vals, gradient, 1.0)
 
     val gx = gradient[0]
     val gy = gradient[1]
-
-    println(gradient.toList())
 
     require(gx == 3 * 0.3)
     require(gy == 0.0)
@@ -130,12 +128,10 @@ fun bbExponTest1() {
 
     val gradient = DoubleArray(2) { 0.0 }
     val x = fTerm.evaluate(vals)
-    fTerm.derive(vals, gradient, 1.0)
+    fTerm.chainBackward(vals, gradient, 1.0)
 
     val gx = gradient[0]
     val gy = gradient[1]
-
-    println(gradient.toList())
 
     require(gx == 1484.131591025766)
     require(gy == 296.8263182051532)
@@ -174,12 +170,10 @@ fun bbExponTest2() {
 
     val gradient = DoubleArray(2) { 0.0 }
     val x = fTerm.evaluate(vals)
-    fTerm.derive(vals, gradient, 1.0)
+    fTerm.chainBackward(vals, gradient, 1.0)
 
     val gx = gradient[0]
     val gy = gradient[1]
-
-    println(gradient.toList())
 
     require(gx == -0.001107026672078289)
     require(gy == 0.005535133360391445)
@@ -206,12 +200,10 @@ fun bbDivisionTermTest1() {
 
     val gradient = DoubleArray(2) { 0.0 }
     val x = dTerm.evaluate(vals)
-    dTerm.derive(vals, gradient, 1.0)
+    dTerm.chainBackward(vals, gradient, 1.0)
 
     val gx = gradient[0]
     val gy = gradient[1]
-
-    println(gradient.toList())
 
     require(gx == -0.8333333333333334)
     require(gy == -2.2916666666666665)
@@ -238,12 +230,10 @@ fun bbDivisionTermTest2() {
 
     val gradient = DoubleArray(2) { 0.0 }
     val x = dTerm.evaluate(vals)
-    dTerm.derive(vals, gradient, 1.0)
+    dTerm.chainBackward(vals, gradient, 1.0)
 
     val gx = gradient[0]
     val gy = gradient[1]
-
-    println(gradient.toList())
 
     require(gx == (-6.0 / 16.0))
     require(gy == -0.25)
@@ -563,7 +553,7 @@ interface Term {
     fun evaluate(vals: DoubleArray) : Double
     fun clearEvalCache()
     fun clearGradientCache()
-    fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double)
+    fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) // Determine gradients with backpropagation. This version is slower than the forward approach.
 }
 
 class DifferentiableModel (
@@ -575,8 +565,8 @@ class DifferentiableModel (
         root = term
     }
 
-    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
-        root.derive(vals, partials, seed)
+    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        root.chainBackward(vals, partials, seed)
     }
 
     override fun gradient(variable: Int, vals: DoubleArray): Double {
@@ -626,7 +616,6 @@ class LinearTerm(nVars: Int): Term {
     var gradientCacheHot = false
     var gradientCache = 0.0
 
-
     fun addTerm(term: Term, coefficient: Double) {
         terms.add(term)
         coefficients.add(coefficient)
@@ -636,10 +625,9 @@ class LinearTerm(nVars: Int): Term {
         intercept += value
     }
 
-    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
-
+    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
         for (i in terms.indices) {
-            terms[i].derive(vals, partials, seed * coefficients[i])
+            terms[i].chainBackward(vals, partials, seed * coefficients[i])
         }
     }
 
@@ -711,9 +699,9 @@ class QuadraticTerm(
         return result
     }
 
-    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
-        termA.derive(vals, partials, seed * termB.evaluate(vals)* coefficient)
-        termB.derive(vals, partials, seed * termA.evaluate(vals)* coefficient)
+    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        termA.chainBackward(vals, partials, seed * termB.evaluate(vals)* coefficient)
+        termB.chainBackward(vals, partials, seed * termA.evaluate(vals)* coefficient)
     }
 
     override fun evaluate(vals: DoubleArray) : Double {
@@ -753,8 +741,8 @@ class ExponentialTerm(
     var gradientCacheHot = false
     var gradientCache = 0.0
 
-    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
-        exponent.derive(vals, partials, seed * exp(exponent.evaluate(vals)))
+    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        exponent.chainBackward(vals, partials, seed * exp(exponent.evaluate(vals)))
     }
 
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
@@ -803,9 +791,9 @@ class DivisionTerm(
     var gradientCacheHot = false
     var gradientCache = 0.0
 
-    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
-        dividend.derive(vals, partials, seed / divisor.evaluate(vals))
-        divisor.derive(vals, partials, seed * dividend.evaluate(vals) / - divisor.evaluate(vals).pow(2.0))
+    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        dividend.chainBackward(vals, partials, seed / divisor.evaluate(vals))
+        divisor.chainBackward(vals, partials, seed * dividend.evaluate(vals) / - divisor.evaluate(vals).pow(2.0))
     }
 
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
@@ -862,7 +850,7 @@ class LinearBaseTerm(nVars: Int): Term {
         intercept += value
     }
 
-    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
         for (i in partials.indices) {
             partials[i] += seed * coefficients[i]
         }
@@ -906,10 +894,8 @@ class LinearBaseRELUTerm(nVars: Int): Term {
         intercept += value
     }
 
-    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
-        for (i in partials.indices) {
-            partials[i] += seed * coefficients[i] * vals[i]
-        }
+    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        throw NotImplementedError()
     }
 
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
