@@ -1,9 +1,17 @@
 package de.uniwuerzburg.omod.calibration
 
 import kotlin.math.exp
+import kotlin.math.pow
 
 fun main () {
-    linearTest1()
+    bbLinearTest1()
+    bbQuadraticTest1()
+    bbQuadraticTest2()
+    bbExponTest1()
+    bbExponTest2()
+    bbDivisionTermTest1()
+    bbDivisionTermTest2()
+    /*linearTest1()
     quadraticTest1()
     quadraticTest2()
     exponTest1()
@@ -12,8 +20,237 @@ fun main () {
     divisionTermTest2()
     cacheTest1()
     linearRELUTest1()
-    linearRELUTest2()
+    linearRELUTest2()*/
 }
+
+fun bbLinearTest1() {
+    // f: 3x + 1y
+    // value: x=1, y=1
+    // expected gradient: d/dx = 3, d/dy = 1
+    // expected value: 4
+    val vals = doubleArrayOf(1.0, 1.0)
+
+    val term = LinearBaseTerm(2)
+
+    term.addTerm(0, 3.0)
+    term.addTerm(1, 1.0)
+
+    val gradient = DoubleArray(2) { 0.0 }
+    val x = term.evaluate(vals)
+    term.derive(vals, gradient, 1.0)
+
+    val gx = gradient[0]
+    val gy = gradient[1]
+
+
+    require(gx == 3.0)
+    require(gy == 1.0)
+    require(x == 4.0)
+    println("linearTest1 OK")
+}
+
+fun bbQuadraticTest1() {
+    // f: 3xy
+    // value: x=2, y=5
+    // expected gradient: d/dx = 15, d/dy = 6
+    // expected value: 30
+    // expected value: 30
+    val vals = doubleArrayOf(2.0, 5.0)
+
+    val xTerm = LinearBaseTerm(2)
+    xTerm.addTerm(0, 1.0)
+
+    val yTerm = LinearBaseTerm(2)
+    yTerm.addTerm(1, 1.0)
+
+    val qTerm = QuadraticTerm(2, xTerm, yTerm, 3.0)
+
+    val gradient = DoubleArray(2) { 0.0 }
+    val x = qTerm.evaluate(vals)
+    qTerm.derive(vals, gradient, 1.0)
+
+    val gx = gradient[0]
+    val gy = gradient[1]
+
+    println(gradient.toList())
+
+    require(gx == 15.0)
+    require(gy == 6.0)
+    require(x == 30.0)
+    println("quadraticTest1 OK")
+}
+
+fun bbQuadraticTest2() {
+    // f: 1.5xx
+    // value: x=0.3
+    // expected gradient: d/dx = 0.9, d/dy = 0.0
+    // expected value: 0.13499999999999998
+    val vals = doubleArrayOf(0.3, 100.0)
+
+    val xTerm = LinearBaseTerm(2)
+    xTerm.addTerm(0, 1.0)
+
+    val qTerm = QuadraticTerm(2, xTerm, xTerm, 1.5)
+
+    val gradient = DoubleArray(2) { 0.0 }
+    val x = qTerm.evaluate(vals)
+    qTerm.derive(vals, gradient, 1.0)
+
+    val gx = gradient[0]
+    val gy = gradient[1]
+
+    println(gradient.toList())
+
+    require(gx == 3 * 0.3)
+    require(gy == 0.0)
+    require(x == 0.3 * 0.3 * 1.5)
+    println("quadraticTest2 OK")
+}
+
+
+fun bbExponTest1() {
+    // f: 2e(xy)
+    // value: x=1, y=5
+    // expected gradient: d/dx = 10e(5) = 1484.131591025766, d/dy = 2e(5) = 296.8263182051532
+    // expected value: 2e(5) = 296.8263182051532
+    val vals = doubleArrayOf(1.0, 5.0)
+
+    val xTerm = LinearBaseTerm(2)
+    xTerm.addTerm(0, 1.0)
+
+    val yTerm = LinearBaseTerm(2)
+    yTerm.addTerm(1, 1.0)
+
+    val qTerm = QuadraticTerm(2, xTerm, yTerm, 1.0)
+
+    val eTerm = ExponentialTerm(2, qTerm)
+
+    val fTerm = LinearTerm(2)
+    fTerm.addTerm(eTerm, 2.0)
+
+    val gradient = DoubleArray(2) { 0.0 }
+    val x = fTerm.evaluate(vals)
+    fTerm.derive(vals, gradient, 1.0)
+
+    val gx = gradient[0]
+    val gy = gradient[1]
+
+    println(gradient.toList())
+
+    require(gx == 1484.131591025766)
+    require(gy == 296.8263182051532)
+    require(x == 296.8263182051532)
+    println("exponTest1 OK")
+}
+
+
+
+fun bbExponTest2() {
+    // f: 3.3e(xy + x + 2y - 1)
+    // value: x=3, y=-2
+    // expected gradient: d/dx = 3.3(y + 1)e(xy + x + 2y - 1) = -3.3e(-8) = -0.001107026672078289
+    //                    d/dy = 3.3(x + 2)e(-8) = 16.5e(-8) = 0.005535133360391445
+    // expected value: 3.3e(-6 + 3 -4 - 1) = 3.3e(-8) = 0.001107026672078289
+    val vals = doubleArrayOf(3.0, -2.0)
+
+    val xTerm = LinearBaseTerm(2)
+    xTerm.addTerm(0, 1.0)
+
+    val yTerm = LinearBaseTerm(2)
+    yTerm.addTerm(1, 1.0)
+
+    val qTerm = QuadraticTerm(2, xTerm, yTerm, 1.0)
+
+    val exponent = LinearTerm(2)
+    exponent.addTerm(qTerm, 1.0)
+    exponent.addTerm(xTerm, 1.0)
+    exponent.addTerm(yTerm, 2.0)
+    exponent.addConstant(-1.0)
+
+    val eTerm = ExponentialTerm(2, exponent)
+
+    val fTerm = LinearTerm(2)
+    fTerm.addTerm(eTerm, 3.3)
+
+    val gradient = DoubleArray(2) { 0.0 }
+    val x = fTerm.evaluate(vals)
+    fTerm.derive(vals, gradient, 1.0)
+
+    val gx = gradient[0]
+    val gy = gradient[1]
+
+    println(gradient.toList())
+
+    require(gx == -0.001107026672078289)
+    require(gy == 0.005535133360391445)
+    require(x == 0.001107026672078289)
+    println("exponTest2 OK")
+}
+
+
+fun bbDivisionTermTest1() {
+    // f: x/y
+    // value: x=3.3, y=-1.2
+    // expected gradient: d/dx = 1/-1.2 = -0.8333333333333334
+    //                    d/dy = -x/(y*y) = -3.3/(1.44) = -2.2916666666666665
+    // expected value: -2.75
+    val vals = doubleArrayOf(3.3, -1.2)
+
+    val xTerm = LinearBaseTerm(2)
+    xTerm.addTerm(0, 1.0)
+
+    val yTerm = LinearBaseTerm(2)
+    yTerm.addTerm(1, 1.0)
+
+    val dTerm = DivisionTerm(2, xTerm, yTerm)
+
+    val gradient = DoubleArray(2) { 0.0 }
+    val x = dTerm.evaluate(vals)
+    dTerm.derive(vals, gradient, 1.0)
+
+    val gx = gradient[0]
+    val gy = gradient[1]
+
+    println(gradient.toList())
+
+    require(gx == -0.8333333333333334)
+    require(gy == -2.2916666666666665)
+    require(x == -2.75)
+    println("divisionTermTest1 OK")
+}
+
+fun bbDivisionTermTest2() {
+    // f: x/(1x+2y)
+    // value: x=2, y=-3
+    // expected gradient: d/dx = (x + 2y - x) / (1x+2y)**2 = -6 / 16
+    //                    d/dy = -2x / (1x+2y)**2 = 4 / 16 = -1/4 = -0.25
+    // expected value: 2 / -4 = -0.5
+    val vals = doubleArrayOf(2.0, -3.0)
+
+    val dividend = LinearBaseTerm(2)
+    dividend.addTerm(0, 1.0)
+
+    val divisor = LinearBaseTerm(2)
+    divisor.addTerm(0, 1.0)
+    divisor.addTerm(1, 2.0)
+
+    val dTerm = DivisionTerm(2, dividend, divisor)
+
+    val gradient = DoubleArray(2) { 0.0 }
+    val x = dTerm.evaluate(vals)
+    dTerm.derive(vals, gradient, 1.0)
+
+    val gx = gradient[0]
+    val gy = gradient[1]
+
+    println(gradient.toList())
+
+    require(gx == (-6.0 / 16.0))
+    require(gy == -0.25)
+    require(x ==  -0.5)
+    println("divisionTermTest2 OK")
+}
+
 
 fun linearTest1() {
     // f: 3x + 1y
@@ -326,6 +563,7 @@ interface Term {
     fun evaluate(vals: DoubleArray) : Double
     fun clearEvalCache()
     fun clearGradientCache()
+    fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double)
 }
 
 class DifferentiableModel (
@@ -335,6 +573,10 @@ class DifferentiableModel (
 
     fun setRootTerm(term: Term) {
         root = term
+    }
+
+    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        root.derive(vals, partials, seed)
     }
 
     override fun gradient(variable: Int, vals: DoubleArray): Double {
@@ -384,6 +626,7 @@ class LinearTerm(nVars: Int): Term {
     var gradientCacheHot = false
     var gradientCache = 0.0
 
+
     fun addTerm(term: Term, coefficient: Double) {
         terms.add(term)
         coefficients.add(coefficient)
@@ -391,6 +634,13 @@ class LinearTerm(nVars: Int): Term {
 
     fun addConstant(value: Double) {
         intercept += value
+    }
+
+    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+
+        for (i in terms.indices) {
+            terms[i].derive(vals, partials, seed * coefficients[i])
+        }
     }
 
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
@@ -461,6 +711,11 @@ class QuadraticTerm(
         return result
     }
 
+    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        termA.derive(vals, partials, seed * termB.evaluate(vals)* coefficient)
+        termB.derive(vals, partials, seed * termA.evaluate(vals)* coefficient)
+    }
+
     override fun evaluate(vals: DoubleArray) : Double {
         if (evalCacheHot) {
             return evalCache
@@ -497,6 +752,10 @@ class ExponentialTerm(
 
     var gradientCacheHot = false
     var gradientCache = 0.0
+
+    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        exponent.derive(vals, partials, seed * exp(exponent.evaluate(vals)))
+    }
 
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
         if (gradientCacheHot) {
@@ -544,6 +803,11 @@ class DivisionTerm(
     var gradientCacheHot = false
     var gradientCache = 0.0
 
+    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        dividend.derive(vals, partials, seed / divisor.evaluate(vals))
+        divisor.derive(vals, partials, seed * dividend.evaluate(vals) / - divisor.evaluate(vals).pow(2.0))
+    }
+
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
         if (gradientCacheHot) {
             return gradientCache
@@ -589,12 +853,19 @@ class LinearBaseTerm(nVars: Int): Term {
     var evalCacheHot = false
     var evalCache: Double = 0.0
 
+
     fun addTerm(variable: Int, coefficient: Double) {
         coefficients[variable] += coefficient
     }
 
     fun addConstant(value: Double) {
         intercept += value
+    }
+
+    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        for (i in partials.indices) {
+            partials[i] += seed * coefficients[i]
+        }
     }
 
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
@@ -633,6 +904,12 @@ class LinearBaseRELUTerm(nVars: Int): Term {
 
     fun addConstant(value: Double) {
         intercept += value
+    }
+
+    override fun derive(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        for (i in partials.indices) {
+            partials[i] += seed * coefficients[i] * vals[i]
+        }
     }
 
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
