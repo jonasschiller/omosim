@@ -1,6 +1,5 @@
 package de.uniwuerzburg.omod.calibration
 
-import de.uniwuerzburg.omod.calibration.WAGradDescent.lbfgs
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
@@ -19,6 +18,7 @@ import org.locationtech.jts.geom.Coordinate
 import smile.math.BFGS
 import kotlin.math.abs
 import kotlin.math.pow
+import kotlin.time.measureTime
 import kotlin.time.measureTimedValue
 
 class DefaultMetaModel(
@@ -60,6 +60,7 @@ class DefaultMetaModel(
 
         var parameters = DoubleArray(omod.grid.size - 1) { 1.0 }
         parameters = (lbfgs(model, parameters).toList() + listOf(1.0)).toDoubleArray()
+        //parameters = gradDescent(model, parameters)
 
         println("_".repeat(20*4 + 5*3))
         println("${"Sensor".padEnd(20)} | \t" +
@@ -93,6 +94,39 @@ class DefaultMetaModel(
         println("Solution: $solution")
         println("Confirm: ${model.evaluate(vals)}")
         return vals
+    }
+
+    fun gradDescent(model: DifferentiableModel, vals: DoubleArray, iterations: Int = 1000, lr: Double = 1.0e-9) :
+            DoubleArray
+    {
+        val currentValues = vals.copyOf()
+        val gradients = DoubleArray(vals.size) { 0.0 }
+
+        val evaltime = measureTime {
+            val loss = model.evaluate(currentValues)
+            println("Start loss: $loss")
+        }
+        println("Eval time: $evaltime")
+
+        for (i in 0 until iterations) {
+            val (loss, time) = measureTimedValue {
+                // Determine gradients
+                for ((i, value) in currentValues.withIndex()) {
+                    gradients[i] = model.gradient(i, currentValues)
+                }
+
+                for ((i, value) in currentValues.withIndex()) {
+                    currentValues[i] -= lr * gradients[i]
+                }
+                val loss = model.evaluate(currentValues)
+                loss
+            }
+
+            print("Iteration $i, vals ${currentValues.toList().toString()}, loss: $loss \t took $time \r")
+        }
+        val loss = model.evaluate(currentValues)
+        println("Solution loss: $loss")
+        return currentValues
     }
 
     fun eval(
@@ -686,6 +720,7 @@ class DefaultMetaModel(
                 val left = m3rep.dependentMatrix[fixActivity]!!.transpose()
                 val right = m3rep.homeP.diagonal().transpose()
                 diffModelFromMatrixSandwichT(
+                    diffModel.nVars,
                     varTransitionMatrix, left, right,
                     relevantRCs = relevantODs, irrelevantFactorThreshold=irrelevantFactorThreshold
                 )
@@ -693,6 +728,7 @@ class DefaultMetaModel(
                 val left = mk.identity<Double>(n)
                 val right = m3rep.dependentMatrix[fixActivity]!!.transpose()
                 diffModelFromMatrixSandwichT(
+                    diffModel.nVars,
                     varTransitionMatrix, left, right,
                     relevantRCs = relevantODs,
                     irrelevantFactorThreshold=irrelevantFactorThreshold
@@ -730,6 +766,7 @@ class DefaultMetaModel(
                 val left = m3rep.fixedMatrix[fixActivity]!!.transpose()
                 val right = mk.identity<Double>(n)
                 diffModelFromMatrixSandwichT(
+                    diffModel.nVars,
                     varTransitionMatrix, left, right,
                     transpose = false,
                     relevantRCs = relevantODs,
@@ -742,6 +779,7 @@ class DefaultMetaModel(
                     .transpose()
                     .dot(m3rep.transitionMatrix[fixActivity]!!)
                 diffModelFromMatrixSandwichT(
+                    diffModel.nVars,
                     varTransitionMatrix, left, right,
                     relevantRCs = relevantODs,
                     irrelevantFactorThreshold=irrelevantFactorThreshold
@@ -751,7 +789,9 @@ class DefaultMetaModel(
                 val right = m3rep.dependentMatrix[fixActivity]!!
                     .transpose()
                     .dot(m3rep.transitionMatrix[fixActivity]!!)
-                diffModelFromMatrixSandwichT(varTransitionMatrix, left, right,
+                diffModelFromMatrixSandwichT(
+                    diffModel.nVars,
+                    varTransitionMatrix, left, right,
                     relevantRCs = relevantODs,
                     irrelevantFactorThreshold=irrelevantFactorThreshold
                 )
@@ -812,6 +852,7 @@ class DefaultMetaModel(
     }
 
     fun diffModelFromMatrixSandwichT(
+        nVars: Int,
         mVar: List<List<Term>>,
         left: D2Array<Double>,
         right: D2Array<Double>,
@@ -823,7 +864,7 @@ class DefaultMetaModel(
 
         val result = Array(n) {
             Array(n) {
-                LinearTerm(n * n)
+                LinearTerm(nVars)
             }
         }
 
