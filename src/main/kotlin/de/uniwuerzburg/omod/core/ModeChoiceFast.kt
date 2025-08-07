@@ -27,8 +27,8 @@ import kotlin.time.TimeSource
 class ModeChoiceFast(
     private val routingCache: RoutingCache
 ) : ModeChoice {
-    private val tourModeOptions: Array<ModeUtility> = readJsonFromResource("tourModeUtilities.json")
-    private val tripModeOptions: Array<ModeUtility> = readJsonFromResource("tripModeUtilities.json")
+    val tourModeOptions: Array<ModeUtility> = readJsonFromResource("tourModeUtilities.json")
+    val tripModeOptions: Array<ModeUtility> = readJsonFromResource("tripModeUtilities.json")
 
     /**
      * Determine the mode of each trip and calculate the distance and time.
@@ -72,7 +72,7 @@ class ModeChoiceFast(
      * @param rng Random number generator
      * @return Tours
      */
-    private fun getTours(diary: Diary, rng: Random) : List<List<TripMCFeatures>> {
+    fun getTours(diary: Diary, rng: Random) : List<List<TripMCFeatures>> {
         val tours = mutableListOf<List<TripMCFeatures>>()
         var currentTour = mutableListOf<TripMCFeatures>()
 
@@ -222,7 +222,7 @@ class ModeChoiceFast(
      * @param fromActivity Activity before the trip
      * @param toActivity Activity after the trip
      */
-    private class TripMCFeatures (
+    class TripMCFeatures (
         val carDistance: Double,
         val fromActivity: Activity,
         val toActivity: Activity,

@@ -42,7 +42,7 @@ class DefaultMetaModel(
             )
             return null
         }
-        return DefaultMetaModel(omod)
+        return DefaultMetaModel(omod) // TODO should be the only way to get a meta model
     }
 
     override fun calibrateK1(
@@ -825,7 +825,7 @@ class DefaultMetaModel(
                     for (sensor in affected) {
                         val sensorSumTest = simcount[sensor]!!
                         val demTest = demand[o][d]
-                        sensorSumTest.addTerm(demTest, totalPop)
+                        sensorSumTest.addTerm(demTest, totalPop) // TODO useless
                     }
                 }
             }

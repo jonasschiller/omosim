@@ -105,7 +105,7 @@ class LinkCalibratorDefault(
             sensors
         )*/
 
-
+        modeChoiceCal()
 
        //.times(fullPopulation)
        /*val test = SPCalibrator.determinePairProbabilities(
@@ -116,11 +116,11 @@ class LinkCalibratorDefault(
        println(test)*/
        val (_, sFlowBase, nAgentsVBase, sLocsBase) = runBatch( Array(omod.grid.size) { 1.0 } )
 
-        val mModel = DefaultMetaModel(omod)
+        /*val mModel = DefaultMetaModel(omod)
         for (activity in listOf(ActivityType.WORK, ActivityType.SCHOOL, ActivityType.OTHER, ActivityType.SHOPPING)) {
             val k1 = mModel.calibrateK1(activity, sensors, affectedLinks)
             finder.updateCellCValues(activity, k1.toTypedArray(), omod.grid)
-        }
+        }*/
 
         /*
        val oforce = mutableMapOf<Cell, DoubleArray>()
@@ -138,7 +138,7 @@ class LinkCalibratorDefault(
        // Determine affected sensors
        // TODO temporal check
        //val staticCount = sensors.associateWith { 0.0 }.toMutableMap()
-       val oldStaticCount = sensors.associateWith { 0.0 }.toMutableMap()
+       /*val oldStaticCount = sensors.associateWith { 0.0 }.toMutableMap()
        for (origin in omod.grid) {
            for (destination in omod.grid) {
                val odPair = Pair(origin, destination)
@@ -150,7 +150,7 @@ class LinkCalibratorDefault(
                    }
                }
            }
-       }
+       }*/
 
 
        //println(test.toList().take(10))
@@ -217,6 +217,18 @@ class LinkCalibratorDefault(
        }
 
    }
+
+    private fun modeChoiceCal() {
+        omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
+
+        // Run Simulation
+        val agents = omod.run(0.1)
+        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
+
+        // Mode Choice
+        calibrate(agents, omod.mainRng, omod, sensors, affectedLinks)
+    }
+
 
    private fun runBatch(parameters: Array<Double>) : BatchResult {
        // Set Parameters
