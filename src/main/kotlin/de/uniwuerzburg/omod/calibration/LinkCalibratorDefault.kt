@@ -105,7 +105,8 @@ class LinkCalibratorDefault(
             sensors
         )*/
 
-        modeChoiceCal()
+        //modeChoiceCal()
+        val k1 = fourStepCal()
 
        //.times(fullPopulation)
        /*val test = SPCalibrator.determinePairProbabilities(
@@ -132,6 +133,7 @@ class LinkCalibratorDefault(
        //finder.forceWMatrix = wforce
        //finder.forceOMatrix = oforce
        finder.updateCellCValues(ActivityType.OTHER, k1.toTypedArray(), omod.grid)*/
+       finder.updateCellCValues(ActivityType.OTHER, k1.toTypedArray(), omod.grid)
 
        val (_, sFlow, nAgents, sLocs) = runBatch(  Array(omod.grid.size) { 1.0 } )
 
@@ -217,6 +219,15 @@ class LinkCalibratorDefault(
        }
 
    }
+
+    private fun fourStepCal() : List<Double> {
+        omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
+
+        // Run Simulation
+        val agents = omod.run(0.1)
+        return calibrateK1(agents, omod, sensors, affectedLinks)
+    }
+
 
     private fun modeChoiceCal() {
         omod.mainRng.setSeed(0) // Seed impact low with 100% of agents

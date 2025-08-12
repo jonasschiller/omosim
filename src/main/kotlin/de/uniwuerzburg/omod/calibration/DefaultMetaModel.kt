@@ -900,7 +900,7 @@ class DefaultMetaModel(
         return result
     }
 
-    private fun computeTransitionMatrices() : FinderMatrices{
+    private fun computeTransitionMatrices() : FinderMatrices {
         val finder = omod.destinationFinder as DestinationFinderDefault
 
         // HOME
