@@ -1,6 +1,7 @@
 package de.uniwuerzburg.omod.calibration
 
 import com.graphhopper.GraphHopper
+import de.uniwuerzburg.omod.calibration.algorithms.PSO
 import de.uniwuerzburg.omod.core.*
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.routing.routeAltCar
@@ -10,7 +11,6 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.geotools.filter.function.StaticGeometry.intersection
-import org.jetbrains.kotlinx.multik.ndarray.operations.toArray
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.GeometryFactory
 import org.locationtech.jts.geom.LineString
@@ -18,7 +18,14 @@ import org.locationtech.jts.geom.MultiLineString
 import org.locationtech.jts.index.hprtree.HPRtree
 import org.locationtech.jts.io.WKTReader
 import java.io.File
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.util.Random
 import kotlin.math.*
+
+enum class CalibrationOption {
+    PSO, MM_LBFGS
+}
 
 class LinkCalibratorDefault(
     linkDataFile: File,
@@ -32,6 +39,152 @@ class LinkCalibratorDefault(
     val altPercentages: Map<Pair<RealLocation, RealLocation>, List<Double>> = mapOf()
 
     init {
+        sensors = readSensorData(linkDataFile)
+        affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
+    }
+
+    fun hpTune() {
+        val model = DefaultMetaModel(omod).getDiffModel(ActivityType.OTHER, sensors, affectedLinks)
+        val objective: (DoubleArray) -> Double = { x: DoubleArray ->
+            model.evaluate(x)
+        }
+        val outPath =  Paths.get("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/hpTune")
+
+        PSO.hpGridSearch(
+            omod.grid.size, objective, Random(), outPath,
+            nParticles = listOf(20),
+            chi = listOf(0.5, 0.7),
+            vClamp = listOf(0.5, 1.0),
+            boundStrategy = listOf(PSO.BoundStrategy.INFINITY, PSO.BoundStrategy.REFLECT_Z)
+        )
+    }
+
+    fun calibrate(option: CalibrationOption) {
+        val d = when (option) {
+            CalibrationOption.PSO -> calibratePSO()
+            CalibrationOption.MM_LBFGS -> calibrateMetaModelLBFGS()
+        }
+
+        evaluate(d)
+    }
+
+    fun evaluate(d: DoubleArray) {
+        val finder = omod.destinationFinder as DestinationFinderDefault
+        val (_, sFlowBase, nAgents, _) = runBatch( arrayOf(0.0) )
+        finder.updateCellCValues(ActivityType.OTHER, d.toTypedArray(), omod.grid)
+        val (_, sFlow, _, _) = runBatch( arrayOf(0.0) )
+
+        var mseSim = 0.0
+        var mseSimBase = 0.0
+        //var mseExpec = 0.0
+        for (sensor in sensors) {
+            mseSim += (sFlow[sensor]!! - sensor.measuredFlow).pow(2)
+            mseSimBase += (sFlowBase[sensor]!! - sensor.measuredFlow).pow(2)
+            //mseExpec += (staticCount[sensor]!! - sensor.measuredFlow).pow(2)
+        }
+
+        println("_".repeat(20*4 + 5*3))
+        println("${"Sensor".padEnd(20)} | \t" +
+                "${"Flow Simulated".padEnd(20)} | \t" +
+                "${"Flow Simulated Base".padEnd(20)} | \t" +
+                // "${"Flow Deterministic".padEnd(20)} | \t" +
+                "Flow Measured".padEnd(20)
+        )
+        println("_".repeat(20) +
+                " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20)  +
+                //" | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20))
+        println(" ".repeat(20) +
+                " | \t" + "%.2f e6".format(mseSim/sensors.size / 1e6).padEnd(20)  +
+                " | \t" + "%.2f e6".format(mseSimBase/sensors.size / 1e6).padEnd(20)  +
+                //" | \t" + "%.2f e6".format(mseExpec/sensors.size / 1e6).padEnd(20) +
+                " | \t" + " ".repeat(20)
+        )
+        println("_".repeat(20) +
+                " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20)  +
+                //" | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20))
+        for ((i, flow) in sFlow.values.withIndex()) {
+            println(
+                "${sensors[i].name.padEnd(20)} | \t" +
+                        "${flow.toString().padEnd(20)} | \t" +
+                        "${sFlowBase[sensors[i]].toString().padEnd(20)} | \t" +
+                        //"${staticCount[sensors[i]].toString().padEnd(20)} | \t" +
+                        sensors[i].measuredFlow.toString().padEnd(20)
+            )
+        }
+    }
+
+    fun calibratePSO() : DoubleArray {
+        val finder = omod.destinationFinder as DestinationFinderDefault
+        val fullPopulation = omod.buildings.sumOf { it.population }
+        val model = DefaultMetaModel(omod).getDiffModel(ActivityType.OTHER, sensors, affectedLinks)
+
+        val objective: (DoubleArray) -> Double = { x: DoubleArray ->
+            model.evaluate(x)
+        }
+        val d = PSO.run(omod.grid.size, objective, Random(), out=File("TestPSO.csv"))
+        return d
+    }
+
+    fun calibrateMetaModelLBFGS() : DoubleArray {
+        val mModel = DefaultMetaModel(omod)
+        return mModel.calibrateK1(ActivityType.OTHER, sensors, affectedLinks).toDoubleArray()
+    }
+
+    fun simBatchMSE(
+        x: DoubleArray, activityType: ActivityType, finder: DestinationFinderDefault, fullPopulation: Double
+    ) : Double {
+        de.uniwuerzburg.omod.core.logger.on = false
+        finder.updateCellCValues(activityType, x.toTypedArray(), omod.grid)
+
+        omod.mainRng.setSeed(0)
+        val agents = omod.run(0.1)
+        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
+
+        // Determine affected sensors
+        val simCount = sensors.associateWith {0.0}.toMutableMap()
+        var locBeforeTrip = Array(omod.grid.size) {0.0}.toMutableList()
+        for (agent in agents) {
+            var origin = agent.mobilityDemand.first().activities.first()
+            val activities = agent.mobilityDemand.first().activities.drop(1)
+
+            val trips = agent.mobilityDemand.first().trips
+            for ((activity, trip) in activities.zip(trips)) {
+                if (trip.mode == Mode.CAR_DRIVER) {
+                    if ((origin.location.getAggLoc() is Cell) and (activity.location.getAggLoc() is Cell)) {
+                        val od = Pair(origin.location.getAggLoc() as Cell, activity.location.getAggLoc() as Cell)
+                        if (od in affectedLinks) {
+                            val sensors = affectedLinks[od]!!
+                            for (sensor in sensors) {
+                                simCount[sensor] = simCount[sensor]!! + 1
+                            }
+                        }
+                    }
+                }
+                if (origin.location.getAggLoc() is Cell) {
+                    val ocell = origin.location.getAggLoc() as Cell
+                    val i = omod.grid.indexOf(ocell)
+                    locBeforeTrip[i] = locBeforeTrip[i] + 1
+                }
+                origin = activity
+            }
+        }
+        var mse = 0.0
+        val allFlows = mutableMapOf<TrafficSensor, Double>()
+        for (sensor in sensors) {
+            val simFlow = simCount[sensor]!! * fullPopulation / agents.size
+            mse += (sensor.measuredFlow - simFlow).pow(2)
+
+            allFlows[sensor] = simFlow
+        }
+        mse /= sensors.size
+        de.uniwuerzburg.omod.core.logger.on = true
+        return mse
+    }
+    /*init {
         sensors = readSensorData(linkDataFile)
         affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
 
@@ -217,8 +370,7 @@ class LinkCalibratorDefault(
                sensors[i].measuredFlow.toString().padEnd(20)
            )
        }
-
-   }
+   }*/
 
     private fun fourStepCal() : List<Double> {
         omod.mainRng.setSeed(0) // Seed impact low with 100% of agents

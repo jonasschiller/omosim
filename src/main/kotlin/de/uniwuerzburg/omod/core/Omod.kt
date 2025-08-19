@@ -3,6 +3,7 @@ package de.uniwuerzburg.omod.core
 import com.graphhopper.GraphHopper
 import com.graphhopper.gtfs.GraphHopperGtfs
 import com.graphhopper.gtfs.PtRouter
+import de.uniwuerzburg.omod.calibration.CalibrationOption
 import de.uniwuerzburg.omod.calibration.LinkCalibratorDefault
 import de.uniwuerzburg.omod.core.models.ModeChoiceOption
 import de.uniwuerzburg.omod.core.models.*
@@ -212,6 +213,8 @@ class Omod(
             popStrata,
             carOwnership
         )
+        calibrator.hpTune()
+        //calibrator.calibrate(CalibrationOption.PSO)
         /*altPercentages = calibrator.altPercentages*/
 
         // Test impact of C-Values
@@ -229,8 +232,6 @@ class Omod(
         println(cntr)
         (destinationFinder as DestinationFinderDefault).updateCellCValues(parameters.toTypedArray(), grid)*/
         // TODO: End Debug
-
-
     }
 
     // Factories

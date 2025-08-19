@@ -45,6 +45,21 @@ class DefaultMetaModel(
         return DefaultMetaModel(omod) // TODO should be the only way to get a meta model
     }
 
+    fun getDiffModel(
+        activityType: ActivityType,
+        sensors: List<TrafficSensor>,
+        affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    ): DifferentiableModel {
+        val m3rep = generateMatrixRep(activityType)
+        val exp = getExpectedCountPerAgent(m3rep)
+
+        println("GENERAL META MODEL")
+        eval(exp, sensors, affectedLinks)
+        println("Building diff model...")
+        val (model, simCount) = buildDiffModel(m3rep, affectedLinks, sensors)
+        return model
+    }
+
     override fun calibrateK1(
         activityType: ActivityType,
         sensors: List<TrafficSensor>,
