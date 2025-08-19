@@ -23,7 +23,7 @@ class AgentFactoryDefaultTest {
             readJsonFromResource("LocChoiceWeightFuns.json")
         mutLocChoiceFuns[ActivityType.HOME] = ByPopulation
         mutLocChoiceFuns[ActivityType.BUSINESS] = mutLocChoiceFuns[ActivityType.OTHER]!!
-        val locChoiceWeightFuns = mutLocChoiceFuns.toMap()
+        val locChoiceWeightFuns = mutLocChoiceFuns.toMutableMap()
 
         val routingCache = RoutingCache(RoutingMode.BEELINE, null, 0, Dispatchers.Default)
         val destinationFinder = DestinationFinderDefault(routingCache, locChoiceWeightFuns)
@@ -71,7 +71,7 @@ class AgentFactoryDefaultTest {
             readJsonFromResource("LocChoiceWeightFuns.json")
         mutLocChoiceFuns[ActivityType.HOME] = ByPopulation
         mutLocChoiceFuns[ActivityType.BUSINESS] = mutLocChoiceFuns[ActivityType.OTHER]!!
-        val locChoiceWeightFuns = mutLocChoiceFuns.toMap()
+        val locChoiceWeightFuns = mutLocChoiceFuns.toMutableMap()
 
         val routingCache = RoutingCache(RoutingMode.BEELINE, null, 0, Dispatchers.Default)
         val destinationFinder = DestinationFinderDefault(routingCache, locChoiceWeightFuns)
@@ -109,7 +109,7 @@ class AgentFactoryDefaultTest {
             readJsonFromResource("LocChoiceWeightFuns.json")
         mutLocChoiceFuns[ActivityType.HOME] = ByPopulation
         mutLocChoiceFuns[ActivityType.BUSINESS] = mutLocChoiceFuns[ActivityType.OTHER]!!
-        val locChoiceWeightFuns = mutLocChoiceFuns.toMap()
+        val locChoiceWeightFuns = mutLocChoiceFuns.toMutableMap()
 
         val carOwnership = CarOwnershipFixedProbability(17)
 
