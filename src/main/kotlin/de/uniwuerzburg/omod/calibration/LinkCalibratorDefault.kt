@@ -2,6 +2,7 @@ package de.uniwuerzburg.omod.calibration
 
 import com.graphhopper.GraphHopper
 import de.uniwuerzburg.omod.calibration.algorithms.PSO
+import de.uniwuerzburg.omod.calibration.algorithms.SPSA
 import de.uniwuerzburg.omod.core.*
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.routing.routeAltCar
@@ -24,7 +25,7 @@ import java.util.Random
 import kotlin.math.*
 
 enum class CalibrationOption {
-    PSO, MM_LBFGS
+    PSO, MM_LBFGS, SPSA
 }
 
 class LinkCalibratorDefault(
@@ -43,28 +44,43 @@ class LinkCalibratorDefault(
         affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
     }
 
-    fun hpTune() {
+    fun hpTune(option: CalibrationOption) {
         val model = DefaultMetaModel(omod).getDiffModel(ActivityType.OTHER, sensors, affectedLinks)
         val objective: (DoubleArray) -> Double = { x: DoubleArray ->
             model.evaluate(x)
         }
-        val outPath =  Paths.get("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/hpTune")
+        val outPath =  Paths.get("output/")
 
-        PSO.hpGridSearch(
-            omod.grid.size, objective, Random(), outPath,
-            nParticles = listOf(20),
-            chi = listOf(0.5, 0.7),
-            vClamp = listOf(0.5, 1.0),
-            boundStrategy = listOf(PSO.BoundStrategy.INFINITY, PSO.BoundStrategy.REFLECT_Z)
-        )
+        when(option) {
+            CalibrationOption.PSO -> PSO.hpGridSearch(
+                omod.grid.size, objective, Random(), outPath,
+                nParticles = listOf(20, 40),
+                chi = listOf(0.6, 0.8, 0.9),
+                vClamp = listOf(0.5, 1.0),
+                boundStrategy = listOf(PSO.BoundStrategy.INFINITY, PSO.BoundStrategy.REFLECT_Z)
+            )
+            CalibrationOption.SPSA -> {
+                val d0 = DoubleArray(omod.grid.size) { 0.0 }
+                SPSA.hpGridSearch(
+                    d0,
+                    objective,
+                    Random(),
+                    outPath,
+                    a0 = listOf(2.0, 1.0, 0.5),
+                    c0 = listOf(5.0, 2.0, 1.0, 0.5),
+                    gamma =  listOf(1.0 / 3.0, 1.0 / 5.0, 1.0 / 10.0)
+                )
+            }
+            else -> throw NotImplementedError()
+        }
     }
 
     fun calibrate(option: CalibrationOption) {
         val d = when (option) {
             CalibrationOption.PSO -> calibratePSO()
             CalibrationOption.MM_LBFGS -> calibrateMetaModelLBFGS()
+            CalibrationOption.SPSA -> calibrateSPSA()
         }
-
         evaluate(d)
     }
 
@@ -133,6 +149,18 @@ class LinkCalibratorDefault(
         val mModel = DefaultMetaModel(omod)
         return mModel.calibrateK1(ActivityType.OTHER, sensors, affectedLinks).toDoubleArray()
     }
+
+    fun calibrateSPSA() : DoubleArray {
+        val model = DefaultMetaModel(omod).getDiffModel(ActivityType.OTHER, sensors, affectedLinks)
+
+        val objective: (DoubleArray) -> Double = { x: DoubleArray ->
+            model.evaluate(x)
+        }
+        val d0 = DoubleArray(omod.grid.size) { 0.0 }
+        val d = SPSA.run(d0, objective, Random(), out=File("TestPSO.csv"))
+        return d
+    }
+
 
     fun simBatchMSE(
         x: DoubleArray, activityType: ActivityType, finder: DestinationFinderDefault, fullPopulation: Double

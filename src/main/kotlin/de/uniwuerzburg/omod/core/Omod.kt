@@ -207,14 +207,16 @@ class Omod(
         logger.get()?.info("Initializing OMOD took: ${timeSource.markNow() - timestampStartInit}")
 
         // TODO: Debug
+        //val laptop = "C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput_v5_all.csv"
+        val workstation = "/home/leo/bigdata/projects/omod_calibrate_tc/OMODLinkInfoTestInput_v5_all.csv"
         val calibrator = LinkCalibratorDefault(
-            File("C:/Users/les29rq/Nextcloud/Projekte/14_Omod/tests/test_files/OMODLinkInfoTestInput_v5_all.csv"),
+            File(workstation),
             this,
             popStrata,
             carOwnership
         )
-        calibrator.hpTune()
-        //calibrator.calibrate(CalibrationOption.PSO)
+        calibrator.hpTune(CalibrationOption.SPSA)
+        //calibrator.calibrate(CalibrationOption.SPSA)
         /*altPercentages = calibrator.altPercentages*/
 
         // Test impact of C-Values

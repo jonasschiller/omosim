@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "de.uniwuerzburg.omod"
-version = "2.0.18-calibration"
+version = "2.0.19-calibration-spsa"
 
 repositories {
     mavenLocal()
@@ -38,12 +38,12 @@ dependencies {
     implementation("com.google.guava:guava:33.2.1-jre")
     implementation("us.dustinj.timezonemap:timezonemap:4.+")
     implementation("org.xerial:sqlite-jdbc:3.+")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.+")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("org.jetbrains.kotlinx:multik-core:0.2.3")
     implementation("org.jetbrains.kotlinx:multik-default:0.2.3")
     implementation("com.gurobi:gurobi:11.0.2")
-    implementation("com.github.haifengl:smile-core:4.4.0")
+    implementation("com.github.haifengl:smile-core:4.4.0") // TODO needs Java 21
+    testImplementation("org.junit.jupiter:junit-jupiter:5.+")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.test {

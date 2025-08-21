@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test
 import java.util.Random
 import kotlin.math.abs
 
-class PSOTest {
+class SPSATest {
     val tol = 1e-5
 
     @Test
@@ -13,7 +13,9 @@ class PSOTest {
         val objective: (DoubleArray) -> Double = { x: DoubleArray ->
             x[0] * x[0]
         }
-        val xOpt = PSO.run(1, objective, Random(), lb=-100.0, ub=100.0, iterations = 1000)
+        val x0 = DoubleArray(1) { 0.1 }
+        val xOpt = SPSA.run(x0, objective, Random(), lb=-100.0, ub=100.0, iterations = 10000)
+        println(xOpt.toList())
         assert(abs(0.0 - objective(xOpt)) <= tol)
     }
 
@@ -27,8 +29,9 @@ class PSOTest {
             }
             oval
         }
-
-        val xOpt = PSO.run(nDimensions, objective, Random(), lb=-100.0, ub=100.0, iterations = 1000)
+        val x0 = DoubleArray(nDimensions) { 0.1 }
+        val xOpt = SPSA.run(x0, objective, Random(), lb=-100.0, ub=100.0, iterations = 10000)
+        println(xOpt.toList())
         assert(abs(0.0 - objective(xOpt)) <= tol)
     }
 
@@ -43,8 +46,9 @@ class PSOTest {
             }
             oval
         }
-
-        val xOpt = PSO.run(nDimensions, objective, Random(), lb=-100.0, ub=100.0, iterations = 1000)
+        val x0 = DoubleArray(nDimensions) { 0.1 }
+        val xOpt = SPSA.run(x0, objective, Random(), lb=0.1, ub=100.0, iterations = 10000)
+        println(xOpt.toList())
         assert(abs(0.0 - objective(xOpt)) <= tol)
     }
 }
