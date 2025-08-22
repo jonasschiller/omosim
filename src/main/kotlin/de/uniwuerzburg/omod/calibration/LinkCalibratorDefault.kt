@@ -53,14 +53,14 @@ class LinkCalibratorDefault(
 
         when(option) {
             CalibrationOption.PSO -> PSO.hpGridSearch(
-                omod.grid.size, objective, Random(), outPath,
+                omod.grid.size - 1, objective, Random(), outPath,
                 nParticles = listOf(20, 40),
                 chi = listOf(0.6, 0.8, 0.9),
                 vClamp = listOf(0.5, 1.0),
                 boundStrategy = listOf(PSO.BoundStrategy.INFINITY, PSO.BoundStrategy.REFLECT_Z)
             )
             CalibrationOption.SPSA -> {
-                val d0 = DoubleArray(omod.grid.size) { 0.0 }
+                val d0 = DoubleArray(omod.grid.size - 1) { 1.0 }
                 SPSA.hpGridSearch(
                     d0,
                     objective,
@@ -141,7 +141,7 @@ class LinkCalibratorDefault(
         val objective: (DoubleArray) -> Double = { x: DoubleArray ->
             model.evaluate(x)
         }
-        val d = PSO.run(omod.grid.size, objective, Random(), out=File("TestPSO.csv"))
+        val d = PSO.run(omod.grid.size - 1, objective, Random(), out=File("TestPSO.csv"))
         return d
     }
 
@@ -156,7 +156,7 @@ class LinkCalibratorDefault(
         val objective: (DoubleArray) -> Double = { x: DoubleArray ->
             model.evaluate(x)
         }
-        val d0 = DoubleArray(omod.grid.size) { 0.0 }
+        val d0 = DoubleArray(omod.grid.size - 1) { 1.0 }
         val d = SPSA.run(d0, objective, Random(), out=File("TestPSO.csv"))
         return d
     }

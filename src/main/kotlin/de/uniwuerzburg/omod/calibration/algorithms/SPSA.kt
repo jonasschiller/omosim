@@ -1,10 +1,5 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
-import de.uniwuerzburg.omod.calibration.algorithms.PSO.BoundStrategy
-import de.uniwuerzburg.omod.calibration.algorithms.PSO.dBoundStrategy
-import de.uniwuerzburg.omod.calibration.algorithms.PSO.dNParticles
-import de.uniwuerzburg.omod.calibration.algorithms.PSO.dVClamp
-import de.uniwuerzburg.omod.calibration.algorithms.PSO.dW
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
@@ -16,7 +11,7 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.time.measureTime
 
-// TODO test WSPSA, MSPSA, test removing 1 scaler,
+// TODO test WSPSA, MSPSA
 
 object SPSA {
     fun hpGridSearch(
@@ -26,7 +21,7 @@ object SPSA {
         outPath: Path,
         lb: Double = 0.00,
         ub: Double = 1e3,
-        iterations: Int = 1000,
+        iterations: Int = 10000,
         a0: List<Double> = listOf(1.0),
         c0: List<Double> = listOf(1.0),
         gamma: List<Double> =  listOf(1.0 / 3.0),
@@ -62,7 +57,7 @@ object SPSA {
         rng: Random,
         lb: Double = 0.00,
         ub: Double = 1e3,
-        iterations: Int = 1000,
+        iterations: Int = 10000,
         a0: Double = 1.0,
         c0: Double = 1.0,
         gamma: Double = 1.0 / 3.0,
@@ -108,6 +103,7 @@ object SPSA {
             }
             val oval = objective(x)
             val line = "$i,$time,$oval"
+            println(line)
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()
