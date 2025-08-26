@@ -76,11 +76,12 @@ class LinkCalibratorDefault(
     }
 
     fun calibrate(option: CalibrationOption) {
-        val d = when (option) {
+        var d = when (option) {
             CalibrationOption.PSO -> calibratePSO()
             CalibrationOption.MM_LBFGS -> calibrateMetaModelLBFGS()
             CalibrationOption.SPSA -> calibrateSPSA()
         }
+        d = (d.toList() + listOf(1.0)).toDoubleArray()
         evaluate(d)
     }
 
@@ -141,7 +142,12 @@ class LinkCalibratorDefault(
         val objective: (DoubleArray) -> Double = { x: DoubleArray ->
             model.evaluate(x)
         }
-        val d = PSO.run(omod.grid.size - 1, objective, Random(), out=File("TestPSO.csv"))
+        val d = PSO.run(
+            omod.grid.size - 1, objective, Random(), out=File("TestPSO.csv"), vClamp = 1.0,  w = 0.8,
+            phiP = 0.8 * 2,
+            phiG = 0.8 * 2,
+            nParticles = 40
+        )
         return d
     }
 

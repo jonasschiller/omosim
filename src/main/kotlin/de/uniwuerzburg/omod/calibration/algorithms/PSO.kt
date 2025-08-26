@@ -57,6 +57,7 @@ object PSO {
                             phiP = iChi * 2,
                             phiG = iChi * 2,
                             vClamp = iVClamp,
+                            boundStrategy = iBoundStrategy,
                             out = out
                         )
                     }
@@ -77,6 +78,7 @@ object PSO {
         phiP: Double = dPhiP,
         phiG: Double = dPhiG,
         vClamp: Double = dVClamp,
+        boundStrategy: BoundStrategy = dBoundStrategy,
         out: File? = null
     ) : DoubleArray {
         val writer = if (out != null) {
@@ -135,7 +137,7 @@ object PSO {
                         particle.position[i] += particle.velocity[i]
 
                         // Bound handling
-                        val dInBound = when(dBoundStrategy) {
+                        val dInBound = when(boundStrategy) {
                             BoundStrategy.REFLECT_Z -> bhReflectZ(particle, i, lb, ub, rng)
                             BoundStrategy.INFINITY -> bhInfinity(particle, i, lb, ub, rng)
                         }
@@ -165,6 +167,7 @@ object PSO {
 
             val oval = objective(globalBestPosition)
             val line = "$iteration,$time,$oval,$nInbound"
+            println(line)
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()
