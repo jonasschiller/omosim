@@ -11,7 +11,9 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.descriptors.setSerialDescriptor
 import org.geotools.filter.function.StaticGeometry.intersection
+import org.jetbrains.kotlinx.multik.ndarray.operations.toArray
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.GeometryFactory
 import org.locationtech.jts.geom.LineString
@@ -33,7 +35,7 @@ class LinkCalibratorDefault(
     val omod: Omod,
     val popStrata: List<PopStratum>,
     val carOwnership: CarOwnership
-) : LinkCalibrator {
+) {
     private val sensors: List<TrafficSensor>
     private val affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     private val modeChoiceCalibration = ModeChoiceCalibration()
@@ -42,6 +44,29 @@ class LinkCalibratorDefault(
     init {
         sensors = readSensorData(linkDataFile)
         affectedLinks = determineAffectedLinks(omod.grid, sensors, omod.hopper!!)
+    }
+
+    fun matrixTestRun() {
+        val model = DefaultMetaModel(omod)
+        val wm = model.calibrateMatrix(ActivityType.OTHER, sensors, affectedLinks)
+
+        val totalPop = omod.buildings.sumOf { it.population }
+        val finder = omod.destinationFinder as DestinationFinderDefault
+        val parameters = Array<Double>(omod.grid.size) {1.0}
+        val wcl = OACalClean.run(
+           omod.grid,  omod.activityGenerator as ActivityGeneratorDefault,
+           modeChoiceCalibration, mapOf(ActivityType.OTHER to omod.grid.zip(parameters).toMap()),
+           popStrata, carOwnership, finder, totalPop, affectedLinks,
+           sensors
+        )
+
+        val force = mutableMapOf<Cell, DoubleArray>()
+        for ((i, cell) in omod.grid.withIndex()) {
+            force[cell] = wm!!.toArray()[i]
+        }
+        finder.forceOMatrix = force
+
+        evaluate(DoubleArray(omod.grid.size) {1.0})
     }
 
     fun hpTune(option: CalibrationOption) {

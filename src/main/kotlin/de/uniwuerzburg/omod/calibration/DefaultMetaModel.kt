@@ -1,5 +1,12 @@
 package de.uniwuerzburg.omod.calibration
 
+import com.gurobi.gurobi.GRB
+import com.gurobi.gurobi.GRBEnv
+import com.gurobi.gurobi.GRBException
+import com.gurobi.gurobi.GRBLinExpr
+import com.gurobi.gurobi.GRBModel
+import com.gurobi.gurobi.GRBQuadExpr
+import com.gurobi.gurobi.GRBVar
 import de.uniwuerzburg.omod.calibration.algorithms.BFGS
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DivisionTerm
@@ -11,6 +18,7 @@ import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
+import org.checkerframework.checker.units.qual.m3
 import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
@@ -101,6 +109,19 @@ class DefaultMetaModel(
         println("MSE: ${myobjval /sensors.size}")
 
         return parameters.toList()
+    }
+
+    fun calibrateMatrix(
+            activityType: ActivityType,
+            sensors: List<TrafficSensor>,
+            affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    ) : D2Array<Double>? {
+        println("GENERAL META MODEL OPTIMIZE")
+        val m3rep = generateMatrixRep(activityType)
+        val exp = getExpectedCountPerAgent(m3rep)
+
+        eval(exp, sensors, affectedLinks)
+        return optimizeTMatrix(m3rep, affectedLinks, sensors)
     }
 
     fun eval(
@@ -578,17 +599,7 @@ class DefaultMetaModel(
         val totalPop = omod.buildings.sumOf { it.population }
         println("Building diff model with grid size: $n")
 
-        val relevantODs = mutableSetOf<Pair<Int, Int>>()
-        for ((o, origin) in omod.grid.withIndex()) {
-            for ((d, destination) in omod.grid.withIndex()) {
-                val od = Pair(origin, destination)
-                if (od in affectedLinks) {
-                    if (affectedLinks[od]!!.isNotEmpty()) {
-                        relevantODs.add(Pair(o, d))
-                    }
-                }
-            }
-        }
+        val relevantODs = determineRelevantODs(affectedLinks)
 
         // Init diff model
         val diffModel = DifferentiableModel(omod.grid.size - 1)
@@ -825,6 +836,317 @@ class DefaultMetaModel(
         return diffModel to simcount
     }
 
+    private fun optimizeTMatrix(
+        m3rep: MetaModelMatrixRep,
+        affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
+        sensors: List<TrafficSensor>,
+        irrelevantFactorThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
+    ) : D2Array<Double>? {
+        val n = omod.grid.size
+        val totalPop = omod.buildings.sumOf { it.population }
+        println("Optimization 1 start with grid size: ${n}")
+
+        val relevantODs = determineRelevantODs(affectedLinks)
+
+        try {
+            // Setup
+            val env = GRBEnv()
+            val model = GRBModel(env)
+
+            // Create demand matrix dependent on the variable transition matrix: demand(o, d | M)
+            val demand = List(n) {
+                List(n) {
+                    GRBLinExpr()
+                }
+            }
+
+            // Transition matrix
+            val varTransitionMatrix = List<List<GRBVar>> (n) { o ->
+                model.addVars(
+                    DoubleArray(n) { 0.0 },
+                    DoubleArray(n) { 1.0 },
+                    DoubleArray(n) { 0.0 },
+                    CharArray(n) {GRB.CONTINUOUS},
+                    Array(n) { d -> "W_${o}_$d"}
+                ).toList()
+            }
+
+            // Ensure that each row of W is a proper probability distribution
+            for (o in 0 until n) {
+                val rowSum = GRBLinExpr()
+                for (d in 0 until n) {
+                    rowSum.addTerm(1.0, varTransitionMatrix[o][d])
+                }
+                model.addConstr(rowSum, GRB.EQUAL, 1.0, "ProbCondition")
+            }
+
+            // Demand with flexible destination
+            for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
+                val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
+                    ActivityType.OTHER
+                } else {
+                    flexActivity
+                }
+                val mCarP = m3rep.carP[transitionActivity]!!
+                val mFixed = m3rep.fixedMatrix[flexActivity]!!
+
+                if (flexActivity == m3rep.varActivityType) {
+                    for (o in 0 until n) {
+                        var cnst = 0.0
+
+                        for (a in 0 until n) {
+                            cnst += mFixed[a, o]
+                        }
+
+                        for (d in 0 until n) {
+                            if (Pair(o, d) !in relevantODs) { continue }
+                            demand[o][d].addTerm(cnst * mCarP[o, d], varTransitionMatrix[o][d])
+                        }
+                    }
+                } else {
+                    val mTransition = m3rep.transitionMatrix[transitionActivity]!!
+                    val mDep = m3rep.dependentMatrix[flexActivity]!!
+                    val pHome = m3rep.homeP.flatten()
+
+                    for (o in 0 until n) {
+                        val s = GRBLinExpr()
+                        var cnst = 0.0
+
+                        for (a in 0 until n) {
+                            cnst += mFixed[a, o]
+                            for (b in 0 until n) {
+                                val coeff = if (m3rep.varActivityType in fixActivities) {
+                                    pHome[a] * mDep[b, o]
+                                } else {
+                                    mDep[a, b]
+                                }
+
+                                // Ignore very small terms
+                                if (abs(coeff) <= irrelevantFactorThreshold) {
+                                    continue
+                                }
+
+                                if (m3rep.varActivityType in fixActivities) {
+                                    s.addTerm(coeff, varTransitionMatrix[a][b])
+                                } else {
+                                    s.addTerm(coeff, varTransitionMatrix[b][o])
+                                }
+                            }
+                        }
+                        s.addConstant(cnst)
+
+                        for (d in 0 until n) {
+                            if (Pair(o, d) !in relevantODs) { continue }
+                            val t = mTransition[o, d] * mCarP[o, d]
+                            demand[o][d].multAdd(t, s)
+                        }
+                    }
+                }
+            }
+
+            // Demand for home
+            for (fixActivity in listOf(ActivityType.HOME)) {
+                val carP = m3rep.carP[fixActivity]!!
+                val fix = m3rep.fixedMatrix[fixActivity]!!.transpose().times(carP)
+
+                val depExpr = if(m3rep.varActivityType in fixActivities) {
+                    val left = m3rep.dependentMatrix[fixActivity]!!.transpose()
+                    val right = m3rep.homeP.diagonal().transpose()
+                    grbExprFromMatrixSandwichT(
+                        varTransitionMatrix, left, right,
+                        relevantRCs = relevantODs, irrelevantFactorThreshold=irrelevantFactorThreshold
+                    )
+                } else {
+                    val left = mk.identity<Double>(n)
+                    val right = m3rep.dependentMatrix[fixActivity]!!.transpose()
+                    grbExprFromMatrixSandwichT(
+                        varTransitionMatrix, left, right,
+                        relevantRCs = relevantODs,
+                        irrelevantFactorThreshold=irrelevantFactorThreshold
+                    )
+                }
+
+                for (o in 0 until n) {
+                    for (d in 0 until n) {
+                        if (Pair(o, d) !in relevantODs) { continue }
+                        demand[o][d].multAdd( carP[o, d], depExpr[o][d])
+                        demand[o][d].addConstant(fix[o, d])
+                    }
+                }
+            }
+
+            // School and Work
+            for (fixActivity in listOf(ActivityType.SCHOOL, ActivityType.WORK)) {
+                val carP = m3rep.carP[fixActivity]!!
+                val fix = m3rep.fixedMatrix[fixActivity]!!.transpose()
+                    .dot(m3rep.transitionMatrix[fixActivity]!!)
+                    .times(carP)
+
+                // Tour starting at var activity
+                val pHome = m3rep.homeP.flatten()
+                val dMatrixT = m3rep.dependentMatrix[fixActivity]!!.transpose()
+                val varStartProbs = Array(n) { GRBLinExpr() }
+                for (col in 0 until n) {
+                    for (row in 0 until n) {
+                        varStartProbs[col].addTerm(pHome[row], varTransitionMatrix[row][col])
+                    }
+                }
+
+                // Tour not starting at var activity
+                val depExpr = if (m3rep.varActivityType == fixActivity) {
+                    val left = m3rep.fixedMatrix[fixActivity]!!.transpose()
+                    val right = mk.identity<Double>(n)
+                    grbExprFromMatrixSandwichT(
+                        varTransitionMatrix, left, right,
+                        transpose = false,
+                        relevantRCs = relevantODs,
+                        irrelevantFactorThreshold=irrelevantFactorThreshold
+                    )
+                } else if (m3rep.varActivityType in fixActivities) {
+                    val left = m3rep.dependentMatrix[fixActivity]!!.transpose()
+                    val right = m3rep.homeP
+                        .diagonal()
+                        .transpose()
+                        .dot(m3rep.transitionMatrix[fixActivity]!!)
+                    grbExprFromMatrixSandwichT(
+                        varTransitionMatrix, left, right,
+                        relevantRCs = relevantODs,
+                        irrelevantFactorThreshold=irrelevantFactorThreshold
+                    )
+                } else {
+                    val left = mk.identity<Double>(n)
+                    val right = m3rep.dependentMatrix[fixActivity]!!
+                        .transpose()
+                        .dot(m3rep.transitionMatrix[fixActivity]!!)
+                    grbExprFromMatrixSandwichT(
+                        varTransitionMatrix, left, right,
+                        relevantRCs = relevantODs,
+                        irrelevantFactorThreshold=irrelevantFactorThreshold
+                    )
+                }
+
+                for (o in 0 until n) {
+                    for (d in 0 until n) {
+                        if (Pair(o, d) !in relevantODs) { continue }
+                        demand[o][d].multAdd(carP[o, d], depExpr[o][d])
+
+                        if (m3rep.varActivityType == fixActivity) {
+                            demand[o][d].multAdd(dMatrixT[o][d] * carP[o, d], varStartProbs[d])
+                        } else {
+                            demand[o][d].addConstant(fix[o, d])
+                        }
+                    }
+                }
+            }
+
+            val sensorCountExpr = mutableMapOf<TrafficSensor, GRBLinExpr>()
+            for (sensor in sensors) {
+                sensorCountExpr[sensor] = GRBLinExpr()
+            }
+
+            for ((o, origin) in omod.grid.withIndex()) {
+                for ((d, destination) in omod.grid.withIndex()) {
+                    val od = Pair(origin, destination)
+                    if (od in affectedLinks) {
+                        val affected = affectedLinks[od]!!
+
+                        for (sensor in affected) {
+                            val sensorSum = sensorCountExpr[sensor]!!
+                            val dem = demand[o][d]
+                            sensorSum.multAdd(totalPop, dem)
+                        }
+                    }
+                }
+            }
+
+            val sensorSimCount = model.addVars(
+                DoubleArray(sensors.size) {0.0},
+                null,
+                DoubleArray(sensors.size) {0.0},
+                CharArray(sensors.size) { GRB.CONTINUOUS},
+                Array(sensors.size) {""}
+            )
+            for ((i, sensor) in sensors.withIndex()) {
+                val sensorSum = sensorCountExpr[sensor]!!
+                model.addConstr(sensorSum, GRB.EQUAL, sensorSimCount[i], "cnteq")
+            }
+
+            // Objective
+            val obj = GRBQuadExpr()
+            for ((i, sensor) in sensors.withIndex()) {
+                // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
+                obj.addConstant(sensor.measuredFlow * sensor.measuredFlow)
+                obj.addTerm(-2 * sensor.measuredFlow, sensorSimCount[i])
+                obj.addTerm(1.0, sensorSimCount[i], sensorSimCount[i])
+            }
+            model.setObjective(obj, GRB.MINIMIZE)
+
+            model.optimize()
+
+            var optimstatus = model[GRB.IntAttr.Status]
+
+            if (optimstatus == GRB.Status.INF_OR_UNBD) {
+                model[GRB.IntParam.Presolve] = 0
+                model.optimize()
+                optimstatus = model[GRB.IntAttr.Status]
+            }
+
+            if (optimstatus == GRB.Status.OPTIMAL) {
+                val objval = model[GRB.DoubleAttr.ObjVal]
+                println("Optimal objective: $objval")
+
+
+                println("_".repeat(20*4 + 5*3))
+                println("MSE: ${objval /sensors.size}")
+                println("_".repeat(20*4 + 5*3))
+                println("${"Sensor".padEnd(20)} | \t" +
+                        "${"Flow AltOpt".padEnd(20)} | \t" +
+                        "Flow Measured".padEnd(20)
+                )
+                println("_".repeat(20) +
+                        " | \t" + "_".repeat(20)  +
+                        " | \t" + "_".repeat(20))
+                var myobjval = 0.0
+                for ((i, sensor) in sensors.withIndex()) {
+                    val optVal = sensorSimCount[i].get(GRB.DoubleAttr.X)
+                    println(
+                        "${sensors[i].name.padEnd(20)} | \t" +
+                                "${optVal.toString().padEnd(20)} | \t" +
+                                sensors[i].measuredFlow.toString().padEnd(20)
+                    )
+                    myobjval += (sensors[i].measuredFlow - optVal) * (sensors[i].measuredFlow - optVal)
+                }
+
+            } else if (optimstatus == GRB.Status.INFEASIBLE) {
+                println("Model is infeasible")
+            } else if (optimstatus == GRB.Status.UNBOUNDED) {
+                println("Model is unbounded")
+            } else {
+                println(
+                    "Optimization was stopped with status = "
+                            + optimstatus
+                )
+            }
+
+            val result = mk.ones<Double>(omod.grid.size, omod.grid.size)
+            for(o in omod.grid.indices) {
+                for (d in omod.grid.indices) {
+                    result[o, d] = varTransitionMatrix[o][d].get(GRB.DoubleAttr.X)
+                }
+            }
+
+            // Dispose of model and environment
+            model.dispose()
+            env.dispose()
+            return result
+        } catch (e: GRBException) {
+            println(
+                ("Error code: " + e.errorCode + ". " + e.message)
+            )
+        }
+        return null
+    }
+
     fun diffModelFromMatrixSandwichT(
         nVars: Int,
         mVar: List<List<Term>>,
@@ -866,6 +1188,54 @@ class DefaultMetaModel(
                             activeEntry.addTerm(mVar[i][j], coeff)
                         } else {
                             activeEntry.addTerm(mVar[j][i], coeff)
+                        }
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    fun grbExprFromMatrixSandwichT(
+        mVar: List<List<GRBVar>>,
+        left: D2Array<Double>,
+        right: D2Array<Double>,
+        transpose: Boolean = true,
+        relevantRCs: Set<Pair<Int, Int>>? = null,
+        irrelevantFactorThreshold: Double
+    ) : Array<Array<GRBLinExpr>> {
+        val n = left.shape[0] // Assume all matrices are square and same size
+
+        val result = Array(n) {
+            Array(n) {
+                GRBLinExpr()
+            }
+        }
+
+        for (row in 0 until n) {
+            for (col in 0 until  n) {
+                if (relevantRCs != null) {
+                    if (Pair(row, col) !in relevantRCs) {
+                        continue
+                    }
+                }
+
+                val activeEntry = result[row][col]
+
+                for (i in 0 until n) {
+                    if (right[i, col] == 0.0) { continue }
+                    for (j in 0 until n) {
+                        if (left[row, j] == 0.0) { continue }
+                        val coeff = left[row, j] * right[i, col]
+
+                        if (abs(coeff) <= irrelevantFactorThreshold) {
+                            continue
+                        }
+
+                        if (transpose) {
+                            activeEntry.addTerm(coeff, mVar[i][j])
+                        } else {
+                            activeEntry.addTerm(coeff, mVar[j][i])
                         }
                     }
                 }
@@ -934,6 +1304,23 @@ class DefaultMetaModel(
         val carP: Map<ActivityType,  D2Array<Double>>,
         val varActivityType: ActivityType
     )
+
+    private fun determineRelevantODs(
+        affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
+    ): Set<Pair<Int, Int>> {
+        val relevantODs = mutableSetOf<Pair<Int, Int>>()
+        for ((o, origin) in omod.grid.withIndex()) {
+            for ((d, destination) in omod.grid.withIndex()) {
+                val od = Pair(origin, destination)
+                if (od in affectedLinks) {
+                    if (affectedLinks[od]!!.isNotEmpty()) {
+                        relevantODs.add(Pair(o, d))
+                    }
+                }
+            }
+        }
+        return relevantODs
+    }
 }
 
 private inline fun <reified T : Any> D2Array<T>.diagonal() : D2Array<T> {

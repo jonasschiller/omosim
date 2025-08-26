@@ -216,7 +216,8 @@ class Omod(
             carOwnership
         )
         // calibrator.hpTune(CalibrationOption.SPSA)
-        calibrator.calibrate(CalibrationOption.PSO)
+        //calibrator.calibrate(CalibrationOption.PSO)
+        calibrator.matrixTestRun()
         /*altPercentages = calibrator.altPercentages*/
 
         // Test impact of C-Values
