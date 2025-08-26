@@ -1,5 +1,12 @@
 package de.uniwuerzburg.omod.calibration
 
+import de.uniwuerzburg.omod.calibration.algorithms.BFGS
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DivisionTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearBaseTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.QuadraticTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
@@ -15,11 +22,8 @@ import org.jetbrains.kotlinx.multik.ndarray.operations.plus
 import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
-import smile.math.BFGS
 import kotlin.math.abs
 import kotlin.math.pow
-import kotlin.time.measureTime
-import kotlin.time.measureTimedValue
 
 class DefaultMetaModel(
     val omod: Omod
@@ -74,8 +78,7 @@ class DefaultMetaModel(
         val (model, simCount) = buildDiffModel(m3rep, affectedLinks, sensors)
 
         var parameters = DoubleArray(omod.grid.size - 1) { 1.0 }
-        parameters = (lbfgs(model, parameters).toList() + listOf(1.0)).toDoubleArray()
-        //parameters = gradDescent(model, parameters)
+        parameters = (BFGS.run(model, parameters).toList() + listOf(1.0)).toDoubleArray()
 
         println("_".repeat(20*4 + 5*3))
         println("${"Sensor".padEnd(20)} | \t" +
@@ -98,50 +101,6 @@ class DefaultMetaModel(
         println("MSE: ${myobjval /sensors.size}")
 
         return parameters.toList()
-    }
-
-    fun lbfgs(model: DifferentiableModel, vals: DoubleArray) : DoubleArray {
-        println("LBFGS-B")
-        println("Start: ${model.evaluate(vals)}")
-        val l = DoubleArray(model.nVars){0.0}
-        val u = DoubleArray(model.nVars){1e3}
-        val solution = BFGS.minimize(model, 5, vals, l, u, 1e-5, 10)
-        println("Solution: $solution")
-        println("Confirm: ${model.evaluate(vals)}")
-        return vals
-    }
-
-    fun gradDescent(model: DifferentiableModel, vals: DoubleArray, iterations: Int = 1000, lr: Double = 1.0e-9) :
-            DoubleArray
-    {
-        val currentValues = vals.copyOf()
-        val gradients = DoubleArray(vals.size) { 0.0 }
-
-        val evaltime = measureTime {
-            val loss = model.evaluate(currentValues)
-            println("Start loss: $loss")
-        }
-        println("Eval time: $evaltime")
-
-        for (i in 0 until iterations) {
-            val (loss, time) = measureTimedValue {
-                // Determine gradients
-                for ((i, value) in currentValues.withIndex()) {
-                    gradients[i] = model.gradient(i, currentValues)
-                }
-
-                for ((i, value) in currentValues.withIndex()) {
-                    currentValues[i] -= lr * gradients[i]
-                }
-                val loss = model.evaluate(currentValues)
-                loss
-            }
-
-            print("Iteration $i, vals ${currentValues.toList().toString()}, loss: $loss \t took $time \r")
-        }
-        val loss = model.evaluate(currentValues)
-        println("Solution loss: $loss")
-        return currentValues
     }
 
     fun eval(
@@ -769,7 +728,7 @@ class DefaultMetaModel(
             // Tour starting at var activity
             val pHome = m3rep.homeP.flatten()
             val dMatrixT = m3rep.dependentMatrix[fixActivity]!!.transpose()
-            val varStartProbs = Array(n) {LinearTerm(diffModel.nVars)}
+            val varStartProbs = Array(n) { LinearTerm(diffModel.nVars) }
             for (col in 0 until n) {
                 for (row in 0 until n) {
                     varStartProbs[col].addTerm(varTransitionMatrix[row][col], pHome[row])

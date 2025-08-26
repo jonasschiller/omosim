@@ -1,7 +1,7 @@
 package de.uniwuerzburg.omod.core
 
-import de.uniwuerzburg.omod.calibration.LinearBaseTerm
-import de.uniwuerzburg.omod.calibration.Term
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearBaseTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 import de.uniwuerzburg.omod.core.models.*
 import kotlinx.serialization.Serializable
 import kotlin.math.ln

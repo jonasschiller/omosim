@@ -1,6 +1,11 @@
 package de.uniwuerzburg.omod.calibration
 
-import com.github.ajalt.mordant.table.row
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DivisionTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearBaseTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.QuadraticTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.ActivityType

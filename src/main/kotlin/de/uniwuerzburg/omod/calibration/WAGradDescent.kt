@@ -1,5 +1,11 @@
 package de.uniwuerzburg.omod.calibration
 
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DivisionTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearBaseTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.QuadraticTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
@@ -689,7 +695,7 @@ object WAGradDescent {
 
             // Start at work
             val mWT = oi.workMatrix[fixActivity]!!.transpose()
-            val wProbs = Array(n) {LinearTerm(diffModel.nVars)}
+            val wProbs = Array(n) { LinearTerm(diffModel.nVars) }
             for (col in 0 until n) {
                 for (row in 0 until n) {
                     wProbs[col].addTerm(w[row][col], pHome[row])

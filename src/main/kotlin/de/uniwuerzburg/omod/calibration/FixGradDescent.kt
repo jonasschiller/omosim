@@ -1,5 +1,11 @@
 package de.uniwuerzburg.omod.calibration
 
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DivisionTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearBaseTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.QuadraticTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
@@ -16,7 +22,6 @@ import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
 import smile.math.BFGS
-import java.io.FileOutputStream
 import kotlin.math.*
 import kotlin.time.measureTime
 import kotlin.time.measureTimedValue
@@ -716,7 +721,7 @@ object FixGradDescent {
 
             // Start at school
             val mST = oi.schoolMatrix[fixActivity]!!.transpose()
-            val sProbs = Array(n) {LinearTerm(diffModel.nVars)}
+            val sProbs = Array(n) { LinearTerm(diffModel.nVars) }
             for (col in 0 until n) {
                 for (row in 0 until n) {
                     sProbs[col].addTerm(s[row][col], pHome[row])
@@ -744,7 +749,7 @@ object FixGradDescent {
 
             // Start at work
             val mWT = oi.workMatrix[fixActivity]!!.transpose()
-            val wProbs = Array(n) {LinearTerm(diffModel.nVars)}
+            val wProbs = Array(n) { LinearTerm(diffModel.nVars) }
             for (col in 0 until n) {
                 for (row in 0 until n) {
                     wProbs[col].addTerm(w[row][col], pHome[row])

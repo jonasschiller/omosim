@@ -167,7 +167,6 @@ object PSO {
 
             val oval = objective(globalBestPosition)
             val line = "$iteration,$time,$oval,$nInbound"
-            println(line)
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()

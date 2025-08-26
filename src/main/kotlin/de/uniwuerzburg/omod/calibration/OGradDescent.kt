@@ -1,7 +1,11 @@
 package de.uniwuerzburg.omod.calibration
 
-import com.gurobi.gurobi.GRBLinExpr
-import de.uniwuerzburg.omod.calibration.OACalClean.exprFromMatrixSandwichT
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DivisionTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearBaseTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.QuadraticTerm
+import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
