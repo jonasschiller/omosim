@@ -40,10 +40,10 @@ fun calibrateK1(
     seedAgents: List<MobiAgent>,
     omod: Omod,
     sensors: List<TrafficSensor>,
-    affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
 ) : List<Double> {
     println("Fourstep")
-    val (model, simCount) = buildModel(seedAgents, omod, sensors, affectedLinks)
+    val (model, simCount) = buildModel(seedAgents, omod, sensors, affectedSensors)
 
     var parameters = DoubleArray(omod.grid.size) { 1.0 }
 
@@ -109,7 +109,7 @@ fun buildModel(
     seedAgents: List<MobiAgent>,
     omod: Omod,
     sensors: List<TrafficSensor>,
-    affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
 ):  Pair<DifferentiableModel, Map<TrafficSensor, LinearTerm>> {
     val modeChoiceCalibration = ModeChoiceCalibration()
     val totalPop = omod.buildings.sumOf { it.population }
@@ -130,8 +130,8 @@ fun buildModel(
     for ((o, origin) in omod.grid.withIndex()) {
         for ((d, destination) in omod.grid.withIndex()) {
             val od = Pair(origin, destination)
-            if (od in affectedLinks) {
-                if (affectedLinks[od]!!.isNotEmpty()) {
+            if (od in affectedSensors) {
+                if (affectedSensors[od]!!.isNotEmpty()) {
                     relevantODs.add(Pair(o, d))
                 }
             }
@@ -226,8 +226,8 @@ fun buildModel(
     for ((o, origin) in omod.grid.withIndex()) {
         for ((d, destination) in omod.grid.withIndex()) {
             val od = Pair(origin, destination)
-            if (od in affectedLinks) {
-                val affected = affectedLinks[od]!!
+            if (od in affectedSensors) {
+                val affected = affectedSensors[od]!!
 
                 for (sensor in affected) {
                     simcount[sensor]!!.addTerm(demand[o][d], 1.0)

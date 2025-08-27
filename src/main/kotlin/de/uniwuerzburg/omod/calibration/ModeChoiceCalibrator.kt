@@ -20,13 +20,13 @@ import kotlin.time.measureTimedValue
 fun calibrate(
     agents: List<MobiAgent>, rng: Random, omod: Omod,
     sensors: List<TrafficSensor>,
-    affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
 ): List<Double> {
     val mc  = ModeChoiceFast(omod.routingCache)
     println("Mode Choice Cal")
 
     println("Building diff model...")
-    val (model, simCount, pTermsDebug) = buildModel(agents, mc, rng, omod, sensors, affectedLinks)
+    val (model, simCount, pTermsDebug) = buildModel(agents, mc, rng, omod, sensors, affectedSensors)
 
     var parameters = doubleArrayOf(0.507651, 1.440126, 0.902728, 1.332559, 0.202816,  1.259017) //DoubleArray(model.nVars) { 0.0 }
 
@@ -60,7 +60,7 @@ fun calibrate(
     }
     println("MSE: ${myobjval /sensors.size}")
 
-    //optimize(agents, mc, rng, omod, sensors, affectedLinks)
+    //optimize(agents, mc, rng, omod, sensors, affectedSensors)
 
     return parameters.toList()
 }
@@ -112,7 +112,7 @@ fun gradDescent(model: DifferentiableModel, vals: DoubleArray, iterations: Int =
 fun buildModel(
     agents: List<MobiAgent>, mc: ModeChoiceFast, rng: Random, omod: Omod,
     sensors: List<TrafficSensor>,
-    affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
 ) : Triple<DifferentiableModel, Map<TrafficSensor, LinearTerm>, List<Term>> {
     val totalPop = omod.buildings.sumOf { it.population }
 
@@ -185,8 +185,8 @@ fun buildModel(
             for (trip in tour) {
                 val d = trip.toActivity.location.getAggLoc()!! as Cell
                 val tripOD = Pair(o, d)
-                if (tripOD in affectedLinks) {
-                    val affectedSensors = affectedLinks[tripOD]!!
+                if (tripOD in affectedSensors) {
+                    val affectedSensors = affectedSensors[tripOD]!!
                     for (sensor in affectedSensors) {
                         simcount[sensor]!!.addTerm(pTerm, totalPop / agents.size)
                     }
@@ -219,7 +219,7 @@ fun buildModel(
 fun optimize(
     agents: List<MobiAgent>, mc: ModeChoiceFast, rng: Random, omod: Omod,
     sensors: List<TrafficSensor>,
-    affectedLinks: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
 ) {
     val totalPop = omod.buildings.sumOf { it.population }
 
@@ -243,8 +243,8 @@ fun optimize(
                 for (trip in tour) {
                     val d = trip.toActivity.location.getAggLoc()!! as Cell
                     val tripOD = Pair(o, d)
-                    if (tripOD in affectedLinks) {
-                        val affectedSensors = affectedLinks[tripOD]!!
+                    if (tripOD in affectedSensors) {
+                        val affectedSensors = affectedSensors[tripOD]!!
                         for (sensor in affectedSensors) {
                             simcount[sensor]!!.addTerm(totalPop / agents.size, p)
                         }

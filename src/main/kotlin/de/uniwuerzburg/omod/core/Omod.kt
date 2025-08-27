@@ -3,9 +3,6 @@ package de.uniwuerzburg.omod.core
 import com.graphhopper.GraphHopper
 import com.graphhopper.gtfs.GraphHopperGtfs
 import com.graphhopper.gtfs.PtRouter
-import de.uniwuerzburg.omod.calibration.CalibrationOption
-import de.uniwuerzburg.omod.calibration.LinkCalibratorDefault
-import de.uniwuerzburg.omod.core.models.ModeChoiceOption
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.io.geojson.*
 import de.uniwuerzburg.omod.io.gtfs.clipGTFSFile
@@ -13,10 +10,17 @@ import de.uniwuerzburg.omod.io.gtfs.getPublicTransitSimDays
 import de.uniwuerzburg.omod.io.json.*
 import de.uniwuerzburg.omod.io.osm.readOSM
 import de.uniwuerzburg.omod.io.readCensus
-import de.uniwuerzburg.omod.routing.*
-import de.uniwuerzburg.omod.utils.*
-import kotlinx.coroutines.*
-import org.locationtech.jts.geom.Envelope
+import de.uniwuerzburg.omod.routing.RoutingCache
+import de.uniwuerzburg.omod.routing.RoutingMode
+import de.uniwuerzburg.omod.routing.createGraphHopper
+import de.uniwuerzburg.omod.routing.createGraphHopperGTFS
+import de.uniwuerzburg.omod.utils.CRSTransformer
+import de.uniwuerzburg.omod.utils.ProgressBar
+import de.uniwuerzburg.omod.utils.fastCovers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryFactory
 import org.locationtech.jts.index.kdtree.KdNode
@@ -205,36 +209,6 @@ class Omod(
         agentFactory = AgentFactoryDefault(destinationFinder, carOwnership, popStrata, dispatcher)
 
         logger.get()?.info("Initializing OMOD took: ${timeSource.markNow() - timestampStartInit}")
-
-        // TODO: Debug
-        val laptop = "C:/Users/les29rq/Nextcloud/Projekte/14_Omosim/tests/test_files/OMODLinkInfoTestInput_v5_all.csv"
-        val workstation = "/home/leo/bigdata/projects/omod_calibrate_tc/OMODLinkInfoTestInput_v5_all.csv"
-        val calibrator = LinkCalibratorDefault(
-            File(laptop),
-            this,
-            popStrata,
-            carOwnership
-        )
-        // calibrator.hpTune(CalibrationOption.SPSA)
-        //calibrator.calibrate(CalibrationOption.PSO)
-        calibrator.matrixTestRun()
-        /*altPercentages = calibrator.altPercentages*/
-
-        // Test impact of C-Values
-        /*val parameters = mutableListOf<Double>()
-        var cntr = 0
-        val bbBox = Envelope(49.78461440197675, 49.78851681813059, 9.972436158810012, 9.979625591824894)
-        for (cell in grid) {
-            if(bbBox.contains(cell.latlonCoord)) {
-                parameters.add(1.0)
-                cntr += 1
-            } else {
-                parameters.add(0.0)
-            }
-        }
-        println(cntr)
-        (destinationFinder as DestinationFinderDefault).updateCellCValues(parameters.toTypedArray(), grid)*/
-        // TODO: End Debug
     }
 
     // Factories

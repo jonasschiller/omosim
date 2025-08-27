@@ -2,13 +2,14 @@ package de.uniwuerzburg.omod
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.arguments.argument
-import com.github.ajalt.clikt.parameters.groups.default
-import com.github.ajalt.clikt.parameters.groups.mutuallyExclusiveOptions
-import com.github.ajalt.clikt.parameters.groups.single
+import com.github.ajalt.clikt.parameters.groups.*
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.*
+import de.uniwuerzburg.omod.calibration.CalibrationOption
+import de.uniwuerzburg.omod.calibration.TrafficCountCalibrator
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.logger
 import de.uniwuerzburg.omod.core.models.ModeChoiceOption
@@ -32,6 +33,14 @@ class FixedAgentNumber(
 class ShareOfPop (
     val value: Double
 ) : AgentNumberDefinition
+
+class CalibrationOptions : OptionGroup (
+    help = "Calibration parameters."
+) {
+    val cal_traffic_count_file by option(
+        help = "Traffic count data that serves as ground truth."
+    ).file(mustExist = true, mustBeReadable = true).required()
+}
 
 /**
  * CLI interface
@@ -123,13 +132,14 @@ class Run : CliktCommand() {
         help="Number of parallel coroutines that can be executed at the same time. " +
              "Default: Number of CPU-Cores available."
     ).int()
-   private val gtfs_file by option(
+    private val gtfs_file by option(
         help = "Path to an General Transit Feed Specification (GTFS) for the area. " +
                "Required for public transit routing," +
                "for example if public transit is an option in mode choice. " +
                "Must be a .zip file or a directory (see https://gtfs.org/)." +
                "Recommended download platform for Germany: https://gtfs.de/"
     ).file(mustExist = true, mustBeReadable = true)
+    private val calibrationParameter by CalibrationOptions().cooccurring()
 
     @OptIn(ExperimentalSerializationApi::class)
     override fun run() {
@@ -157,6 +167,22 @@ class Run : CliktCommand() {
             nWorker = n_worker,
             gtfsFile = gtfs_file
         )
+
+        // Calibrate
+        calibrationParameter?.let {
+            //val laptop = "C:/Users/les29rq/Nextcloud/Projekte/14_Omosim/tests/test_files/OMODLinkInfoTestInput_v5_all.csv"
+            //val workstation = "/home/leo/bigdata/projects/omod_calibrate_tc/OMODLinkInfoTestInput_v5_all.csv"
+            val calibrator = TrafficCountCalibrator(
+                calibrationParameter!!.cal_traffic_count_file,
+                omod,
+                omod.carOwnership
+            )
+            //calibrator.hpTune(CalibrationOption.SPSA)
+            calibrator.calibrate(CalibrationOption.MM_LBFGS)
+            //calibrator.matrixTestRun()
+            /*altPercentages = calibrator.altPercentages*/
+            return
+        }
 
         // Mobility demand
         val agents = when (val aND = agentNumberDefinition ) {
