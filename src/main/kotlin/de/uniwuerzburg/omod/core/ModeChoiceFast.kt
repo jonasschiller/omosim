@@ -36,10 +36,11 @@ class ModeChoiceFast(
      * @param agents Agents with trips (usually the trips have an UNDEFINED mode at this point)
      * @param mainRng Random number generator of the main thread
      * @param dispatcher Coroutine dispatcher used for concurrency
+     * @param verbose Print progressbar etc.. Doesn't affect logging.
      * @return agents. Now their trips have specified modes.
      */
     override fun doModeChoice(
-        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher
+        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, verbose: Boolean
     ) : List<MobiAgent> {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
@@ -53,12 +54,12 @@ class ModeChoiceFast(
                     launch(dispatcher) {
                         doModeChoiceFor(agent, coroutineRng)
                         val done = jobsDone.incrementAndGet()
-                        print("Mode Choice: ${ProgressBar.show(done / totalJobs)}\r")
+                        if (verbose) { print("Mode Choice: ${ProgressBar.show(done / totalJobs)}\r") }
                     }
                 }
             }
         }
-        println("Mode Choice: " + ProgressBar.done())
+        if (verbose) { println("Mode Choice: " + ProgressBar.done()) }
         logger.get()?.info("Mode Choice took: ${timeSource.markNow() - timestampStartInit}")
         return agents
     }
@@ -121,7 +122,7 @@ class ModeChoiceFast(
             }
 
             // Add estimated travel time
-            trip.time = null // TODO create second cache?
+            trip.time = null
         }
         diary.visitTrips(visitor) // Run through day
         return tours

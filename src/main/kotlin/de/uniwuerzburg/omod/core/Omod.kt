@@ -57,7 +57,6 @@ import kotlin.time.TimeSource
  * NULL = Number of CPU-Cores available.
  * @param gtfsFile GTFS location (Directory or .zip file)
  */
-// TODO check what should an shouldn't be private
 class Omod(
     areaFile: File,
     private val osmFile: File,
@@ -446,11 +445,14 @@ class Omod(
      * @param n_agents Number of agents
      * @param start_wd Weekday of the first simulated day
      * @param n_days Number of consecutive days to simulate
+     * @param verbose Print progressbar etc.. Doesn't affect logging.
      * @return List of agents each with an activity schedules for every simulated day
      */
-    fun run(n_agents: Int, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1) : List<MobiAgent> {
+    fun run(
+        n_agents: Int, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1, verbose: Boolean = true
+    ) : List<MobiAgent> {
         val agents = agentFactory.createAgents(n_agents, zones, populateBufferArea, mainRng)
-        return run(agents, start_wd, n_days)
+        return run(agents, start_wd, n_days, verbose)
     }
 
     /**
@@ -459,9 +461,12 @@ class Omod(
      * @param shareOfPop Share of population to simulate
      * @param start_wd Weekday of the first simulated day
      * @param n_days Number of consecutive days to simulate
+     * @param verbose Print progressbar etc.. Doesn't affect logging.
      * @return List of agents each with an activity schedules for every simulated day
      */
-    fun run(shareOfPop: Double, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1) : List<MobiAgent> {
+    fun run(
+        shareOfPop: Double, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1, verbose: Boolean = true
+    ) : List<MobiAgent> {
         if (!censusAvailable) {
             throw Exception(
                 "Agent population is supposed to be based on the population but no census file is provided." +
@@ -469,7 +474,7 @@ class Omod(
         }
 
         val agents = agentFactory.createAgents(shareOfPop, zones, populateBufferArea, mainRng)
-        return run(agents, start_wd, n_days)
+        return run(agents, start_wd, n_days, verbose)
     }
 
     /**
@@ -481,7 +486,12 @@ class Omod(
      * @return List of agents each with an activity schedules for every simulated day
      */
     @Suppress("MemberVisibilityCanBePrivate")
-    fun run(agents: List<MobiAgent>, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1) : List<MobiAgent> {
+    fun run(
+        agents: List<MobiAgent>,
+        start_wd: Weekday = Weekday.UNDEFINED,
+        n_days: Int = 1,
+        verbose: Boolean = true
+    ) : List<MobiAgent> {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
         val jobsDone = AtomicInteger()
@@ -494,16 +504,13 @@ class Omod(
                     launch(dispatcher) {
                         runAgent(agent, start_wd, n_days, coroutineRng)
                         val done = jobsDone.incrementAndGet()
-                        if (logger.on) { // TODO: This good?
-                            print("Activity generation: ${ProgressBar.show(done / totalJobs)}\r")
-                        }
+
+                        if (verbose) { print("Activity generation: ${ProgressBar.show(done / totalJobs)}\r") }
                     }
                 }
             }
         }
-        if (logger.on) {// TODO: This good?
-            println("Activity generation: " + ProgressBar.done())
-        }
+        if (verbose) { println("Activity generation: " + ProgressBar.done()) }
         routingCache.toOOMCache() // Save routing cache
         logger.get()?.info("Activity generation took: ${timeSource.markNow() - timestampStartInit}")
         return agents

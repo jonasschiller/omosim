@@ -2,6 +2,7 @@ package de.uniwuerzburg.omod.core.models
 
 import de.uniwuerzburg.omod.core.LocationChoiceDCWeightFun
 import org.locationtech.jts.geom.Coordinate
+import kotlin.collections.set
 import kotlin.math.PI
 
 /**
@@ -60,8 +61,8 @@ data class Cell (
         return true
     }
 
-    override fun recalculateAttractions(dcFunctions: Map<ActivityType, LocationChoiceDCWeightFun>) {
-        for(building in buildings) {
+    override fun recalculateAttractions(dcFunctions: List<LocationChoiceDCWeightFun>) {
+        for (building in buildings) {
             building.recalculateAttractions(dcFunctions)
         }
 
@@ -69,5 +70,12 @@ data class Cell (
             .flatMap { map -> map.entries }
             .groupBy ({ it.key },{ it.value })
             .mapValues { it.value.sum() }
+    }
+
+    override fun updateAttractionScaler(dcFunction: LocationChoiceDCWeightFun, value: Double) {
+        for (building in buildings) {
+            building.updateAttractionScaler(dcFunction, value)
+        }
+        recalculateAttractions(listOf(dcFunction))
     }
 }

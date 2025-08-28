@@ -10,7 +10,7 @@ object BFGS {
         lb: Double = 0.0,
         ub: Double = 1e3,
         m: Int = 5,
-        iterations: Int = 30,
+        iterations: Int = 10,
         gTol: Double = 1e-5
     ) : DoubleArray {
         val x = x0.copyOf()

@@ -28,13 +28,14 @@ class Building  (
     override val latlonCoord: Coordinate,
     override var odZone: ODZone?,
     override val inFocusArea: Boolean,
-    override var attractions: Map<Int, Double>,
+    override var attractions: MutableMap<Int, Double>,
     override val population: Double,
     val point: Point,
     var cell: Cell? = null,
     val osmProperties: GeoJsonBuildingProperties
 ) : RealLocation, Clusterable {
     override val avgDistanceToSelf = 0.0
+    private val attractionScaler: MutableMap<Int, Double> = mutableMapOf() // For calibration
 
     companion object {
         /**
@@ -58,7 +59,7 @@ class Building  (
                 val properties = it.properties
                 val point = transformer.toModelCRS( it.geometry.toJTS(geometryFactory) ).centroid
 
-                val attractions = dcFunctions.map { (_, v) -> v.id to v.calcAttraction(properties)}.toMap()
+                val attractions = dcFunctions.map { (_, v) -> v.id to v.calcAttraction(properties)}.toMap().toMutableMap()
 
                 Building(
                     osmID = properties.osm_id,
@@ -75,8 +76,15 @@ class Building  (
         }
     }
 
-    override fun recalculateAttractions(dcFunctions: Map<ActivityType, LocationChoiceDCWeightFun>) {
-        attractions = dcFunctions.map { (_, v) -> v.id to v.calcAttraction(osmProperties)}.toMap()
+    override fun recalculateAttractions(dcFunctions: List<LocationChoiceDCWeightFun>) {
+        for (v in dcFunctions) {
+            attractions[v.id] = v.calcAttraction(osmProperties) * (attractionScaler[v.id] ?: 1.0)
+        }
+    }
+
+    override fun updateAttractionScaler(dcFunction: LocationChoiceDCWeightFun, value: Double) {
+        attractionScaler[dcFunction.id] = value
+        recalculateAttractions(listOf(dcFunction))
     }
 
     override fun getPoint(): DoubleArray {

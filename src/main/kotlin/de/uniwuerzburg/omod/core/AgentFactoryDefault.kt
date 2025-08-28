@@ -30,7 +30,8 @@ class AgentFactoryDefault (
     override fun createAgents(
         share: Double, zones: List<AggLocation>, populateBufferArea: Boolean, rng: Random
     ): List<MobiAgent> {
-        print("Creating Population...\r")
+        logger.get()?.info("Creating Population(%)... ")
+
         // Real locations
         val grid = zones.filterIsInstance<Cell>()
         val buildings = if (populateBufferArea) {
@@ -77,7 +78,7 @@ class AgentFactoryDefault (
         }
 
         val agents = createAgentsFromHomes(homes, zones, rng)
-        println("Creating Population...  Done!")
+        logger.get()?.info("Creating Population(%)... Done!")
         return agents
     }
 
@@ -94,7 +95,7 @@ class AgentFactoryDefault (
     override fun createAgents(
         nFocus: Int, zones: List<AggLocation>, populateBufferArea: Boolean, rng: Random
     ): List<MobiAgent> {
-        logger.get()?.info("Creating Population... ")
+        logger.get()?.info("Creating Population(#)... ")
 
         // Home distributions inside and outside of focus area
         val insideHWeights = getHomeWeightsRestricted(zones, true).toDoubleArray()
@@ -133,7 +134,7 @@ class AgentFactoryDefault (
         }
 
         val agents = createAgentsFromHomes(homes, zones, rng)
-        logger.get()?.info("Creating Population... Done!")
+        logger.get()?.info("Creating Population(#)... Done!")
         return agents
     }
 

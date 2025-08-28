@@ -1,3 +1,5 @@
+@file:Suppress("PropertyName")
+
 package de.uniwuerzburg.omod
 
 import com.github.ajalt.clikt.core.CliktCommand

@@ -51,7 +51,7 @@ class TrafficCountCalibrator(
         for ((i, cell) in omod.grid.withIndex()) {
             force[cell] = wm!!.toArray()[i]
         }
-        finder.forceOMatrix = force
+        finder.forcedTransitionMatrix[ActivityType.OTHER] = force
 
         evaluate(DoubleArray(omod.grid.size) {1.0})
     }
@@ -100,7 +100,11 @@ class TrafficCountCalibrator(
     fun evaluate(d: DoubleArray) {
         val finder = omod.destinationFinder as DestinationFinderDefault
         val flowBase = runBatch(0.1)
-        finder.updateCellCValues(ActivityType.OTHER, d.toTypedArray(), omod.grid)
+        //finder.updateCellCValues(ActivityType.OTHER, d.toTypedArray(), omod.grid)
+        val dcFunction = finder.locChoiceWeightFuns[ActivityType.OTHER]!!
+        for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
+            cell.updateAttractionScaler(dcFunction, x)
+        }
         val flowCal = runBatch(0.1)
 
         var mseSim = 0.0
@@ -170,63 +174,11 @@ class TrafficCountCalibrator(
         return d
     }
 
-
-    fun simBatchMSE(
-        x: DoubleArray, activityType: ActivityType, finder: DestinationFinderDefault, fullPopulation: Double
-    ) : Double {
-        de.uniwuerzburg.omod.core.logger.on = false
-        finder.updateCellCValues(activityType, x.toTypedArray(), omod.grid)
-
-        omod.mainRng.setSeed(0)
-        val agents = omod.run(0.1)
-        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
-
-        // Determine affected sensors
-        val simCount = sensors.associateWith {0.0}.toMutableMap()
-        var locBeforeTrip = Array(omod.grid.size) {0.0}.toMutableList()
-        for (agent in agents) {
-            var origin = agent.mobilityDemand.first().activities.first()
-            val activities = agent.mobilityDemand.first().activities.drop(1)
-
-            val trips = agent.mobilityDemand.first().trips
-            for ((activity, trip) in activities.zip(trips)) {
-                if (trip.mode == Mode.CAR_DRIVER) {
-                    if ((origin.location.getAggLoc() is Cell) and (activity.location.getAggLoc() is Cell)) {
-                        val od = Pair(origin.location.getAggLoc() as Cell, activity.location.getAggLoc() as Cell)
-                        if (od in affectedSensors) {
-                            val sensors = affectedSensors[od]!!
-                            for (sensor in sensors) {
-                                simCount[sensor] = simCount[sensor]!! + 1
-                            }
-                        }
-                    }
-                }
-                if (origin.location.getAggLoc() is Cell) {
-                    val ocell = origin.location.getAggLoc() as Cell
-                    val i = omod.grid.indexOf(ocell)
-                    locBeforeTrip[i] = locBeforeTrip[i] + 1
-                }
-                origin = activity
-            }
-        }
-        var mse = 0.0
-        val allFlows = mutableMapOf<TrafficSensor, Double>()
-        for (sensor in sensors) {
-            val simFlow = simCount[sensor]!! * fullPopulation / agents.size
-            mse += (sensor.measuredFlow - simFlow).pow(2)
-
-            allFlows[sensor] = simFlow
-        }
-        mse /= sensors.size
-        de.uniwuerzburg.omod.core.logger.on = true
-        return mse
-    }
-
     private fun fourStepCal() : List<Double> {
         omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
 
         // Run Simulation
-        val agents = omod.run(0.1)
+        val agents = omod.run(0.1, verbose = false)
         return calibrateK1(agents, omod, sensors, affectedSensors)
     }
 
@@ -235,7 +187,7 @@ class TrafficCountCalibrator(
         omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
 
         // Run Simulation
-        val agents = omod.run(0.1)
+        val agents = omod.run(0.1, verbose = false)
         omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
 
         // Mode Choice
@@ -249,7 +201,7 @@ class TrafficCountCalibrator(
        omod.mainRng.setSeed(0)
 
        // Run Simulation
-       val agents = omod.run(sharePop)
+       val agents = omod.run(sharePop, verbose = false)
        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
 
        // Determine counts at sensors

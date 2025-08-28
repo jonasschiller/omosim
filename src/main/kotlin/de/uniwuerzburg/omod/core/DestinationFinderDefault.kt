@@ -1,41 +1,23 @@
 package de.uniwuerzburg.omod.core
 
-import com.github.ajalt.mordant.table.grid
-import de.uniwuerzburg.omod.calibration.ModeChoiceCalibration
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.routing.RoutingCache
 import de.uniwuerzburg.omod.utils.createCumDist
 import de.uniwuerzburg.omod.utils.sampleCumDist
-import org.jetbrains.kotlinx.multik.api.linalg.dot
-import org.jetbrains.kotlinx.multik.api.mk
-import org.jetbrains.kotlinx.multik.api.ndarray
-import org.jetbrains.kotlinx.multik.api.zeros
-import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
-import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
-import org.jetbrains.kotlinx.multik.ndarray.data.get
-import org.jetbrains.kotlinx.multik.ndarray.data.set
-import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
-import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
-import org.jetbrains.kotlinx.multik.ndarray.operations.times
-import org.locationtech.jts.geom.Coordinate
 import java.util.*
 
 /**
  * Gravity model based destination finder.
  */
 class DestinationFinderDefault(
-    val routingCache: RoutingCache, // TODO private?
+    val routingCache: RoutingCache,
     var locChoiceWeightFuns: MutableMap<ActivityType, LocationChoiceDCWeightFun>,
 ) : DestinationFinder {
     private var calibrated = false
     private var firstOrderCFactors: Map<ActivityType, Map<ODZone, Double>> = mapOf()
     private var secondOrderCFactors: Map<Pair<ActivityType, ActivityType>, Map<Pair<ODZone, ODZone>, Double>> = mapOf()
 
-    private val cellCFactors: MutableMap<ActivityType, MutableMap<Cell, Double>> = mutableMapOf()
-
-    var forceWMatrix: Map<Cell, DoubleArray>? = null
-    var forceSMatrix: Map<Cell, DoubleArray>? = null
-    var forceOMatrix: Map<Cell, DoubleArray>? = null
+    val forcedTransitionMatrix = mutableMapOf<ActivityType, Map<Cell, DoubleArray>>()
 
     /**
      * Determine the probabilistic weight that a location is a destination given an origin and activity type
@@ -78,17 +60,6 @@ class DestinationFinderDefault(
             }
         }
 
-        // Test
-        /*val thisCellFactors = if (activityType == ActivityType.OTHER) { // TODO Temporary
-           customCellFactors ?: cellCFactors
-        } else {
-            mapOf()
-        }*/
-        return destinations.mapIndexed { i, destination ->
-            (cellCFactors[activityType]?.get(destination) ?: 1.0) * weights[i]
-        }
-
-        /*
         if (!calibrated) { return weights }
 
         return if (activityType == ActivityType.WORK) {
@@ -100,7 +71,7 @@ class DestinationFinderDefault(
             }
         } else {
             weights
-        }*/
+        }
     }
 
     /**
@@ -190,18 +161,12 @@ class DestinationFinderDefault(
         origin: AggLocation, destinations: List<AggLocation>,
         activityType: ActivityType, rng: Random
     ) : LocationOption {
-        // TODO Test
-        val aggZone = if ((forceWMatrix != null) && (destinations.size == forceWMatrix?.size) && activityType == ActivityType.WORK) {
-            val distr = createCumDist(forceWMatrix!![origin]!!)
-            destinations[sampleCumDist(distr, rng)]
-        } else if ((forceSMatrix != null) && (destinations.size == forceSMatrix?.size) && activityType == ActivityType.SCHOOL) {
-            val distr = createCumDist(forceSMatrix!![origin]!!)
-            destinations[sampleCumDist(distr, rng)]
-        } else if ((forceOMatrix != null) && (destinations.size == forceOMatrix?.size) && activityType == ActivityType.OTHER) {
-            val distr = createCumDist(forceOMatrix!![origin]!!)
+        // Get agg zone (might be cell or dummy is node)
+        val fMatrix = forcedTransitionMatrix[activityType]
+        val aggZone = if ((fMatrix != null) && (destinations.size == fMatrix.size)) {
+            val distr = createCumDist(fMatrix[origin]!!)
             destinations[sampleCumDist(distr, rng)]
         } else {
-            // Get agg zone (might be cell or dummy is node)
             val aggCumDist = getDistr(origin, destinations, activityType)
             destinations[sampleCumDist(aggCumDist, rng)]
         }
@@ -227,266 +192,6 @@ class DestinationFinderDefault(
         val (kso, vso) =  calcSecondOrderScaling(zones, odZones)
         secondOrderCFactors = mapOf(kso to vso)
         calibrated = true
-    }
-
-    fun determinePairProbabilities(
-        grid: List<Cell>, activityGenerator: ActivityGeneratorDefault,
-        modeChoiceCalibration: ModeChoiceCalibration,
-        customCellFactors: Map<ActivityType, Map<Cell, Double>>,
-        popStrata: List<PopStratum>,
-        carOwnership: CarOwnership
-    ) : Map<Pair<Cell, Cell>, Double> {
-        // Result: Expected trip count on each od-paid of one agent on one day
-        val expectedCountPerAgent = mk.zeros<Double>(grid.size, grid.size)
-
-        // Precompute important probabilities
-        // HOME
-        val homeWeights = getWeightsNoOrigin(grid, activityType = ActivityType.HOME) // TODO what about buffer area
-        val homeProbs   = mk.ndarray( homeWeights.map { it / homeWeights.sum() } )
-            .expandDims(0).asDNArray().asD2Array()
-
-        // Transitions
-        val transitionProbs = mutableMapOf<ActivityType,  D2Array<Double>>()
-        for (activityType in ActivityType.entries) {
-            if (activityType == ActivityType.HOME) { continue }
-
-            val activityProbs = mk.zeros<Double>(grid.size, grid.size)
-            for (o in grid.indices) {
-                val activityWeights = getWeights(grid[o], grid, activityType = activityType, customCellFactors)
-                activityProbs[o] = mk.ndarray( activityWeights.map { it / activityWeights.sum() } )
-            }
-
-            transitionProbs[activityType] = activityProbs
-        }
-
-        // Home <-> Work, Work
-        val workTransitionP = transitionProbs[ActivityType.WORK]!!
-        val homeWorkProbs = homeProbs.diagonal().dot(workTransitionP)
-        val workProbs = homeProbs.dot(workTransitionP)
-
-        // Home <-> School, School
-        val schoolTransitionP = transitionProbs[ActivityType.SCHOOL]!!
-        val homeSchoolProbs = homeProbs.diagonal().dot(schoolTransitionP)
-        val schoolProbs = homeProbs.dot(schoolTransitionP)
-
-        // Car probability
-        val dummyCoord = Coordinate(0.0,0.0)
-        val dummyLocation = DummyLocation(dummyCoord, dummyCoord, null, setOf())
-        val carProbs = mutableMapOf<ActivityType, D2Array<Double>>()
-        for (activity in ActivityType.entries) {
-            carProbs[activity] = mk.zeros<Double>(grid.size, grid.size)
-        }
-        for (stratum in popStrata) {
-            if (stratum.stratumShare == 0.0) { continue }
-
-            for ((socioFeatureSet, pSFSet) in stratum.iterateOptions()) {
-                if (pSFSet == 0.0) { continue }
-
-                val dummyAgent = MobiAgent(
-                    -1,  socioFeatureSet.hom, socioFeatureSet.mob, socioFeatureSet.age,
-                    dummyLocation, dummyLocation, dummyLocation, socioFeatureSet.sex
-                )
-                dummyAgent.carAccess = true // Car ownership probability is considered separately
-                val carOwnershipP = carOwnership.probability(dummyAgent, stratum)
-                if (carOwnershipP == 0.0) { continue }
-
-                for (activity in ActivityType.entries) {
-                    val carProbsActivity = mk.zeros<Double>(grid.size, grid.size)
-                    for (o in grid.indices) {
-                        val distances = routingCache.getDistances(grid[o], grid)
-                        for (d in grid.indices) {
-                            val weights = modeChoiceCalibration.utilitiesForCalibration(
-                                distances[d].toDouble() / 1000.0, dummyAgent, activity, Weekday.UNDEFINED
-                            )
-                            val pTrip = weights[0] / weights.sum()
-                            carProbsActivity[o, d] = stratum.stratumShare * pSFSet * carOwnershipP * pTrip
-                        }
-                    }
-                    carProbs[activity]?.plusAssign(carProbsActivity)
-                }
-            }
-        }
-
-        // Get activity chains
-        // TODO Multiple days
-        val allChains = mutableMapOf<List<ActivityType>, Double>()
-        for (stratum in popStrata) {
-            if (stratum.stratumShare == 0.0) { continue }
-
-            for ((socioFeatureSet, pSFSet) in stratum.iterateOptions()) {
-                if (pSFSet == 0.0) { continue }
-                val ageGrp = AgeGrp.fromInt(socioFeatureSet.age)
-                val chains = activityGenerator.getChain(
-                    Weekday.UNDEFINED, socioFeatureSet.hom, socioFeatureSet.mob, ageGrp, ActivityType.HOME
-                )
-                val chainProbs = chains.weights.map { it / chains.weights.sum() }.toTypedArray()
-
-                for ((chain, chainP) in chains.chains.zip(chainProbs)) {
-                    val p = stratum.stratumShare * pSFSet * chainP
-                    if (chain in allChains) {
-                        allChains[chain] = allChains[chain]!! + p
-                    } else {
-                        allChains[chain] = p
-                    }
-                }
-            }
-        }
-
-        // Determine unique Fixed -> Fixed chain segments
-        // TODO: Later when time is important remember time windows on tour generation
-        val fixedActivities = setOf(ActivityType.HOME, ActivityType.WORK, ActivityType.SCHOOL)
-        val fixedSegments = mutableListOf<FixedSegment>()
-        val segment = mutableListOf<ActivityType>()
-        for ((chain, chainP) in allChains) {
-            segment.clear()
-
-            for ((i, activity) in chain.withIndex()) {
-                segment.add(activity)
-                if (segment.size > 1) {
-                    if ((activity in fixedActivities) or (i == chain.size - 1)) {
-                        fixedSegments.add(
-                            FixedSegment(
-                                segment.toList(),
-                                chainP
-                            )
-                        )
-                        // New segment starts with last activity
-                        segment.clear()
-                        segment.add(activity)
-                    }
-                }
-            }
-        }
-        val uniqueSegments = fixedSegments.groupBy { it.chain }.map { (chain, segments) ->
-            FixedSegment(
-                chain,
-                segments.sumOf { it.probability }
-            )
-        }
-
-        // Determine od pair probabilities
-        // TODO time
-        for ((chain, chainP) in uniqueSegments) {
-            if (chain.size <= 1) { continue }
-
-            val startActivity = chain.first()
-            val endActivity = chain.last()
-
-            // Short chains
-            if (chain.size == 2) {
-                when(Pair(startActivity, endActivity)) {
-                    Pair(ActivityType.HOME, ActivityType.WORK) -> {
-                        val carP = carProbs[endActivity]!!
-                        val p = homeWorkProbs.times(carP) * chainP
-                        expectedCountPerAgent.plusAssign(p)
-                        continue
-                    }
-                    Pair(ActivityType.HOME, ActivityType.SCHOOL) -> {
-                        val carP = carProbs[endActivity]!!
-                        val p = homeSchoolProbs.times(carP) * chainP
-                        expectedCountPerAgent.plusAssign(p)
-                        continue
-                    }
-                    Pair(ActivityType.WORK, ActivityType.HOME) -> {
-                        val carP = carProbs[endActivity]!!
-                        val p = homeWorkProbs.times(carP) * chainP // TODO Transpose? I think so
-                        expectedCountPerAgent.plusAssign(p)
-                        continue
-                    }
-                    Pair(ActivityType.SCHOOL, ActivityType.HOME) -> {
-                        val carP = carProbs[endActivity]!!
-                        val p = homeSchoolProbs.times(carP) * chainP
-                        expectedCountPerAgent.plusAssign(p)
-                        continue
-                    }
-                    else -> {}
-                }
-            }
-
-            // Setup
-            var probPositionGivenLastFixed: D2Array<Double>?
-            var previousProbs: D2Array<Double>
-            when(startActivity) {
-                ActivityType.HOME -> {
-                    previousProbs = homeProbs
-                    probPositionGivenLastFixed = when(endActivity) {
-                        ActivityType.HOME -> homeProbs.diagonal()
-                        ActivityType.WORK -> homeWorkProbs
-                        ActivityType.SCHOOL -> homeSchoolProbs
-                        else -> null
-                    }
-                }
-                ActivityType.WORK -> {
-                    previousProbs = workProbs
-                    probPositionGivenLastFixed = when(endActivity) {
-                        ActivityType.HOME -> homeWorkProbs
-                        ActivityType.WORK -> workProbs.diagonal()
-                        else -> null
-                    }
-                }
-                ActivityType.SCHOOL -> {
-                    previousProbs = schoolProbs
-                    probPositionGivenLastFixed = when(endActivity) {
-                        ActivityType.HOME -> homeSchoolProbs
-                        ActivityType.SCHOOL -> schoolProbs.diagonal()
-                        else -> null
-                    }
-                }
-                else -> {
-                    throw IllegalStateException(
-                        "Last fixed activity can not be of type $startActivity !"
-                    )
-                }
-            }
-
-            // Flexible chain components
-            for (activity in chain.drop(1).dropLast(1)) {
-                val transitionActivity = if (activity == ActivityType.SHOPPING) {
-                    activity
-                } else {
-                    ActivityType.OTHER
-                }
-                val transitionP = transitionProbs[transitionActivity]!!
-
-                val carP = carProbs[transitionActivity]!!
-                val p = previousProbs.diagonal().dot(transitionP).times(carP) * chainP
-                expectedCountPerAgent.plusAssign(p)
-                previousProbs = previousProbs.dot(transitionP)
-
-                probPositionGivenLastFixed = probPositionGivenLastFixed?.dot(transitionP)
-            }
-
-            // Last chain component. Fixed most of the time.
-            if (
-                (endActivity == ActivityType.HOME) ||
-                ((endActivity == ActivityType.WORK) && (startActivity != ActivityType.SCHOOL)) ||
-                ((endActivity == ActivityType.SCHOOL) && (startActivity != ActivityType.WORK))
-            ) {
-                val carP = carProbs[endActivity]!!
-                val p = probPositionGivenLastFixed!!.transpose().times(carP) * chainP
-                expectedCountPerAgent.plusAssign(p)
-            } else {
-                val transitionActivity = if (endActivity == ActivityType.SHOPPING) {
-                    endActivity
-                } else {
-                    ActivityType.OTHER
-                }
-                val transitionP = transitionProbs[transitionActivity]!!
-
-                val carP = carProbs[transitionActivity]!!
-                val p = previousProbs.diagonal().dot(transitionP).times(carP) * chainP
-                expectedCountPerAgent.plusAssign(p)
-            }
-        }
-
-        // Format output
-        val out = mutableMapOf<Pair<Cell, Cell>, Double>()
-        for ((o, origin) in grid.withIndex()) {
-            for ((d, destination) in grid.withIndex()) {
-                out[Pair(origin, destination)] = expectedCountPerAgent[o][d]
-            }
-        }
-        return out
     }
 
     /**
@@ -654,67 +359,5 @@ class DestinationFinderDefault(
         }
         return map
     }
-
-    fun getCalibrationPosition() : Array<Double> {
-        val x = mutableListOf<Double>()
-        for (activityType in ActivityType.entries) {
-            if (activityType in locChoiceWeightFuns) {
-                val lcwFun = locChoiceWeightFuns[activityType]!!
-                if (lcwFun is ByPopulation) { continue }
-                x.addAll(lcwFun.getCalibrationPosition())
-            }
-        }
-        return x.toTypedArray()
-    }
-
-    fun dCoeffImpact(newval: Double) {
-        val oldFun = locChoiceWeightFuns[ActivityType.WORK]!!
-        (oldFun as CombinedDCUtil).changeCoeff0(newval)
-    }
-
-    fun nShopsImpact(newval: Double) {
-        val oldFun = locChoiceWeightFuns[ActivityType.WORK]!!
-        val x = oldFun.getCalibrationPosition().copyOf()
-        x[9] = newval
-        locChoiceWeightFuns[ActivityType.WORK] = oldFun.createCopyFromCalibrationPosition(x)
-    }
-
-    fun updateCalibrationPosition(position: Array<Double>, grid: List<Cell>) {
-        var offset = 0
-        for (activityType in ActivityType.entries) {
-            if (activityType in locChoiceWeightFuns) {
-                val oldFun = locChoiceWeightFuns[activityType]!!
-                if (oldFun is ByPopulation) { continue }
-                val nParams = oldFun.getCalibrationPosition().size
-
-                val x = position.slice(offset until offset + nParams).toTypedArray()
-                locChoiceWeightFuns[activityType] = oldFun.createCopyFromCalibrationPosition(x)
-                offset += nParams
-            }
-        }
-        grid.forEach{ it.recalculateAttractions(locChoiceWeightFuns) }
-    }
-
-    fun updateCellCValues(activityType: ActivityType, position: Array<Double>, grid: List<Cell>) {
-       cellCFactors[activityType] = mutableMapOf<Cell, Double>() // Clear old values
-
-       for((i, cell) in grid.withIndex()) {
-           cellCFactors[activityType]!![cell] = position[i]
-       }
-    }
-
-    private inline fun <reified T : Any> D2Array<T>.diagonal() : D2Array<T> {
-        require(this.shape[0] == 1)
-        val diagonal  = mk.zeros<T>(this.size, this.size)
-        for ( i in 0 until this.size) {
-            diagonal[i, i] = this[0,i]
-        }
-        return  diagonal
-    }
-
-    private data class FixedSegment(
-        val chain: List<ActivityType>,
-        val probability: Double
-    )
 }
 
