@@ -3,11 +3,7 @@ package de.uniwuerzburg.omod.calibration.algorithms
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
-import java.nio.file.Path
-import java.nio.file.Paths
 import java.util.*
-import kotlin.math.max
-import kotlin.math.min
 import kotlin.time.measureTime
 
 object GA {
