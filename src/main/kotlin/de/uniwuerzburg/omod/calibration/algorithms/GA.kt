@@ -10,25 +10,21 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.time.measureTime
 
-// Based on: https://ieeexplore.ieee.org/abstract/document/488968
-// Hyper-parameter: https://ieeexplore.ieee.org/abstract/document/6163405
-// Velocity clamping: https://ieeexplore.ieee.org/abstract/document/9680690
-// Bound handling: https://ieeexplore.ieee.org/abstract/document/6163405
-
 object GA {
-    /*fun run(
+    fun run(
         nDimensions: Int,
         objective: (DoubleArray) -> Double,
         rng: Random,
         lb: Double = 0.0,
         ub: Double = 1e3,
         iterations: Int = 1000,
-        nParticles: Int = dNParticles,
-        w: Double = dW,
-        phiP: Double = dPhiP,
-        phiG: Double = dPhiG,
-        vClamp: Double = dVClamp,
-        boundStrategy: BoundStrategy = dBoundStrategy,
+        generationSize: Int = 100,
+        shareSurvivors: Double = 0.4,
+        nEliteOffspring: Int = 5,
+        pR: Double = 0.8,
+        pM: Double = 0.8,
+        pGM: Double = 0.02,
+        sigGM: Double = (ub - lb) / 6.0,
         out: File? = null
     ) : DoubleArray {
         val writer = if (out != null) {
@@ -37,25 +33,18 @@ object GA {
             null
         }
 
-        println("Initializing PSO...\r")
-        val maxVelocity = vClamp * (ub - lb)
+        println("Initializing GA...\r")
 
-        // Initial mse
-        var globalBestPosition = DoubleArray(nDimensions) { 1.0 }
-        var globalBest = objective(globalBestPosition)
+        var bestX = DoubleArray(nDimensions) { 1.0 }
+        var bestLoss = objective(bestX)
 
-        // Initialize particles
-        val particles = List(nParticles) {
+        // Initialize candidates
+        var currentGeneration = MutableList(generationSize) {
             val x = DoubleArray(nDimensions) { rng.nextDouble(lb, ub) }
-            val v = DoubleArray(nDimensions) { rng.nextDouble(-maxVelocity, maxVelocity) }
-            val oval = objective(x)
-            if (oval < globalBest) {
-                globalBest = oval
-                globalBestPosition = x.copyOf()
-            }
-            PSOParticle(v, x, x, oval)
+            val loss = objective(x)
+            Candidate(x, loss)
         }
-        println("Initializing PSO... done!")
+        println("Initializing GA... done!")
 
         val header = "Iteration, time, Objective Value, inbound"
         if (writer != null) {
@@ -63,60 +52,91 @@ object GA {
             writer.newLine()
         }
 
+        val nSurvivors = (shareSurvivors * generationSize).toInt()
         for(iteration in 0 until iterations ) {
-            var nInbound = 0 // Performance indicator for INFINITY bound handling
             val time = measureTime {
-                for (particle in particles) {
-                    var inBound = true
-                    for (i in 0 until nDimensions) {
-                        val rp = rng.nextDouble()
-                        val rg = rng.nextDouble()
+                currentGeneration.sortBy { it.loss }
+                val nextGeneration = currentGeneration.take(nSurvivors).toMutableList()
+                val fathers = currentGeneration.takeLast(generationSize - nSurvivors)
+                val offspring = mutableListOf<Candidate>()
 
-                        // Update velocity
-                        var velocity =
-                            w * particle.velocity[i] +
-                                    phiP * rp * (particle.bestPosition[i] - particle.position[i]) +
-                                    phiG * rg * (globalBestPosition[i] - particle.position[i])
+                for (father in fathers) {
+                    var x = father.x.copyOf()
 
-                        // Clamp
-                        velocity = min(velocity, maxVelocity)
-                        velocity = max(velocity, -maxVelocity)
-                        particle.velocity[i] = velocity
+                    // Recombination
+                    if (rng.nextDouble() < pR) {
+                        val mother = currentGeneration[rng.nextInt(generationSize)]
 
-                        // Update position
-                        particle.position[i] += particle.velocity[i]
-
-                        // Bound handling
-                        val dInBound = when(boundStrategy) {
-                            BoundStrategy.REFLECT_Z -> bhReflectZ(particle, i, lb, ub, rng)
-                            BoundStrategy.INFINITY -> bhInfinity(particle, i, lb, ub, rng)
+                        // Crossovers
+                        val cPoint = rng.nextInt(x.size)
+                        for (i in cPoint until x.size) {
+                            x[i] = mother.x[i]
                         }
-                        inBound = inBound && dInBound
                     }
 
-                    if (inBound) {
-                        // Check performance
-                        val oval = objective(particle.position)
-
-                        if (oval < particle.best) {
-                            particle.bestPosition = particle.position.copyOf()
-                            particle.best = oval
+                    // Mutation
+                    if (rng.nextDouble() < pM) {
+                        for (i in x.indices) {
+                            if (rng.nextDouble() < pGM) {
+                                x[i] =  x[i] + rng.nextGaussian(0.0, sigGM)
+                            }
                         }
-
-                        nInbound += 1
                     }
+
+                    // Check if feasible
+                    var feasible = true
+                    for (i in x.indices) {
+                        if (x[i] < lb) {
+                            feasible = false
+                            break
+                        }
+                        if (x[i] >= ub) {
+                            feasible = false
+                            break
+                        }
+                    }
+
+                    // If not feasible replace with random
+                    if(!feasible) {
+                        x = DoubleArray(nDimensions) { rng.nextDouble(lb, ub) }
+                    }
+
+                    // Evaluate loss
+                    val loss = objective(x)
+
+                    val newborn = Candidate(x, loss)
+                    offspring.add(newborn)
                 }
 
-                for (particle in particles) {
-                    if (particle.best < globalBest) {
-                        globalBestPosition = particle.bestPosition.copyOf()
-                        globalBest = particle.best
+                val newCandidates = (fathers + offspring).toMutableList()
+
+                // Elite selection
+                newCandidates.sortBy{ it.loss }
+                nextGeneration.addAll(newCandidates.take(nEliteOffspring))
+
+                // Tournament
+                val tournamentParticipants = newCandidates.takeLast(newCandidates.size - nEliteOffspring).toMutableList()
+                while(nextGeneration.size < generationSize) {
+                    tournamentParticipants.shuffle(rng)
+                    val round = tournamentParticipants.take(3)
+                    val winner = round.minBy { it.loss }
+                    nextGeneration.add(winner)
+                    tournamentParticipants.remove(winner)
+                }
+
+                // Generation change
+                currentGeneration = nextGeneration
+
+                // Check if new best solution is found
+                for (candidate in currentGeneration) {
+                    if (candidate.loss < bestLoss) {
+                        bestLoss = candidate.loss
+                        bestX = candidate.x
                     }
                 }
             }
 
-            val oval = objective(globalBestPosition)
-            val line = "$iteration,$time,$oval,$nInbound"
+            val line = "$iteration,$time,$bestLoss"
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()
@@ -124,61 +144,11 @@ object GA {
         }
         writer?.flush()
         writer?.close()
-        return globalBestPosition
+        return bestX
     }
 
-    /**
-        Based on:
-        doi: 10.1109/TEVC.2012.2189404
-    */
-    enum class BoundStrategy {
-        INFINITY, REFLECT_Z
-    }
-
-    /**
-     * Allow movement out of bounds but assign objective function value of INF
-     */
-    private fun bhInfinity(
-        particle: PSOParticle,
-        i: Int,
-        lb: Double,
-        ub: Double,
-        rng: Random
-    ) : Boolean {
-        if (particle.position[i] < lb) { return false }
-        if (particle.position[i] >= ub) { return false }
-        return true
-    }
-
-    /**
-     * Reflect particle at bound and set velocity to zero.
-     */
-    private fun bhReflectZ(
-        particle: PSOParticle,
-        i: Int,
-        lb: Double,
-        ub: Double,
-        rng: Random
-    ) : Boolean {
-        if (particle.position[i] < lb) {
-            particle.position[i] = lb + (lb - particle.position[i])
-            particle.velocity[i] = 0.0
-        }
-        if (particle.position[i] >= ub) {
-            particle.position[i] = ub - (particle.position[i] - ub)
-            particle.velocity[i] = 0.0
-        }
-        // If multiple reflections would be necessary randomly place particle
-        if ((particle.position[i] < lb) ||  (particle.position[i] > ub)) {
-            particle.position[i] = rng.nextDouble(lb, ub)
-        }
-        return true
-    }
-
-    private class PSOParticle(
-        var velocity: DoubleArray,
-        var position: DoubleArray,
-        var bestPosition: DoubleArray,
-        var best: Double
-    )*/
+    class Candidate(
+        val x: DoubleArray,
+        var loss: Double
+    )
 }
