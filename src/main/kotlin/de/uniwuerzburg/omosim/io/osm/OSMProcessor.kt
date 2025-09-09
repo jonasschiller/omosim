@@ -252,7 +252,16 @@ class OSMProcessor(idTrackerType: IdTrackerType,
             val holesAsPolygon = holes.map { geometryFactory.createPolygon(it) }.toTypedArray()
             val hole = geometryFactory.createMultiPolygon(holesAsPolygon).union()
 
-            polygons.add ( polygon.difference(hole) as Polygon )
+            val d = polygon.difference(hole)
+            if (d.geometryType.compareTo("Polygon")==0){
+                polygons.add ( d as Polygon )
+            }
+            else if(d.geometryType.compareTo("MultiPolygon")==0){
+                for (i in 0..<d.numGeometries){
+                    val de = d.getGeometryN(i)
+                    polygons.add(de as Polygon)
+                }
+            }
         }
         val geometry = geometryFactory.createMultiPolygon(polygons.toTypedArray()).union()
 
