@@ -641,6 +641,7 @@ class Omod(
             Files.createDirectories(gtfsCachePath)
 
             // Clip GTFS file to bounding box
+
             val clippedGtfsPath = Paths.get(gtfsCachePath.toString(), "clippedGTFS")
             if (!clippedGtfsPath.exists()) {
                 clipGTFSFile(

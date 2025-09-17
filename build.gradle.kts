@@ -49,6 +49,11 @@ tasks.test {
 
 kotlin {
     jvmToolchain(17)
+    sourceSets.all {
+        languageSettings {
+            optIn("kotlin.io.path.ExperimentalPathApi")
+        }
+    }
 }
 
 java {

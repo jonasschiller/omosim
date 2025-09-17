@@ -8,14 +8,12 @@ import kotlinx.serialization.Serializable
  * Output format of trip
  */
 @Serializable
-@SerialName("Trip")
-data class OutputTrip (
-    override val legID: Int,
+@SerialName("AltModes")
+data class AltMode (
     val mode: Mode,
-    val startTime: String,
+    val startTime: String = "",
     val distanceKilometer: Double?,
     val timeMinute: Double?,
-    val lats: List<Double>?,
-    val lons: List<Double>?,
-    val alternativeModes: List<AltMode>?
-) : OutputLeg
+    val selected: Boolean?,
+    val utility: Double?=null
+)

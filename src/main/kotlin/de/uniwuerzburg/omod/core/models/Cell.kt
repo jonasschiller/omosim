@@ -17,19 +17,25 @@ data class Cell (
     override val latlonCoord: Coordinate,
     val buildings: List<Building>,
 ) : RealLocation, AggLocation {
-    // Approximation: average distance between to random points on a disc
+    // Approximation: average distance between two random points on a disc
     override val avgDistanceToSelf = (buildings.maxOfOrNull { it.coord.distance(coord) } ?: 0.0) * 2 * 64 / (45 * PI)
 
     // Most common taz (Normally null at initialization)
+    //  Grouping By -> Group Operator
+    // EachCount -> Gets Count for each odZone
+    // Get key for maximum value
     override var odZone = buildings.groupingBy { it.odZone }.eachCount().maxByOrNull { it.value }!!.key
 
+    //Check if at least one building in the Cell is in the focus area
     override val inFocusArea = buildings.any { it.inFocusArea }
 
+    // Gets the sum of each attraction type in the Cell
     override val attractions = buildings.map { it.attractions }
         .flatMap { map -> map.entries }
         .groupBy ({ it.key },{ it.value })
         .mapValues { it.value.sum() }
 
+    // Get the total Population of the cell based on household population
     override val population = buildings.sumOf { it.population }
 
     override fun getAggLoc() : AggLocation {

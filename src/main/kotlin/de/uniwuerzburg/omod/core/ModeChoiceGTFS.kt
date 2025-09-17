@@ -3,6 +3,7 @@ package de.uniwuerzburg.omod.core
 import com.graphhopper.GraphHopper
 import com.graphhopper.gtfs.PtRouter
 import de.uniwuerzburg.omod.core.models.*
+import de.uniwuerzburg.omod.io.json.AltMode
 import de.uniwuerzburg.omod.io.json.readJsonFromResource
 import de.uniwuerzburg.omod.routing.*
 import de.uniwuerzburg.omod.utils.ProgressBar
@@ -17,6 +18,7 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.text.get
 import kotlin.time.TimeSource
 
 /**
@@ -180,12 +182,19 @@ class ModeChoiceGTFS(
                 // Weekday
                 val weekday = tour.first().weekday
 
-                val mode = sampleUtilities(tourModeOptions, times, carDistance, agent, mainPurpose, weekday, rng)
+                val pair:Pair<Mode, Map<Mode,Double>> = sampleUtilities(tourModeOptions, times, carDistance, agent, mainPurpose, weekday, rng)
+                val mode = pair.first
+                val tourModeDist=pair.second
+
 
                 // If the tour is a CAR or BICYCLE all trips on the tour must be conducted with the respective vehicle
                 if ((mode == Mode.CAR_DRIVER) || (mode == Mode.BICYCLE)) {
                     for (trip in tour) {
                         trip.mode = mode
+                        trip.modeDist=sampleUtilities(
+                            tripModeOptions, times, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
+                        ).second
+                        trip.modeDist= trip.modeDist?.plus(tourModeDist)
                     }
                 }
             }
@@ -195,10 +204,11 @@ class ModeChoiceGTFS(
                 val times = tripModeOptions.map { m ->
                     trip.routes[m.mode]!!.time
                 }.toTypedArray()
-                val mode = sampleUtilities(
+                val mode: Pair<Mode,Map<Mode,Double>> = sampleUtilities(
                     tripModeOptions, times, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
                 )
-                trip.mode = mode
+                trip.mode = mode.first
+                trip.modeDist=mode.second
             }
 
             // Format for output
@@ -218,13 +228,28 @@ class ModeChoiceGTFS(
                     trip.routes[mode]!!.distance
                 }
 
+                val altModes: List<AltMode> = Mode.entries.map { mode ->
+                    val route = trip.routes[mode]
+                    AltMode(
+                        distanceKilometer = route?.distance,
+                        timeMinute = route?.time,
+                        mode = mode,
+                        selected = (mode == trip.mode),
+                        utility = trip.modeDist?.get(mode),
+                        startTime=""
+                    )
+
+                }
+
+
                 outTrips.add(
                     Trip(
                         distance,
                         trip.routes[mode]!!.time,
                         mode = mode,
                         lats = trip.routes[mode]!!.lats,
-                        lons = trip.routes[mode]!!.lons
+                        lons = trip.routes[mode]!!.lons,
+                        altModes=altModes
                     )
                 )
             }
@@ -247,7 +272,7 @@ class ModeChoiceGTFS(
         options: Array<ModeUtility>, times: Array<Double>,
         carDistance: Double, agent: MobiAgent, activity: ActivityType,
         weekday: Weekday, rng: Random
-    ) : Mode {
+    ) : Pair<Mode, Map<Mode,Double>> {
         // If public transit and foot routes are the same, add 20 minutes to public transit to differentiate the options
         val footIdx = options.withIndex().find { (_, o) -> o.mode == Mode.FOOT }?.index
         val ptIdx = options.withIndex().find { (_, o) -> o.mode == Mode.PUBLIC_TRANSIT }?.index
@@ -263,7 +288,10 @@ class ModeChoiceGTFS(
             .toDoubleArray()
         val distr = createCumDist(weights)
         val mode = options[sampleCumDist(distr, rng)].mode
-        return mode
+        val distrMap: Map<Mode, Double> = options.mapIndexed { i, util -> util.mode to weights[i] }.toMap()
+
+
+        return Pair(mode,distrMap)
     }
 
     /**
@@ -283,5 +311,6 @@ class ModeChoiceGTFS(
         val routes: Map<Mode, Route>
     ) {
         var mode: Mode? = null
+        var modeDist: Map<Mode,Double>?=null
     }
 }

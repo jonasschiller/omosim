@@ -31,7 +31,10 @@ class AgentFactoryDefault (
     ): List<MobiAgent> {
         print("Creating Population...\r")
         // Real locations
+        // Zones are aggregates created to reduce Routing effort
+        // First routing between the zones then within zone
         val grid = zones.filterIsInstance<Cell>()
+
         val buildings = if (populateBufferArea) {
             grid.flatMap { it.buildings }
         } else {
@@ -188,6 +191,11 @@ class AgentFactoryDefault (
         return agent
     }
 
+    /** Here I want to create a function that instead of sampling from a stratum selects an agent from a synthetic population
+     * Should still get a home location and home zone -> could potentially use home zone to select
+     *
+     *
+     */
     /**
      * Get the home weights of all destinations in the focus area and set the others to zero; or the other way around.
      *
