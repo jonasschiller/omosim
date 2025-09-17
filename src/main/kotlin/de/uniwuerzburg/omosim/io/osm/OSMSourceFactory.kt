@@ -9,15 +9,13 @@ import java.io.FileInputStream
 import java.util.Locale
 
 object OSMSourceFactory {
-
-    fun forPath(osmfile: File): RunnableSource {
-
-        val name = osmfile.name.lowercase(Locale.ROOT)
+    fun forPath(osmFile: File): RunnableSource {
+        val name = osmFile.name.lowercase(Locale.ROOT)
 
         return when {
             name.endsWith(".pbf") || name.endsWith(".osm.pbf") -> {
-                // PBF: old reader needs an InputStream
-                OsmosisReader(FileInputStream(osmfile))
+                // PBF: reader needs an InputStream
+                OsmosisReader(FileInputStream(osmFile))
             }
             name.endsWith(".osm") || name.endsWith(".osm.gz") || name.endsWith(".osm.bz2") -> {
                 // XML: choose compression from file suffix
@@ -27,9 +25,9 @@ object OSMSourceFactory {
                     else -> CompressionMethod.None
                 }
                 // XmlReader signature: (file, enableDateParsing, compression)
-                XmlReader(osmfile, /* enableDateParsing = */ false, compression)
+                XmlReader(osmFile, /* enableDateParsing = */ false, compression)
             }
-            else -> error("Unsupported OSM format: $osmfile")
+            else -> error("Unsupported OSM format: $osmFile")
         }
     }
 }
