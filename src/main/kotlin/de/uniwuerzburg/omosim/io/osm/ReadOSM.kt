@@ -21,7 +21,7 @@ import java.io.File
 fun readOSM (focusArea: Geometry, fullArea: Geometry, osmFile: File,
              geometryFactory: GeometryFactory, transformer: CRSTransformer
 ): List<BuildingData> {
-    logger.info("Start reading OSM-File... (If this is too slow use smaller .osm.pbf file)")
+    logger.info("Start reading OSM-File... (If this is too slow use smaller osm file)")
     val mapObjects = getMapObjects(fullArea, osmFile, geometryFactory)
 
     // Filter objects, transform the coordinates, and create spatial index
