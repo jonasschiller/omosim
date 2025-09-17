@@ -34,6 +34,7 @@ dependencies {
     implementation("com.graphhopper:graphhopper-reader-gtfs:9.1")
     implementation("ch.qos.logback:logback-classic:1.+")
     implementation("org.openstreetmap.osmosis:osmosis-pbf:0.48.+")
+    implementation("org.openstreetmap.osmosis:osmosis-xml:0.48.+")
     implementation("org.openstreetmap.osmosis:osmosis-areafilter:0.48.+")
     implementation("com.google.guava:guava:33.2.1-jre")
     implementation("org.duckdb:duckdb_jdbc:1.1.1")
