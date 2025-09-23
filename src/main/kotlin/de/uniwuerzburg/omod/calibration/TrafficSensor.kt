@@ -243,7 +243,6 @@ class TrafficSensor(
 
         fun isSameDirection(other: LineString, leeway: Double) : Boolean {
             val leewayRad = leeway / 180.0 * PI
-            val angleBe = angleBetween(other)
             return abs(angleBetween(other)) < leewayRad
         }
     }

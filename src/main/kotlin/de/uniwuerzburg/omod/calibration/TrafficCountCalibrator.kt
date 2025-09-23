@@ -160,7 +160,7 @@ class TrafficCountCalibrator(
 
     fun calibrateMetaModelLBFGS() : DoubleArray {
         val mModel = MetaModel.build(omod)!!
-        return mModel.calibrateK1(ActivityType.OTHER, sensors, affectedSensors).toDoubleArray()
+        return mModel.calibrateK1(ActivityType.OTHER, sensors, affectedSensors).toDoubleArray() // TODO Activities
     }
 
     fun calibrateSPSA() : DoubleArray {

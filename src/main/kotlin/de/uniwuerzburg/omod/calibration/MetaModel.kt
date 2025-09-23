@@ -629,6 +629,13 @@ class MetaModel private constructor(
         // School and Work
         addFixDemand(DMDemandBuilder, diffModel.nVars, m3rep, demand, varTransitionMatrix, relevantODs, irrelevantFactorThreshold)
 
+        // TODO split up these demands into time slices
+        //  - Go through each chain calculate
+        //  - IF contains the activity:
+        //  - Calculate chain share of all with activity
+        //  - Calculate time slice probability (Should be doable with gaussians) // Check if differentiable
+        //  - Distribute onto slices
+
         // Simulated Traffic Counts
         val simCount = mutableMapOf<TrafficSensor, LinearTerm>()
         for (sensor in sensors) {
