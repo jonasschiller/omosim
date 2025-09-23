@@ -559,7 +559,7 @@ class Omosim(
      * @param withPath Return the lat-lon coordinates of the car trips.
      * @return agents. Now their trips have specified modes.
      */
-    fun domosimeChoice(
+    fun doModeChoice(
         agents: List<MobiAgent>, modeChoiceOption: ModeChoiceOption, withPath: Boolean
     ) : List<MobiAgent> {
         when (modeChoiceOption) {
@@ -567,7 +567,7 @@ class Omosim(
             ModeChoiceOption.CAR_ONLY -> {
                 setupHopper()
                 val modeChoice = ModeChoiceCarOnly(hopper!!, withPath)
-                modeChoice.domosimeChoice(agents, mainRng, dispatcher, modeSpeedUp)
+                modeChoice.doModeChoice(agents, mainRng, dispatcher, modeSpeedUp)
                 return agents
             }
             ModeChoiceOption.GTFS -> {
@@ -579,7 +579,7 @@ class Omosim(
                         gtfsComponents!!.ptSimDays, gtfsComponents!!.timeZone,
                         withPath
                     )
-                    modeChoice.domosimeChoice(agents, mainRng, dispatcher, modeSpeedUp)
+                    modeChoice.doModeChoice(agents, mainRng, dispatcher, modeSpeedUp)
                     return agents
                 } finally {
                     gtfsComponents!!.gtfsHopper.close()

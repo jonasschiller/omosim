@@ -17,7 +17,7 @@ interface ModeChoice {
      * @param dispatcher Coroutine dispatcher used for concurrency
      * @return agents. Now their trips have specified modes.
      */
-    fun domosimeChoice(
+    fun doModeChoice(
         agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, modeSpeedUp: Map<Mode, Double>
     ) : List<MobiAgent>
 }

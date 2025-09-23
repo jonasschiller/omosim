@@ -47,7 +47,7 @@ class ModeChoiceGTFS(
      * @param dispatcher Coroutine dispatcher used for concurrency
      * @return agents. Now their trips have specified modes.
      */
-    override fun domosimeChoice(
+    override fun doModeChoice(
         agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, modeSpeedUp: Map<Mode, Double>
     ) : List<MobiAgent> {
         val timeSource = TimeSource.Monotonic

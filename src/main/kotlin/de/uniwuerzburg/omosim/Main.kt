@@ -191,7 +191,7 @@ class Run : CliktCommand() {
         }
 
         // Mode Choice
-        omosim.domosimeChoice(agents, mode_choice, return_path_coords)
+        omosim.doModeChoice(agents, mode_choice, return_path_coords)
 
         // Format run parameters:
         val runParameters = mutableMapOf<String, String>()
