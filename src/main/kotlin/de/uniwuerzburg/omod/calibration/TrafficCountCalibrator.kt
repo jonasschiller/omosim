@@ -44,8 +44,8 @@ class TrafficCountCalibrator(
         evaluate(DoubleArray(omod.grid.size) {1.0})
     }*/
 
-    fun hpTune(option: CalibrationOption) {
-        val model = MetaModel.build(omod)!!.getDiffModel(ActivityType.OTHER, sensors, affectedSensors)
+    fun hpTune(activity: ActivityType, option: CalibrationOption) {
+        val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
         val objective: (DoubleArray) -> Double = { x: DoubleArray ->
             model.evaluate(x)
         }
@@ -76,22 +76,28 @@ class TrafficCountCalibrator(
     }
 
     fun calibrate(option: CalibrationOption) {
-        var d = when (option) {
-            CalibrationOption.PSO -> calibratePSO()
-            CalibrationOption.MM_LBFGS -> calibrateMetaModelLBFGS()
-            CalibrationOption.SPSA -> calibrateSPSA()
+        val k = mutableMapOf<ActivityType, DoubleArray>()
+        for (activity in listOf(ActivityType.WORK, ActivityType.SCHOOL, ActivityType.SCHOOL, ActivityType.OTHER)) {
+            var d = when (option) {
+                CalibrationOption.PSO -> calibratePSO(activity)
+                CalibrationOption.MM_LBFGS -> calibrateMetaModelLBFGS(activity)
+                CalibrationOption.SPSA -> calibrateSPSA(activity)
+            }
+            d = (d.toList() + listOf(1.0)).toDoubleArray()
+            k[activity] = d
         }
-        d = (d.toList() + listOf(1.0)).toDoubleArray()
-        evaluate(d)
+        evaluate(k)
     }
 
-    fun evaluate(d: DoubleArray) {
+    fun evaluate(k: Map<ActivityType, DoubleArray>) {
         val finder = omod.destinationFinder as DestinationFinderDefault
         val flowBase = runBatch(0.1)
         //finder.updateCellCValues(ActivityType.OTHER, d.toTypedArray(), omod.grid)
-        val dcFunction = finder.locChoiceWeightFuns[ActivityType.OTHER]!!
-        for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
-            cell.updateAttractionScaler(dcFunction, x)
+        for ((activity, d) in k.entries) {
+            val dcFunction = finder.locChoiceWeightFuns[activity]!!
+            for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
+                cell.updateAttractionScaler(dcFunction, x)
+            }
         }
         val flowCal = runBatch(0.1)
 
@@ -148,14 +154,14 @@ class TrafficCountCalibrator(
         }
     }
 
-    fun calibratePSO() : DoubleArray {
-        val model = MetaModel.build(omod)!!.getDiffModel(ActivityType.OTHER, sensors, affectedSensors)
+    fun calibratePSO(activityType: ActivityType) : DoubleArray {
+        val model = MetaModel.build(omod)!!.getDiffModel(activityType, sensors, affectedSensors)
 
         val objective: (DoubleArray) -> Double = { x: DoubleArray ->
             model.evaluate(x)
         }
         val d = PSO.run(
-            omod.grid.size - 1, objective, Random(), out=File("TestPSO.csv"), vClamp = 1.0,  w = 0.8,
+            omod.grid.size - 1, objective, Random(), out=File("TestPSO${activityType}.csv"), vClamp = 1.0,  w = 0.8,
             phiP = 0.8 * 2,
             phiG = 0.8 * 2,
             nParticles = 40
@@ -163,13 +169,13 @@ class TrafficCountCalibrator(
         return d
     }
 
-    fun calibrateMetaModelLBFGS() : DoubleArray {
+    fun calibrateMetaModelLBFGS(activityType: ActivityType) : DoubleArray {
         val mModel = MetaModel.build(omod)!!
-        return mModel.calibrateK1(ActivityType.OTHER, sensors, affectedSensors).toDoubleArray() // TODO Activities
+        return mModel.calibrateK1(activityType, sensors, affectedSensors).toDoubleArray() // TODO Activities
     }
 
-    fun calibrateSPSA() : DoubleArray {
-        val model = MetaModel.build(omod)!!.getDiffModel(ActivityType.OTHER, sensors, affectedSensors)
+    fun calibrateSPSA(activityType: ActivityType) : DoubleArray {
+        val model = MetaModel.build(omod)!!.getDiffModel(activityType, sensors, affectedSensors)
 
         val objective: (DoubleArray) -> Double = { x: DoubleArray ->
             model.evaluate(x)
