@@ -517,7 +517,14 @@ class MetaModel private constructor(
         }
 
         for ((key, arr) in distr.entries) {
-            distr[key] = arr.map { it / arr.sum() }.toTypedArray()
+            distr[key] = arr.map {
+                val sum = arr.sum()
+                if (sum == 0.0) {
+                    0.0
+                } else {
+                    it / sum
+                }
+            }.toTypedArray()
         }
 
         return distr
@@ -617,8 +624,8 @@ class MetaModel private constructor(
                     for (sensor in affected) {
                         for (t in 0 until T) {
                             for (activity in ActivityType.entries) {
-                                if(demand[activity]!![o][d].terms.size == 0) { continue }
-                                if(activity == ActivityType.BUSINESS) {continue}
+                                /*if(demand[activity]!![o][d].terms.size == 0) { continue }
+                                if(activity == ActivityType.BUSINESS) {continue}*/
                                 simCount[sensor]!![t].addTerm(
                                     demand[activity]!![o][d], totalPop * tripStartDistr[activity]!![t]
                                 )
