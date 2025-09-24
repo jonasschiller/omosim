@@ -199,6 +199,7 @@ class TrafficCountCalibrator(
         calibrate(agents, omod.mainRng, omod, sensors, affectedSensors)
     }*/
 
+   @Suppress("SameParameterValue")
    private fun runBatch(sharePop: Double) : Map<TrafficSensor, DoubleArray> {
        val fullPopulation = omod.buildings.sumOf { it.population }
 
@@ -211,7 +212,7 @@ class TrafficCountCalibrator(
 
        // Determine counts at sensors
        val simCount = sensors.associateWith { Array(T) {0.0} }.toMutableMap()
-       val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, departureWD, finished ->
+       val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, _, _ ->
            if (trip.mode == Mode.CAR_DRIVER) {
                if ((originActivity.location.getAggLoc() is Cell) and (destinationActivity.location.getAggLoc() is Cell)) {
                    val od = Pair(originActivity.location.getAggLoc() as Cell, destinationActivity.location.getAggLoc() as Cell)
