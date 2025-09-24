@@ -1,12 +1,16 @@
 package de.uniwuerzburg.omod.calibration
 
 import com.gurobi.gurobi.*
+import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
+import de.uniwuerzburg.omod.calibration.CalibrationConstants.mcSamples
 import de.uniwuerzburg.omod.calibration.algorithms.BFGS
 import de.uniwuerzburg.omod.calibration.differentiablemodel.*
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
+import de.uniwuerzburg.omod.utils.sampleCumDist
+import de.uniwuerzburg.omod.utils.sampleNDGaussian
 import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
@@ -18,6 +22,7 @@ import org.jetbrains.kotlinx.multik.ndarray.operations.plus
 import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
+import java.util.*
 import kotlin.math.abs
 import kotlin.math.pow
 
@@ -32,14 +37,14 @@ class MetaModel private constructor(
             if (omod.destinationFinder !is DestinationFinderDefault) {
                 logger.warn(
                     "MetaModel is not valid for the destination finder: " +
-                        "${omod.destinationFinder.javaClass.simpleName}"
+                            omod.destinationFinder.javaClass.simpleName
                 )
                 return null
             }
             if (omod.activityGenerator !is ActivityGeneratorDefault) {
                 logger.warn(
                     "MetaModel is not valid for the activity generator finder: " +
-                        "${omod.activityGenerator.javaClass.simpleName}"
+                            omod.activityGenerator.javaClass.simpleName
                 )
                 return null
             }
@@ -53,10 +58,7 @@ class MetaModel private constructor(
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ): DifferentiableModel {
         val m3rep = generateMatrixRep(activityType)
-        val exp = getExpectedCountPerAgent(m3rep)
 
-        println("GENERAL META MODEL")
-        eval(exp, sensors, affectedSensors)
         println("Building diff model...")
         val (model, _) = buildDiffModel(m3rep, affectedSensors, sensors)
         return model
@@ -68,40 +70,88 @@ class MetaModel private constructor(
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ): List<Double> {
         val m3rep = generateMatrixRep(activityType)
-        val exp = getExpectedCountPerAgent(m3rep)
 
-        println("GENERAL META MODEL")
-        eval(exp, sensors, affectedSensors)
         println("Building diff model...")
         val (model, simCount) = buildDiffModel(m3rep, affectedSensors, sensors)
+
+
+        //TEST
+        println("_".repeat(20*4 + 5*3))
+        println("${"Sensor".padEnd(20)} | \t" +
+                "${"T".padEnd(20)} | \t" +
+                "${"Flow AltOpt".padEnd(20)} | \t" +
+                "Flow Measured".padEnd(20)
+        )
+        println("_".repeat(20) +
+                " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20))
+        var oval1 = 0.0
+        for ((i, sensor) in sensors.withIndex()) {
+            for (seg in listOf(Pair(0, T))) {
+                var optVal = 0.0
+                var mVal = 0.0
+                for (t in seg.first until seg.second) {
+                    optVal += simCount[sensor]!![t].evaluate(DoubleArray(omod.grid.size - 1) { 1.0 })
+                    mVal += sensors[i].measuredFlow[t]
+                }
+                println(
+                    "${sensors[i].name.padEnd(20)} | \t" +
+                            "${(seg.first.toString() + "-" + seg.second).padEnd(20)} | \t" +
+                            "${optVal.toString().padEnd(20)} | \t" +
+                            mVal.toString().padEnd(20)
+                )
+            }
+            for ( t in 0 until T) {
+                val optVal = simCount[sensor]!![t].evaluate(DoubleArray(omod.grid.size - 1) { 1.0 })
+                oval1 += (sensors[i].measuredFlow[t] - optVal) * (sensors[i].measuredFlow[t] - optVal)
+            }
+        }
+        println("MSE: ${oval1 /sensors.size}")
+        //TEST
+
+
 
         var parameters = DoubleArray(omod.grid.size - 1) { 1.0 }
         parameters = (BFGS.run(model, parameters).toList() + listOf(1.0)).toDoubleArray()
 
         println("_".repeat(20*4 + 5*3))
         println("${"Sensor".padEnd(20)} | \t" +
+                "${"T".padEnd(20)} | \t" +
                 "${"Flow AltOpt".padEnd(20)} | \t" +
                 "Flow Measured".padEnd(20)
         )
         println("_".repeat(20) +
                 " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20)  +
                 " | \t" + "_".repeat(20))
         var oval = 0.0
         for ((i, sensor) in sensors.withIndex()) {
-            val optVal = simCount[sensor]!!.evaluate(parameters)
-            println(
-                "${sensors[i].name.padEnd(20)} | \t" +
-                        "${optVal.toString().padEnd(20)} | \t" +
-                        sensors[i].measuredFlow.toString().padEnd(20)
-            )
-            oval += (sensors[i].measuredFlow - optVal) * (sensors[i].measuredFlow - optVal)
+            for (seg in listOf(Pair(0, T))) {
+                var optVal = 0.0
+                var mVal = 0.0
+                for (t in seg.first until seg.second) {
+                    optVal += simCount[sensor]!![t].evaluate(parameters)
+                    mVal += sensors[i].measuredFlow[t]
+                }
+                println(
+                    "${sensors[i].name.padEnd(20)} | \t" +
+                    "${(seg.first.toString() + "-" + seg.second).padEnd(20)} | \t" +
+                    "${optVal.toString().padEnd(20)} | \t" +
+                    mVal.toString().padEnd(20)
+                )
+            }
+            for ( t in 0 until T) {
+                val optVal = simCount[sensor]!![t].evaluate(parameters)
+                oval += (sensors[i].measuredFlow[t] - optVal) * (sensors[i].measuredFlow[t] - optVal)
+            }
         }
         println("MSE: ${oval /sensors.size}")
 
         return parameters.toList()
     }
 
-    fun calibrateMatrix(
+    /*fun calibrateMatrix(
             activityType: ActivityType,
             sensors: List<TrafficSensor>,
             affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
@@ -112,135 +162,7 @@ class MetaModel private constructor(
 
         eval(exp, sensors, affectedSensors)
         return optimizeTMatrix(m3rep, affectedSensors, sensors)
-    }
-
-    fun eval(
-        expected: D2Array<Double>,
-        sensors: List<TrafficSensor>,
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
-    ) {
-        val totalPop = omod.buildings.sumOf { it.population }
-
-        val simCount = sensors.associateWith { 0.0 }.toMutableMap()
-        for ((o, origin) in omod.grid.withIndex()) {
-            for ((d, destination) in omod.grid.withIndex()) {
-                val odPair = Pair(origin, destination)
-                if (odPair in affectedSensors) {
-                    val affected = affectedSensors[odPair]!!
-                    for (sensor in affected) {
-
-                        simCount[sensor] = simCount[sensor]!! + expected[o,d] * totalPop
-                    }
-                }
-            }
-        }
-        var mse = 0.0
-        val allFlows = mutableMapOf<TrafficSensor, Double>()
-        for (sensor in sensors) {
-            val simFlow = simCount[sensor]!!
-            mse += (sensor.measuredFlow - simFlow).pow(2)
-
-            allFlows[sensor] = simFlow
-        }
-        mse /= sensors.size
-
-        println("MSE: $mse")
-        println("------------------------------")
-        println("Sensor | \t Flow OMOD | \t Flow Measured")
-        for ((i, flow) in simCount.values.withIndex()) {
-            println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow}")
-        }
-        // TODO Turn this test into a unit test
-    }
-
-    private fun getExpectedCountPerAgent(m3rep: MetaModelMatrixRep) : D2Array<Double> {
-        // Result: Expected trip count on each od-paid of one agent on one day
-        val expectedCountPerAgent = mk.zeros<Double>(omod.grid.size, omod.grid.size)
-
-        val varTMatrix = m3rep.transitionMatrix[m3rep.varActivityType]!!
-
-        // Flex
-        for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
-            val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
-                ActivityType.OTHER
-            } else {
-                flexActivity
-            }
-            val carP = m3rep.carP[transitionActivity]!!
-            val fix = m3rep.fixedMatrix[flexActivity]!!
-
-            val dep = if (m3rep.varActivityType in fixActivities) {
-                m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[flexActivity]!!)
-            } else if (flexActivity == m3rep.varActivityType) {
-                mk.zeros<Double>(omod.grid.size, omod.grid.size)
-            } else {
-                m3rep.dependentMatrix[flexActivity]!!.dot(varTMatrix)
-            }
-            val total = mk.ones<Double>(omod.grid.size).expandDims(0).asDNArray()
-                .asD2Array().dot(dep.plus(fix))
-                .diagonal().dot(m3rep.transitionMatrix[transitionActivity]!!)
-            expectedCountPerAgent.plusAssign(total.times(carP))
-        }
-
-        // Home
-        for (fixActivity in listOf(ActivityType.HOME)) {
-            val carP = m3rep.carP[fixActivity]!!
-
-            val dep = if (m3rep.varActivityType in fixActivities) {
-                m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[fixActivity]!!)
-            } else {
-                m3rep.dependentMatrix[fixActivity]!!.dot(varTMatrix)
-            }
-            val fix = m3rep.fixedMatrix[fixActivity]!!
-            val total = dep.plus(fix).transpose()
-
-            expectedCountPerAgent.plusAssign(total.times(carP))
-        }
-
-        // School
-        for (fixActivity in listOf(ActivityType.SCHOOL)) {
-            val carP = m3rep.carP[fixActivity]!!
-            val fix = m3rep.fixedMatrix[fixActivity]!!
-
-            if (m3rep.varActivityType == ActivityType.SCHOOL) {
-                val schoolProbs = m3rep.homeP.dot( m3rep.transitionMatrix[ActivityType.SCHOOL]!! )
-                val dep = schoolProbs.diagonal().dot( m3rep.dependentMatrix[fixActivity]!! ).transpose()
-                val total = dep.plus( fix.transpose().dot( m3rep.transitionMatrix[fixActivity]!!) )
-                expectedCountPerAgent.plusAssign(total.times(carP))
-            } else {
-                val dep = if (m3rep.varActivityType in fixActivities) {
-                    m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[fixActivity]!!)
-                } else {
-                    m3rep.dependentMatrix[fixActivity]!!.dot(varTMatrix)
-                }
-                val total = dep.plus(fix).transpose().dot(m3rep.transitionMatrix[fixActivity]!!)
-                expectedCountPerAgent.plusAssign(total.times(carP))
-            }
-        }
-
-        // Work
-        for (fixActivity in listOf(ActivityType.WORK)) {
-            val carP = m3rep.carP[fixActivity]!!
-            val fix = m3rep.fixedMatrix[fixActivity]!!
-
-            if (m3rep.varActivityType == ActivityType.WORK) {
-                val workProbs = m3rep.homeP.dot( m3rep.transitionMatrix[ActivityType.WORK]!! )
-                val dep = workProbs.diagonal().dot( m3rep.dependentMatrix[fixActivity]!! ).transpose()
-                val total = dep.plus( fix.transpose().dot( m3rep.transitionMatrix[fixActivity]!!) )
-                expectedCountPerAgent.plusAssign(total.times(carP))
-            } else {
-                val dep = if (m3rep.varActivityType in fixActivities) {
-                    m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[fixActivity]!!)
-                } else {
-                    m3rep.dependentMatrix[fixActivity]!!.dot(varTMatrix)
-                }
-                val total = dep.plus(fix).transpose().dot(m3rep.transitionMatrix[fixActivity]!!)
-                expectedCountPerAgent.plusAssign(total.times(carP))
-            }
-        }
-
-        return expectedCountPerAgent
-    }
+    }*/
 
     private fun generateMatrixRep(activityType: ActivityType) : MetaModelMatrixRep {
         require(activityType != ActivityType.HOME) { "Meta model dependent on home coefficients not implemented!" }
@@ -253,14 +175,12 @@ class MetaModel private constructor(
     }
 
     private fun generateMatrixRepForFixed(varActivityType: ActivityType) : MetaModelMatrixRep {
-        // TODO School and Work can be combined see tag: EndOfExplorativeTesting1, class FixGradDescent
         val dependentMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
         val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
 
         val finderMatrices = computeTransitionMatrices()
 
         // Determine od pair probabilities
-        // TODO time
         for ((chain, chainP) in getUniqueChainSegments()) {
             if (chain.size <= 1) { continue }
 
@@ -367,14 +287,12 @@ class MetaModel private constructor(
     }
 
     private fun generateMatrixRepForFlex(varActivityType: ActivityType) : MetaModelMatrixRep {
-        // TODO if this version has staying power. Integrate into flex version.
         val dependentMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
         val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
 
         val finderMatrices = computeTransitionMatrices()
 
         // Determine od pair probabilities
-        // TODO time
         for ((chain, chainP) in getUniqueChainSegments()) {
             if (chain.size <= 1) { continue }
 
@@ -519,7 +437,6 @@ class MetaModel private constructor(
         val activityGenerator = omod.activityGenerator as ActivityGeneratorDefault
 
         // Get activity chains
-        // TODO Multiple days
         val allChains = mutableMapOf<List<ActivityType>, Double>()
         for (stratum in omod.popStrata) {
             if (stratum.stratumShare == 0.0) { continue }
@@ -544,7 +461,6 @@ class MetaModel private constructor(
         }
 
         // Determine unique Fixed -> Fixed chain segments
-        // TODO: Later when time is important remember time windows on tour generation
         val fixedActivities = setOf(ActivityType.HOME, ActivityType.WORK, ActivityType.SCHOOL)
         val fixedSegments = mutableListOf<FixedSegment>()
         val segment = mutableListOf<ActivityType>()
@@ -577,12 +493,43 @@ class MetaModel private constructor(
         return uniqueSegments
     }
 
+    @Suppress("SameParameterValue")
+    private fun monteCarloTripStartDistribution(n: Int) : Map<ActivityType, Array<Double>> {
+        val distr = ActivityType.entries.associateWith {
+            Array(T) { 0.0 }
+        }.toMutableMap()
+
+        // Ensure results are deterministic
+        omod.mainRng.setSeed(0)
+
+        // Run Simulation
+        val agents = omod.run(n, verbose = false)
+        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
+
+        val visitor: TripVisitor = { _, _, destinationActivity, departureTime, _, _ ->
+            val arr = distr[destinationActivity.type]!!
+            arr[departureTime.hour] = arr[departureTime.hour] + 1
+        }
+
+        // Determine counts at sensors
+        for (agent in agents) {
+            agent.mobilityDemand[0].visitTrips(visitor)
+        }
+
+        for ((key, arr) in distr.entries) {
+            distr[key] = arr.map { it / arr.sum() }.toTypedArray()
+        }
+
+        return distr
+    }
+
+
     private fun buildDiffModel(
         m3rep: MetaModelMatrixRep,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>,
         irrelevantFactorThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
-    ) : Pair<DifferentiableModel, Map<TrafficSensor, LinearTerm>> {
+    ) : Pair<DifferentiableModel, Map<TrafficSensor, List<LinearTerm>>> {
         val n = omod.grid.size
         val totalPop = omod.buildings.sumOf { it.population }
         println("Building diff model with grid size: $n")
@@ -593,9 +540,11 @@ class MetaModel private constructor(
         val diffModel = DifferentiableModel(omod.grid.size - 1)
 
         // Create demand matrix dependent on the variable transition matrix: demand(o, d | M)
-        val demand = List(n) {
+        val demand = ActivityType.entries.associateWith {
             List(n) {
-                LinearTerm(diffModel.nVars)
+                List(n) {
+                    LinearTerm(diffModel.nVars)
+                }
             }
         }
         val varTransitionMatrix = mutableListOf<List<Term>>()
@@ -621,25 +570,43 @@ class MetaModel private constructor(
         }
 
         // Demand with flexible destination
-        addFlexDemand(DMDemandBuilder, diffModel.nVars, m3rep, demand, varTransitionMatrix, relevantODs, irrelevantFactorThreshold)
+        for (activity in listOf( ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
+            addFlexDemand(
+                DMDemandBuilder,
+                diffModel.nVars,
+                m3rep,
+                demand[activity]!!,
+                varTransitionMatrix,
+                relevantODs,
+                irrelevantFactorThreshold,
+                activity
+            )
+        }
 
         // Demand for home
-        addHomeDemand(DMDemandBuilder, diffModel.nVars, m3rep, demand, varTransitionMatrix, relevantODs, irrelevantFactorThreshold)
+        addHomeDemand(DMDemandBuilder, diffModel.nVars, m3rep, demand[ActivityType.HOME]!!, varTransitionMatrix, relevantODs, irrelevantFactorThreshold)
 
         // School and Work
-        addFixDemand(DMDemandBuilder, diffModel.nVars, m3rep, demand, varTransitionMatrix, relevantODs, irrelevantFactorThreshold)
+        for (activity in listOf( ActivityType.SCHOOL, ActivityType.WORK)) {
+            addFixDemand(
+                DMDemandBuilder,
+                diffModel.nVars,
+                m3rep,
+                demand[activity]!!,
+                varTransitionMatrix,
+                relevantODs,
+                irrelevantFactorThreshold,
+                activity
+            )
+        }
 
-        // TODO split up these demands into time slices
-        //  - Go through each chain calculate
-        //  - IF contains the activity:
-        //  - Calculate chain share of all with activity
-        //  - Calculate time slice probability (Should be doable with gaussians) // Check if differentiable
-        //  - Distribute onto slices
+        // Temporal trip distribution
+        val tripStartDistr = monteCarloTripStartDistribution( mcSamples )
 
         // Simulated Traffic Counts
-        val simCount = mutableMapOf<TrafficSensor, LinearTerm>()
+        val simCount = mutableMapOf<TrafficSensor, List<LinearTerm>>()
         for (sensor in sensors) {
-            simCount[sensor] = LinearTerm(diffModel.nVars)
+            simCount[sensor] = List(T) { LinearTerm(diffModel.nVars) }
         }
         for ((o, origin) in omod.grid.withIndex()) {
             for ((d, destination) in omod.grid.withIndex()) {
@@ -648,7 +615,15 @@ class MetaModel private constructor(
                     val affected = affectedSensors[od]!!
 
                     for (sensor in affected) {
-                        simCount[sensor]!!.addTerm( demand[o][d], totalPop)
+                        for (t in 0 until T) {
+                            for (activity in ActivityType.entries) {
+                                if(demand[activity]!![o][d].terms.size == 0) { continue }
+                                if(activity == ActivityType.BUSINESS) {continue}
+                                simCount[sensor]!![t].addTerm(
+                                    demand[activity]!![o][d], totalPop * tripStartDistr[activity]!![t]
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -656,25 +631,27 @@ class MetaModel private constructor(
 
         // Objective
         val obj = LinearTerm(diffModel.nVars)
-        for ((i, sensor) in sensors.withIndex()) {
-            // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
-            val simCountTerm = simCount[sensor]!!
-            obj.addConstant(sensor.measuredFlow * sensor.measuredFlow)
-            obj.addTerm(simCountTerm, -2 * sensor.measuredFlow)
-            val qTerm = QuadraticTerm(
-                diffModel.nVars,
-                simCountTerm,
-                simCountTerm,
-                1.0
-            )
-            obj.addTerm(qTerm, 1.0)
+        for (sensor in sensors) {
+            for (t in 0 until T) {
+                // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
+                val simCountTerm = simCount[sensor]!![t]
+                obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
+                obj.addTerm(simCountTerm, -2 * sensor.measuredFlow[t])
+                val qTerm = QuadraticTerm(
+                    diffModel.nVars,
+                    simCountTerm,
+                    simCountTerm,
+                    1.0
+                )
+                obj.addTerm(qTerm, 1.0)
+            }
         }
 
         diffModel.setRootTerm(obj)
         return diffModel to simCount
     }
 
-    private fun optimizeTMatrix(
+    /*private fun optimizeTMatrix(
         m3rep: MetaModelMatrixRep,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>,
@@ -826,7 +803,7 @@ class MetaModel private constructor(
             )
         }
         return null
-    }
+    }*/
 
     private fun <T, K> fromMatrixSandwichT(
         demandBuilder: DemandBuilder<T, K>,
@@ -909,72 +886,72 @@ class MetaModel private constructor(
         demand: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
-        irrelevantFactorThreshold: Double
+        irrelevantFactorThreshold: Double,
+        flexActivity: ActivityType
     ) {
         val n = omod.grid.size
 
-        for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
-            val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
-                ActivityType.OTHER
-            } else {
-                flexActivity
-            }
-            val mCarP = m3rep.carP[transitionActivity]!!
-            val mFixed = m3rep.fixedMatrix[flexActivity]!!
+        val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
+            ActivityType.OTHER
+        } else {
+            flexActivity
+        }
+        val mCarP = m3rep.carP[transitionActivity]!!
+        val mFixed = m3rep.fixedMatrix[flexActivity]!!
 
-            if (flexActivity == m3rep.varActivityType) {
-                for (o in 0 until n) {
-                    var cnst = 0.0
+        if (flexActivity == m3rep.varActivityType) {
+            for (o in 0 until n) {
+                var cnst = 0.0
 
-                    for (a in 0 until n) {
-                        cnst += mFixed[a, o]
-                    }
-
-                    for (d in 0 until n) {
-                        if (Pair(o, d) !in relevantODs) { continue }
-                        demandBuilder.addTerm(demand[o][d], varTransitionMatrix[o][d], cnst * mCarP[o, d])
-                    }
+                for (a in 0 until n) {
+                    cnst += mFixed[a, o]
                 }
-            } else {
-                val mTransition = m3rep.transitionMatrix[transitionActivity]!!
-                val mDep = m3rep.dependentMatrix[flexActivity]!!
-                val pHome = m3rep.homeP.flatten()
 
-                for (o in 0 until n) {
-                    val s = demandBuilder.createSum(nVars)
-                    var cnst = 0.0
+                for (d in 0 until n) {
+                    if (Pair(o, d) !in relevantODs) { continue }
+                    demandBuilder.addTerm(demand[o][d], varTransitionMatrix[o][d], cnst * mCarP[o, d])
+                }
+            }
+        } else {
+            val mTransition = m3rep.transitionMatrix[transitionActivity]!!
+            val mDep = m3rep.dependentMatrix[flexActivity]!!
+            val pHome = m3rep.homeP.flatten()
 
-                    for (a in 0 until n) {
-                        cnst += mFixed[a, o]
-                        for (b in 0 until n) {
-                            val coeff = if (m3rep.varActivityType in fixActivities) {
-                                pHome[a] * mDep[b, o]
-                            } else {
-                                mDep[a, b]
-                            }
+            for (o in 0 until n) {
+                val s = demandBuilder.createSum(nVars)
+                var cnst = 0.0
 
-                            // Ignore very small terms
-                            if (abs(coeff) <= irrelevantFactorThreshold) {
-                                continue
-                            }
+                for (a in 0 until n) {
+                    cnst += mFixed[a, o]
+                    for (b in 0 until n) {
+                        val coeff = if (m3rep.varActivityType in fixActivities) {
+                            pHome[a] * mDep[b, o]
+                        } else {
+                            mDep[a, b]
+                        }
 
-                            if (m3rep.varActivityType in fixActivities) {
-                                demandBuilder.addTermToSum(s, varTransitionMatrix[a][b], coeff)
-                            } else {
-                                demandBuilder.addTermToSum(s, varTransitionMatrix[b][o], coeff)
-                            }
+                        // Ignore very small terms
+                        if (abs(coeff) <= irrelevantFactorThreshold) {
+                            continue
+                        }
+
+                        if (m3rep.varActivityType in fixActivities) {
+                            demandBuilder.addTermToSum(s, varTransitionMatrix[a][b], coeff)
+                        } else {
+                            demandBuilder.addTermToSum(s, varTransitionMatrix[b][o], coeff)
                         }
                     }
-                    demandBuilder.addConstToSum(s, cnst)
+                }
+                demandBuilder.addConstToSum(s, cnst)
 
-                    for (d in 0 until n) {
-                        if (Pair(o, d) !in relevantODs) { continue }
-                        val t = mTransition[o, d] * mCarP[o, d]
-                        demandBuilder.addSum(demand[o][d], s, t)
-                    }
+                for (d in 0 until n) {
+                    if (Pair(o, d) !in relevantODs) { continue }
+                    val t = mTransition[o, d] * mCarP[o, d]
+                    demandBuilder.addSum(demand[o][d], s, t)
                 }
             }
         }
+
     }
 
     private fun <T, K> addHomeDemand(
@@ -988,39 +965,38 @@ class MetaModel private constructor(
     ) {
         val n = omod.grid.size
 
-        for (fixActivity in listOf(ActivityType.HOME)) {
-            val carP = m3rep.carP[fixActivity]!!
-            val fix = m3rep.fixedMatrix[fixActivity]!!.transpose().times(carP)
+        val carP = m3rep.carP[ActivityType.HOME]!!
+        val fix = m3rep.fixedMatrix[ActivityType.HOME]!!.transpose().times(carP)
 
-            val depExpr = if(m3rep.varActivityType in fixActivities) {
-                val left = m3rep.dependentMatrix[fixActivity]!!.transpose()
-                val right = m3rep.homeP.diagonal().transpose()
-                fromMatrixSandwichT(
-                    demandBuilder,
-                    nVars,
-                    varTransitionMatrix, left, right,
-                    relevantRCs = relevantODs, irrelevantFactorThreshold=irrelevantFactorThreshold
-                )
-            } else {
-                val left = mk.identity<Double>(n)
-                val right = m3rep.dependentMatrix[fixActivity]!!.transpose()
-                fromMatrixSandwichT(
-                    demandBuilder,
-                    nVars,
-                    varTransitionMatrix, left, right,
-                    relevantRCs = relevantODs,
-                    irrelevantFactorThreshold=irrelevantFactorThreshold
-                )
-            }
+        val depExpr = if(m3rep.varActivityType in fixActivities) {
+            val left = m3rep.dependentMatrix[ActivityType.HOME]!!.transpose()
+            val right = m3rep.homeP.diagonal().transpose()
+            fromMatrixSandwichT(
+                demandBuilder,
+                nVars,
+                varTransitionMatrix, left, right,
+                relevantRCs = relevantODs, irrelevantFactorThreshold=irrelevantFactorThreshold
+            )
+        } else {
+            val left = mk.identity<Double>(n)
+            val right = m3rep.dependentMatrix[ActivityType.HOME]!!.transpose()
+            fromMatrixSandwichT(
+                demandBuilder,
+                nVars,
+                varTransitionMatrix, left, right,
+                relevantRCs = relevantODs,
+                irrelevantFactorThreshold=irrelevantFactorThreshold
+            )
+        }
 
-            for (o in 0 until n) {
-                for (d in 0 until n) {
-                    if (Pair(o, d) !in relevantODs) { continue }
-                    demandBuilder.addSum(demand[o][d], depExpr[o][d], carP[o, d])
-                    demandBuilder.addConstant(demand[o][d], fix[o, d])
-                }
+        for (o in 0 until n) {
+            for (d in 0 until n) {
+                if (Pair(o, d) !in relevantODs) { continue }
+                demandBuilder.addSum(demand[o][d], depExpr[o][d], carP[o, d])
+                demandBuilder.addConstant(demand[o][d], fix[o, d])
             }
         }
+
     }
 
     private fun <T, K> addFixDemand(
@@ -1030,75 +1006,74 @@ class MetaModel private constructor(
         demand: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
-        irrelevantFactorThreshold: Double
+        irrelevantFactorThreshold: Double,
+        fixActivity: ActivityType
     ) {
         val n = omod.grid.size
 
-        for (fixActivity in listOf(ActivityType.SCHOOL, ActivityType.WORK)) {
-            val carP = m3rep.carP[fixActivity]!!
-            val fix = m3rep.fixedMatrix[fixActivity]!!.transpose()
+        val carP = m3rep.carP[fixActivity]!!
+        val fix = m3rep.fixedMatrix[fixActivity]!!.transpose()
+            .dot(m3rep.transitionMatrix[fixActivity]!!)
+            .times(carP)
+
+        // Tour starting at var activity
+        val pHome = m3rep.homeP.flatten()
+        val dMatrixT = m3rep.dependentMatrix[fixActivity]!!.transpose()
+        val varStartProbs = List(n) { demandBuilder.createSum(nVars) }
+        for (col in 0 until n) {
+            for (row in 0 until n) {
+                demandBuilder.addTermToSum(varStartProbs[col], varTransitionMatrix[row][col], pHome[row])
+            }
+        }
+
+        // Tour not starting at var activity
+        val depExpr = if (m3rep.varActivityType == fixActivity) {
+            val left = m3rep.fixedMatrix[fixActivity]!!.transpose()
+            val right = mk.identity<Double>(n)
+            fromMatrixSandwichT(
+                demandBuilder,
+                nVars,
+                varTransitionMatrix, left, right,
+                transpose = false,
+                relevantRCs = relevantODs,
+                irrelevantFactorThreshold=irrelevantFactorThreshold
+            )
+        } else if (m3rep.varActivityType in fixActivities) {
+            val left = m3rep.dependentMatrix[fixActivity]!!.transpose()
+            val right = m3rep.homeP
+                .diagonal()
+                .transpose()
                 .dot(m3rep.transitionMatrix[fixActivity]!!)
-                .times(carP)
+            fromMatrixSandwichT(
+                demandBuilder,
+                nVars,
+                varTransitionMatrix, left, right,
+                relevantRCs = relevantODs,
+                irrelevantFactorThreshold=irrelevantFactorThreshold
+            )
+        } else {
+            val left = mk.identity<Double>(n)
+            val right = m3rep.dependentMatrix[fixActivity]!!
+                .transpose()
+                .dot(m3rep.transitionMatrix[fixActivity]!!)
+            fromMatrixSandwichT(
+                demandBuilder,
+                nVars,
+                varTransitionMatrix, left, right,
+                relevantRCs = relevantODs,
+                irrelevantFactorThreshold=irrelevantFactorThreshold
+            )
+        }
 
-            // Tour starting at var activity
-            val pHome = m3rep.homeP.flatten()
-            val dMatrixT = m3rep.dependentMatrix[fixActivity]!!.transpose()
-            val varStartProbs = List(n) { demandBuilder.createSum(nVars) }
-            for (col in 0 until n) {
-                for (row in 0 until n) {
-                    demandBuilder.addTermToSum(varStartProbs[col], varTransitionMatrix[row][col], pHome[row])
-                }
-            }
+        for (o in 0 until n) {
+            for (d in 0 until n) {
+                if (Pair(o, d) !in relevantODs) { continue }
+                demandBuilder.addSum(demand[o][d], depExpr[o][d], carP[o, d])
 
-            // Tour not starting at var activity
-            val depExpr = if (m3rep.varActivityType == fixActivity) {
-                val left = m3rep.fixedMatrix[fixActivity]!!.transpose()
-                val right = mk.identity<Double>(n)
-                fromMatrixSandwichT(
-                    demandBuilder,
-                    nVars,
-                    varTransitionMatrix, left, right,
-                    transpose = false,
-                    relevantRCs = relevantODs,
-                    irrelevantFactorThreshold=irrelevantFactorThreshold
-                )
-            } else if (m3rep.varActivityType in fixActivities) {
-                val left = m3rep.dependentMatrix[fixActivity]!!.transpose()
-                val right = m3rep.homeP
-                    .diagonal()
-                    .transpose()
-                    .dot(m3rep.transitionMatrix[fixActivity]!!)
-                fromMatrixSandwichT(
-                    demandBuilder,
-                    nVars,
-                    varTransitionMatrix, left, right,
-                    relevantRCs = relevantODs,
-                    irrelevantFactorThreshold=irrelevantFactorThreshold
-                )
-            } else {
-                val left = mk.identity<Double>(n)
-                val right = m3rep.dependentMatrix[fixActivity]!!
-                    .transpose()
-                    .dot(m3rep.transitionMatrix[fixActivity]!!)
-                fromMatrixSandwichT(
-                    demandBuilder,
-                    nVars,
-                    varTransitionMatrix, left, right,
-                    relevantRCs = relevantODs,
-                    irrelevantFactorThreshold=irrelevantFactorThreshold
-                )
-            }
-
-            for (o in 0 until n) {
-                for (d in 0 until n) {
-                    if (Pair(o, d) !in relevantODs) { continue }
-                    demandBuilder.addSum(demand[o][d], depExpr[o][d], carP[o, d])
-
-                    if (m3rep.varActivityType == fixActivity) {
-                        demandBuilder.addSum(demand[o][d], varStartProbs[d], dMatrixT[o][d] * carP[o, d])
-                    } else {
-                        demandBuilder.addConstant(demand[o][d], fix[o,d])
-                    }
+                if (m3rep.varActivityType == fixActivity) {
+                    demandBuilder.addSum(demand[o][d], varStartProbs[d], dMatrixT[o][d] * carP[o, d])
+                } else {
+                    demandBuilder.addConstant(demand[o][d], fix[o,d])
                 }
             }
         }

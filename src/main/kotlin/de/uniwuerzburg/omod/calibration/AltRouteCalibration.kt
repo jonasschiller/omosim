@@ -4,7 +4,7 @@ import com.gurobi.gurobi.*
 import de.uniwuerzburg.omod.core.models.Cell
 import de.uniwuerzburg.omod.core.models.RealLocation
 
-
+/*
 fun optimize(
     grid: List<Cell>,
     odMatrix: Map<Pair<Cell, Cell>, Double>,
@@ -137,4 +137,4 @@ fun optimize(
         )
     }
     return mapOf()
-}
+}*/

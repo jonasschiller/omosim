@@ -1,25 +1,13 @@
 package de.uniwuerzburg.omod.calibration
 
-import com.graphhopper.GraphHopper
+import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.algorithms.PSO
 import de.uniwuerzburg.omod.calibration.algorithms.SPSA
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
-import de.uniwuerzburg.omod.routing.routeAltCar
-import de.uniwuerzburg.omod.routing.routeWith
-import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import org.geotools.filter.function.StaticGeometry.intersection
 import org.jetbrains.kotlinx.multik.ndarray.operations.toArray
-import org.locationtech.jts.geom.Coordinate
-import org.locationtech.jts.geom.GeometryFactory
-import org.locationtech.jts.geom.LineString
-import org.locationtech.jts.geom.MultiLineString
-import org.locationtech.jts.index.hprtree.HPRtree
 import java.io.File
 import java.nio.file.Paths
 import java.util.*
@@ -42,7 +30,7 @@ class TrafficCountCalibrator(
         affectedSensors = TrafficSensor.affectedSensors(sensors, omod)
     }
 
-    fun matrixTestRun() {
+    /*fun matrixTestRun() {
         val model = MetaModel.build(omod)
         val wm = model!!.calibrateMatrix(ActivityType.OTHER, sensors, affectedSensors)
 
@@ -54,7 +42,7 @@ class TrafficCountCalibrator(
         finder.forcedTransitionMatrix[ActivityType.OTHER] = force
 
         evaluate(DoubleArray(omod.grid.size) {1.0})
-    }
+    }*/
 
     fun hpTune(option: CalibrationOption) {
         val model = MetaModel.build(omod)!!.getDiffModel(ActivityType.OTHER, sensors, affectedSensors)
@@ -110,12 +98,15 @@ class TrafficCountCalibrator(
         var mseSim = 0.0
         var mseSimBase = 0.0
         for (sensor in sensors) {
-            mseSim += (flowCal[sensor]!! - sensor.measuredFlow).pow(2)
-            mseSimBase += (flowBase[sensor]!! - sensor.measuredFlow).pow(2)
+            for ( t in 0 until T) {
+                mseSim += (flowCal[sensor]!![t] - sensor.measuredFlow[t]).pow(2)
+                mseSimBase += (flowBase[sensor]!![t] - sensor.measuredFlow[t]).pow(2)
+            }
         }
 
         println("_".repeat(20*4 + 5*3))
         println("${"Sensor".padEnd(20)} | \t" +
+                "${"T".padEnd(20)} | \t" +
                 "${"Flow Simulated".padEnd(20)} | \t" +
                 "${"Flow Simulated Base".padEnd(20)} | \t" +
                 "Flow Measured".padEnd(20)
@@ -123,8 +114,10 @@ class TrafficCountCalibrator(
         println("_".repeat(20) +
                 " | \t" + "_".repeat(20)  +
                 " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20)  +
                 " | \t" + "_".repeat(20))
         println(" ".repeat(20) +
+                " | \t" + " ".repeat(20) +
                 " | \t" + "%.2f e6".format(mseSim/sensors.size / 1e6).padEnd(20)  +
                 " | \t" + "%.2f e6".format(mseSimBase/sensors.size / 1e6).padEnd(20)  +
                 " | \t" + " ".repeat(20)
@@ -132,14 +125,26 @@ class TrafficCountCalibrator(
         println("_".repeat(20) +
                 " | \t" + "_".repeat(20)  +
                 " | \t" + "_".repeat(20)  +
+                " | \t" + "_".repeat(20)  +
                 " | \t" + "_".repeat(20))
         for ((i, flow) in flowCal.values.withIndex()) {
-            println(
-                "${sensors[i].name.padEnd(20)} | \t" +
-                        "${flow.toString().padEnd(20)} | \t" +
-                        "${flowBase[sensors[i]].toString().padEnd(20)} | \t" +
-                        sensors[i].measuredFlow.toString().padEnd(20)
-            )
+            for (seg in listOf(Pair(0, T))) {
+                var optVal = 0.0
+                var baseVal = 0.0
+                var mVal = 0.0
+                for (t in seg.first until seg.second) {
+                    optVal += flow[t]
+                    baseVal += flowBase[sensors[i]]!![t]
+                    mVal += sensors[i].measuredFlow[t]
+                }
+                println(
+                    "${sensors[i].name.padEnd(20)} | \t" +
+                    "${(seg.first.toString() + "-" + seg.second).padEnd(20)} | \t" +
+                    "${optVal.toString().padEnd(20)} | \t" +
+                    "${baseVal.toString().padEnd(20)} | \t" +
+                    mVal.toString().padEnd(20)
+                )
+            }
         }
     }
 
@@ -174,16 +179,16 @@ class TrafficCountCalibrator(
         return d
     }
 
-    private fun fourStepCal() : List<Double> {
+    /*private fun fourStepCal() : List<Double> {
         omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
 
         // Run Simulation
         val agents = omod.run(0.1, verbose = false)
         return calibrateK1(agents, omod, sensors, affectedSensors)
-    }
+    }*/
 
 
-    private fun modeChoiceCal() {
+    /*private fun modeChoiceCal() {
         omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
 
         // Run Simulation
@@ -192,9 +197,9 @@ class TrafficCountCalibrator(
 
         // Mode Choice
         calibrate(agents, omod.mainRng, omod, sensors, affectedSensors)
-    }
+    }*/
 
-   private fun runBatch(sharePop: Double) : Map<TrafficSensor, Double> {
+   private fun runBatch(sharePop: Double) : Map<TrafficSensor, DoubleArray> {
        val fullPopulation = omod.buildings.sumOf { it.population }
 
        // Ensure results are deterministic
@@ -205,33 +210,32 @@ class TrafficCountCalibrator(
        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
 
        // Determine counts at sensors
-       val simCount = sensors.associateWith { 0.0 }.toMutableMap()
-       for (agent in agents) {
-           var origin = agent.mobilityDemand.first().activities.first()
-           val activities = agent.mobilityDemand.first().activities.drop(1)
-
-           val trips = agent.mobilityDemand.first().trips
-           for ((activity, trip) in activities.zip(trips)) {
-               if (trip.mode == Mode.CAR_DRIVER) {
-                   if ((origin.location.getAggLoc() is Cell) and (activity.location.getAggLoc() is Cell)) {
-                       val od = Pair(origin.location.getAggLoc() as Cell, activity.location.getAggLoc() as Cell)
-                       if (od in affectedSensors) {
-                           val sensors = affectedSensors[od]!!
-                           for (sensor in sensors) {
-                               simCount[sensor] = simCount[sensor]!! + 1
-                           }
+       val simCount = sensors.associateWith { Array(T) {0.0} }.toMutableMap()
+       val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, departureWD, finished ->
+           if (trip.mode == Mode.CAR_DRIVER) {
+               if ((originActivity.location.getAggLoc() is Cell) and (destinationActivity.location.getAggLoc() is Cell)) {
+                   val od = Pair(originActivity.location.getAggLoc() as Cell, destinationActivity.location.getAggLoc() as Cell)
+                   if (od in affectedSensors) {
+                       val sensors = affectedSensors[od]!!
+                       for (sensor in sensors) {
+                           val arr = simCount[sensor]!!
+                           arr[departureTime.hour] = arr[departureTime.hour] + 1
                        }
                    }
                }
-               origin = activity
            }
+       }
+       for (agent in agents) {
+           agent.mobilityDemand.first().visitTrips(visitor)
        }
 
        // Aggregate demand to sensors
-       val allFlows = mutableMapOf<TrafficSensor, Double>()
+       val allFlows = sensors.associateWith { DoubleArray(T) {0.0} }.toMutableMap()
        for (sensor in sensors) {
-           val simFlow = simCount[sensor]!! * fullPopulation / agents.size
-           allFlows[sensor] = simFlow
+           for (t in 0 until T) {
+               val simFlow = simCount[sensor]!![t] * fullPopulation / agents.size
+               allFlows[sensor]!![t] = simFlow
+           }
        }
 
        return allFlows

@@ -35,7 +35,7 @@ class Building  (
     val osmProperties: GeoJsonBuildingProperties
 ) : RealLocation, Clusterable {
     override val avgDistanceToSelf = 0.0
-    private val attractionScaler: MutableMap<Int, Double> = mutableMapOf() // For calibration
+    val attractionScaler: MutableMap<Int, Double> = mutableMapOf() // For calibration
 
     companion object {
         /**

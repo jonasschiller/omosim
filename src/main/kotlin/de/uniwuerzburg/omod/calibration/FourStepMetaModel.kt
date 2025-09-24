@@ -28,7 +28,7 @@ import org.locationtech.jts.geom.Coordinate
 import smile.math.BFGS
 import kotlin.collections.iterator
 
-
+/*
 /*
     1. Trip Generation:
         - Ti = Trip generated in each region
@@ -344,4 +344,4 @@ for ( i in 0 until this.size) {
     diagonal[i, i] = this[0,i]
 }
 return diagonal
-}
+}*/

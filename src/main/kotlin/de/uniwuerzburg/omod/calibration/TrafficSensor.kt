@@ -28,7 +28,7 @@ import kotlin.math.sin
 
 class TrafficSensor(
     val name: String,
-    val measuredFlow: Double,
+    val measuredFlow: DoubleArray,
     val flowDirection: Direction,
     val field: Geometry
 ) {
@@ -55,7 +55,12 @@ class TrafficSensor(
             for(line in reader.lines()) {
                 val values = line.split(delimiter)
                 val name = nameCol?.let { values[it] }
-                val flow = values[flowCol!!].toDouble()
+                val flow = values[flowCol!!]
+                    .replace("[", "")
+                    .replace("]", "")
+                    .split(",")
+                    .map { it.toDouble() }
+                    .toDoubleArray()
 
                 // Get sensor field
                 val wkt = values[geometryCol!!]

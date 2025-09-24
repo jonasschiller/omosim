@@ -120,7 +120,7 @@ class ActivityGeneratorDefault (activityGroups: List<ActivityGroup>): ActivityGe
      *
      * @return gaussian mixture of the dwell times
      */
-    private fun getMixture(weekday: Weekday, homogenousGroup: HomogeneousGrp, mobilityGroup: MobilityGrp, age: AgeGrp,
+    fun getMixture(weekday: Weekday, homogenousGroup: HomogeneousGrp, mobilityGroup: MobilityGrp, age: AgeGrp,
                    chain: List<ActivityType>) : Mixture {
         val from = chain.first()
 

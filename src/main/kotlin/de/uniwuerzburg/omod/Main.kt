@@ -180,7 +180,7 @@ class Run : CliktCommand() {
                 omod.carOwnership
             )
             //calibrator.hpTune(CalibrationOption.SPSA)
-            calibrator.calibrate(CalibrationOption.PSO)
+            calibrator.calibrate(CalibrationOption.MM_LBFGS)
             //calibrator.matrixTestRun()
             /*altPercentages = calibrator.altPercentages*/
             //return //TODO Store calibration in file
