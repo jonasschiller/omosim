@@ -14,44 +14,46 @@ import java.io.File
 class CalibrationInfo (
     val osmID: Long,
     val attractionCalibration: Map<ActivityType, Double>
-)
+) {
+    companion object {
+        fun write(file: File, buildings: List<Building>, dcFunctions: Map<ActivityType, LocationChoiceDCWeightFun>) {
+            val store = mutableListOf<CalibrationInfo>()
+            for (building in buildings) {
+                val attractionCalibration = mutableMapOf<ActivityType, Double>()
+                for ((activityType, dcFunction) in dcFunctions.entries) {
+                    val scaler = building.attractionScaler[dcFunction.id]
 
-fun write(buildings: List<Building>, file: File, dcFunctions: Map<ActivityType, LocationChoiceDCWeightFun>) {
-    val store = mutableListOf<CalibrationInfo>()
-    for (building in buildings) {
-        val attractionCalibration = mutableMapOf<ActivityType, Double>()
-        for ((activityType, dcFunction) in dcFunctions.entries) {
-            val scaler = building.attractionScaler[dcFunction.id]
+                    if (scaler != null) {
+                        attractionCalibration[activityType] = scaler
+                    }
+                }
 
-            if (scaler != null) {
-                attractionCalibration[activityType] = scaler
+                val info = CalibrationInfo(
+                    building.osmID,
+                    attractionCalibration
+                )
+                store.add(info)
             }
+
+            writeJson(store, file)
         }
 
-        val info = CalibrationInfo(
-            building.osmID,
-            attractionCalibration
-        )
-        store.add(info)
-    }
+        fun read(file: File, cells: List<Cell>, buildings: List<Building>, dcFunctions: Map<ActivityType, LocationChoiceDCWeightFun>) {
+            val store = readJson<List<CalibrationInfo>>(file)
+            val mapStore = store.map { it.osmID to it.attractionCalibration }.toMap()
 
-    writeJson(store, file)
-}
+            for (building in buildings) {
+                for ((activityType, dcFunction) in dcFunctions.entries) {
+                    val calibrationValue =  mapStore[building.osmID]?.get(activityType)
+                    if (calibrationValue != null) {
+                        building.attractionScaler[dcFunction.id] = calibrationValue
+                    }
+                }
+            }
 
-fun read(cells: List<Cell>, buildings: List<Building>, file: File, dcFunctions: Map<ActivityType, LocationChoiceDCWeightFun>) {
-    val store = readJson<List<CalibrationInfo>>(file)
-    val mapStore = store.map { it.osmID to it.attractionCalibration }.toMap()
-
-    for (building in buildings) {
-        for ((activityType, dcFunction) in dcFunctions.entries) {
-            val calibrationValue =  mapStore[building.osmID]?.get(activityType)
-            if (calibrationValue != null) {
-                building.attractionScaler[dcFunction.id] = calibrationValue
+            for (cell in cells) {
+                cell.recalculateAttractions(dcFunctions.values.toList())
             }
         }
-    }
-
-    for (cell in cells) {
-        cell.recalculateAttractions(dcFunctions.values.toList())
     }
 }

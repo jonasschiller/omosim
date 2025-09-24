@@ -75,9 +75,9 @@ class TrafficCountCalibrator(
         }
     }
 
-    fun calibrate(option: CalibrationOption) {
+    fun calibrate(file: File, option: CalibrationOption) {
         val k = mutableMapOf<ActivityType, DoubleArray>()
-        for (activity in listOf(ActivityType.WORK, ActivityType.SCHOOL, ActivityType.SCHOOL, ActivityType.OTHER)) {
+        for (activity in listOf(ActivityType.OTHER)) {
             var d = when (option) {
                 CalibrationOption.PSO -> calibratePSO(activity)
                 CalibrationOption.MM_LBFGS -> calibrateMetaModelLBFGS(activity)
@@ -87,6 +87,19 @@ class TrafficCountCalibrator(
             k[activity] = d
         }
         evaluate(k)
+        saveCalibration(file, k)
+    }
+
+    fun saveCalibration(file: File, k: Map<ActivityType, DoubleArray>) {
+        val finder = omod.destinationFinder as DestinationFinderDefault
+        for ((activity, d) in k.entries) {
+            val dcFunction = finder.locChoiceWeightFuns[activity]!!
+            for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
+                cell.updateAttractionScaler(dcFunction, x)
+            }
+        }
+
+        CalibrationInfo.write(file, omod.buildings, finder.locChoiceWeightFuns)
     }
 
     fun evaluate(k: Map<ActivityType, DoubleArray>) {

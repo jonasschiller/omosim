@@ -74,44 +74,6 @@ class MetaModel private constructor(
         println("Building diff model...")
         val (model, simCount) = buildDiffModel(m3rep, affectedSensors, sensors)
 
-
-        //TEST
-        println("_".repeat(20*4 + 5*3))
-        println("${"Sensor".padEnd(20)} | \t" +
-                "${"T".padEnd(20)} | \t" +
-                "${"Flow AltOpt".padEnd(20)} | \t" +
-                "Flow Measured".padEnd(20)
-        )
-        println("_".repeat(20) +
-                " | \t" + "_".repeat(20)  +
-                " | \t" + "_".repeat(20)  +
-                " | \t" + "_".repeat(20))
-        var oval1 = 0.0
-        for ((i, sensor) in sensors.withIndex()) {
-            for (seg in listOf(Pair(0, T))) {
-                var optVal = 0.0
-                var mVal = 0.0
-                for (t in seg.first until seg.second) {
-                    optVal += simCount[sensor]!![t].evaluate(DoubleArray(omod.grid.size - 1) { 1.0 })
-                    mVal += sensors[i].measuredFlow[t]
-                }
-                println(
-                    "${sensors[i].name.padEnd(20)} | \t" +
-                            "${(seg.first.toString() + "-" + seg.second).padEnd(20)} | \t" +
-                            "${optVal.toString().padEnd(20)} | \t" +
-                            mVal.toString().padEnd(20)
-                )
-            }
-            for ( t in 0 until T) {
-                val optVal = simCount[sensor]!![t].evaluate(DoubleArray(omod.grid.size - 1) { 1.0 })
-                oval1 += (sensors[i].measuredFlow[t] - optVal) * (sensors[i].measuredFlow[t] - optVal)
-            }
-        }
-        println("MSE: ${oval1 /sensors.size}")
-        //TEST
-
-
-
         var parameters = DoubleArray(omod.grid.size - 1) { 1.0 }
         parameters = (BFGS.run(model, parameters).toList() + listOf(1.0)).toDoubleArray()
 

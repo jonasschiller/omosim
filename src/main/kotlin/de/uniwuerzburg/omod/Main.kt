@@ -10,8 +10,10 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.*
+import de.uniwuerzburg.omod.calibration.CalibrationInfo
 import de.uniwuerzburg.omod.calibration.CalibrationOption
 import de.uniwuerzburg.omod.calibration.TrafficCountCalibrator
+import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.logger
 import de.uniwuerzburg.omod.core.models.ModeChoiceOption
@@ -42,6 +44,12 @@ class CalibrationOptions : OptionGroup (
     val cal_traffic_count_file by option(
         help = "Traffic count data that serves as ground truth."
     ).file(mustExist = true, mustBeReadable = true).required()
+    val cal_method by option(
+        help = "Calibration algorithm to use."
+    ).enum<CalibrationOption>().default(CalibrationOption.PSO)
+    val cal_out by option(
+        help = "Calibration output file. Stores the result of a calibration run"
+    ).file().default(File("omosim_calibration.json"))
 }
 
 /**
@@ -142,6 +150,10 @@ class Run : CliktCommand() {
                "Recommended download platform for Germany: https://gtfs.de/"
     ).file(mustExist = true, mustBeReadable = true)
     private val calibrationParameter by CalibrationOptions().cooccurring()
+    private val calibration_file by option(
+        help = "Calibration input file to use for regular run." +
+                "Not to be confused with --cal_out which defines the output of a calibration run."
+    ).file(mustExist = true, mustBeReadable = true)
 
     @OptIn(ExperimentalSerializationApi::class)
     override fun run() {
@@ -172,18 +184,26 @@ class Run : CliktCommand() {
 
         // Calibrate
         calibrationParameter?.let {
-            //val laptop = "C:/Users/les29rq/Nextcloud/Projekte/14_Omosim/tests/test_files/OMODLinkInfoTestInput_v5_all.csv"
-            //val workstation = "/home/leo/bigdata/projects/omod_calibrate_tc/OMODLinkInfoTestInput_v5_all.csv"
             val calibrator = TrafficCountCalibrator(
                 calibrationParameter!!.cal_traffic_count_file,
                 omod,
                 omod.carOwnership
             )
+
             //calibrator.hpTune(CalibrationOption.SPSA)
-            calibrator.calibrate(CalibrationOption.PSO)
             //calibrator.matrixTestRun()
             /*altPercentages = calibrator.altPercentages*/
-            //return //TODO Store calibration in file
+
+            calibrator.calibrate(
+                calibrationParameter!!.cal_out,
+                calibrationParameter!!.cal_method
+            )
+            return
+        }
+
+        if (calibration_file != null) {
+            val finder = omod.destinationFinder as DestinationFinderDefault
+            CalibrationInfo.read(calibration_file!!, omod.grid, omod.buildings, finder.locChoiceWeightFuns)
         }
 
         // Mobility demand
