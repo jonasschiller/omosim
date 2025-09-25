@@ -5,7 +5,13 @@ plugins {
     id("java")
     id("org.jetbrains.dokka") version "2.0.+"
     id("maven-publish")
+    id("org.jetbrains.kotlinx.benchmark") version "0.4.13"
+    kotlin("plugin.allopen") version "2.0.20"
     application
+}
+
+allOpen {
+    annotation("org.openjdk.jmh.annotations.State")
 }
 
 group = "de.uniwuerzburg.omod"
@@ -44,14 +50,29 @@ dependencies {
     implementation("com.github.haifengl:smile-core:4.4.0") // TODO needs Java 21
     testImplementation("org.junit.jupiter:junit-jupiter:5.+")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    implementation("org.jetbrains.kotlinx:kotlinx-benchmark-runtime:0.4.13")
+}
+
+benchmark {
+    targets {
+        register("benchmark")
+    }
 }
 
 tasks.test {
     useJUnitPlatform()
 }
 
+sourceSets {
+    create("benchmark")
+}
+
 kotlin {
     jvmToolchain(17)
+    target {
+        compilations.getByName("benchmark")
+            .associateWith(compilations.getByName("main"))
+    }
 }
 
 java {

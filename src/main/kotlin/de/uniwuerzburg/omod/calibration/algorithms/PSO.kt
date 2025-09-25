@@ -87,7 +87,7 @@ object PSO {
             null
         }
 
-        println("Initializing PSO...\r")
+        //println("Initializing PSO...\r")
         val maxVelocity = vClamp * (ub - lb)
 
         // Initial mse
@@ -105,7 +105,7 @@ object PSO {
             }
             PSOParticle(v, x, x, oval)
         }
-        println("Initializing PSO... done!")
+        //println("Initializing PSO... done!")
 
         val header = "Iteration, time, Objective Value, inbound"
         if (writer != null) {
