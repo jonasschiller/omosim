@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "de.uniwuerzburg.omosim"
-version = "2.2.1"
+version = "2.2.2"
 
 repositories {
     mavenLocal()
