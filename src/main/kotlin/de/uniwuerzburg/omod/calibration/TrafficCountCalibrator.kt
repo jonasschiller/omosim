@@ -76,43 +76,37 @@ class TrafficCountCalibrator(
     }
 
     fun calibrate(file: File, option: CalibrationOption) {
-        val k = mutableMapOf<ActivityType, DoubleArray>()
-        for (activity in listOf(ActivityType.OTHER)) {
+        val finder = omod.destinationFinder as DestinationFinderDefault
+
+        for (activity in listOf(ActivityType.WORK, ActivityType.SCHOOL, ActivityType.SHOPPING, ActivityType.OTHER)) {
             var d = when (option) {
                 CalibrationOption.PSO -> calibratePSO(activity)
                 CalibrationOption.MM_LBFGS -> calibrateMetaModelLBFGS(activity)
                 CalibrationOption.SPSA -> calibrateSPSA(activity)
             }
             d = (d.toList() + listOf(1.0)).toDoubleArray()
-            k[activity] = d
-        }
-        evaluate(k)
-        saveCalibration(file, k)
-    }
 
-    fun saveCalibration(file: File, k: Map<ActivityType, DoubleArray>) {
-        val finder = omod.destinationFinder as DestinationFinderDefault
-        for ((activity, d) in k.entries) {
             val dcFunction = finder.locChoiceWeightFuns[activity]!!
             for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
                 cell.updateAttractionScaler(dcFunction, x)
             }
         }
-
         CalibrationInfo.write(file, omod.buildings, finder.locChoiceWeightFuns)
+        evaluate(0.1)
     }
 
-    fun evaluate(k: Map<ActivityType, DoubleArray>) {
+    fun evaluate(sharePop: Double) {
         val finder = omod.destinationFinder as DestinationFinderDefault
-        val flowBase = runBatch(0.1)
-        //finder.updateCellCValues(ActivityType.OTHER, d.toTypedArray(), omod.grid)
-        for ((activity, d) in k.entries) {
+        val flowCal = runBatch(sharePop)
+
+        for (activity in ActivityType.entries) {
             val dcFunction = finder.locChoiceWeightFuns[activity]!!
-            for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
-                cell.updateAttractionScaler(dcFunction, x)
+            for (cell in omod.grid) {
+                cell.updateAttractionScaler(dcFunction, 1.0)
             }
         }
-        val flowCal = runBatch(0.1)
+        val flowBase = runBatch(sharePop)
+
 
         var mseSim = 0.0
         var mseSimBase = 0.0
@@ -174,7 +168,9 @@ class TrafficCountCalibrator(
             model.evaluate(x)
         }
         val d = PSO.run(
-            omod.grid.size - 1, objective, Random(), out=File("TestPSO${activityType}.csv"), vClamp = 1.0,  w = 0.8,
+            omod.grid.size - 1, objective, Random(), out=File("TestPSO${activityType}.csv"),
+            vClamp = 1.0,
+            w = 0.8,
             phiP = 0.8 * 2,
             phiG = 0.8 * 2,
             nParticles = 40

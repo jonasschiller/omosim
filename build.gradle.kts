@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "de.uniwuerzburg.omod"
-version = "2.0.19-calibration-time-slice-multi"
+version = "2.0.19-calibration-time-slice-multi-fixed"
 
 repositories {
     mavenLocal()
