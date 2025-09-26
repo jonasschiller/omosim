@@ -6,20 +6,16 @@ class QuadraticTerm(
     val termB: Term,
     val coefficient: Double,
 ): Term {
-    var evalCacheHot = false
-    var evalCache: Double = 0.0
-
-    var gradientCacheHot = false
-    var gradientCache = 0.0
+    var evalCache = ThreadLocal<Double>()
+    var gradientCache = ThreadLocal<Double>()
 
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
-        if (gradientCacheHot) {
-            return gradientCache
+        if (gradientCache.get() != null) {
+            return gradientCache.get()
         }
         val result = termA.evaluate(vals) * termB.gradient(variable, vals) * coefficient +
                      termB.evaluate(vals) * termA.gradient(variable, vals) * coefficient
-        gradientCache = result
-        gradientCacheHot = true
+        gradientCache.set(result)
         return result
     }
 
@@ -29,26 +25,25 @@ class QuadraticTerm(
     }
 
     override fun evaluate(vals: DoubleArray) : Double {
-        if (evalCacheHot) {
-            return evalCache
+        if (evalCache.get() != null) {
+            return evalCache.get()
         }
         val result = termA.evaluate(vals) * termB.evaluate(vals) * coefficient
-        evalCacheHot = true
-        evalCache = result
+        evalCache.set(result)
         return result
     }
 
     override fun clearEvalCache() {
-        if (evalCacheHot) {
-           evalCacheHot = false
+        if (evalCache.get() != null) {
+           evalCache.set(null)
            termA.clearEvalCache()
            termB.clearEvalCache()
         }
     }
 
     override fun clearGradientCache() {
-        if (gradientCacheHot) {
-            gradientCacheHot = false
+        if (gradientCache.get() != null) {
+            gradientCache.set(null)
             termA.clearGradientCache()
             termB.clearGradientCache()
         }

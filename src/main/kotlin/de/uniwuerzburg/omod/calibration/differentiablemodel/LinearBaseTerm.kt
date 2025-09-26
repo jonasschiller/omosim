@@ -5,8 +5,7 @@ class LinearBaseTerm(
 ): Term {
     val coefficients = DoubleArray(nVars) {0.0}
     var intercept = 0.0
-    var evalCacheHot = false
-    var evalCache: Double = 0.0
+    var evalCache = ThreadLocal<Double>()
 
     fun addTerm(variable: Int, coefficient: Double) {
         coefficients[variable] += coefficient
@@ -27,20 +26,19 @@ class LinearBaseTerm(
     }
 
     override fun evaluate(vals: DoubleArray) : Double {
-        if (evalCacheHot) {
-            return evalCache
+        if (evalCache.get() != null) {
+            return evalCache.get()
         }
         var result = intercept
         for (i in coefficients.indices) {
             result += coefficients[i] * vals[i]
         }
-        evalCacheHot = true
-        evalCache = result
+        evalCache.set(result)
         return result
     }
 
     override fun clearEvalCache() {
-        evalCacheHot = false
+        evalCache.set(null)
     }
 
     override fun clearGradientCache() { }
