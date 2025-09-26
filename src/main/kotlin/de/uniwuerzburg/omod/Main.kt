@@ -198,7 +198,7 @@ class Run : CliktCommand() {
                 calibrationParameter!!.cal_out,
                 calibrationParameter!!.cal_method
             )
-            return
+            //return
         }
 
         if (calibration_file != null) {

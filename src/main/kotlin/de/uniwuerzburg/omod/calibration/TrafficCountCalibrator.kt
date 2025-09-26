@@ -78,7 +78,7 @@ class TrafficCountCalibrator(
     fun calibrate(file: File, option: CalibrationOption) {
         val finder = omod.destinationFinder as DestinationFinderDefault
 
-        for (activity in listOf(ActivityType.WORK, ActivityType.SCHOOL, ActivityType.SHOPPING, ActivityType.OTHER)) {
+        for (activity in listOf(ActivityType.OTHER)) {
             var d = when (option) {
                 CalibrationOption.PSO -> calibratePSO(activity)
                 CalibrationOption.MM_LBFGS -> calibrateMetaModelLBFGS(activity)

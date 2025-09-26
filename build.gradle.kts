@@ -15,7 +15,7 @@ allOpen {
 }
 
 group = "de.uniwuerzburg.omod"
-version = "2.0.19-calibration-time-slice-multi-fixed"
+version = "2.0.19-calibration-time-slice-single"
 
 repositories {
     mavenLocal()
