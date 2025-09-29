@@ -7,14 +7,13 @@ import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
-import org.jetbrains.kotlinx.multik.ndarray.operations.toArray
 import java.io.File
 import java.nio.file.Paths
 import java.util.*
 import kotlin.math.pow
 
 enum class CalibrationOption {
-    PSO, MM_LBFGS, SPSA
+    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS
 }
 
 class TrafficCountCalibrator(
@@ -76,21 +75,15 @@ class TrafficCountCalibrator(
     }
 
     fun calibrate(file: File, option: CalibrationOption) {
-        val finder = omod.destinationFinder as DestinationFinderDefault
-
-        for (activity in listOf(ActivityType.WORK, ActivityType.SCHOOL, ActivityType.SHOPPING, ActivityType.OTHER)) {
-            var d = when (option) {
-                CalibrationOption.PSO -> calibratePSO(activity)
-                CalibrationOption.MM_LBFGS -> calibrateMetaModelLBFGS(activity)
-                CalibrationOption.SPSA -> calibrateSPSA(activity)
-            }
-            d = (d.toList() + listOf(1.0)).toDoubleArray()
-
-            val dcFunction = finder.locChoiceWeightFuns[activity]!!
-            for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
-                cell.updateAttractionScaler(dcFunction, x)
-            }
+        when (option) {
+            CalibrationOption.PSO       -> calibratePSO()
+            CalibrationOption.PSO_OS    -> calibratePSO_oenShot()
+            CalibrationOption.MM_PSO    -> calibratePSO_MM()
+            CalibrationOption.MM_LBFGS  -> calibrateMetaModelLBFGS()
+            CalibrationOption.SPSA      -> calibrateSPSA()
         }
+
+        val finder = omod.destinationFinder as DestinationFinderDefault
         CalibrationInfo.write(file, omod.buildings, finder.locChoiceWeightFuns)
         evaluate(0.1)
     }
@@ -161,37 +154,124 @@ class TrafficCountCalibrator(
         }
     }
 
-    fun calibratePSO(activityType: ActivityType) : DoubleArray {
-        val model = MetaModel.build(omod)!!.getDiffModel(activityType, sensors, affectedSensors)
-
+    fun calibratePSO_oenShot() {
+        val finder = omod.destinationFinder as DestinationFinderDefault
+        val activities =  listOf(ActivityType.WORK, ActivityType.SCHOOL, ActivityType.SHOPPING, ActivityType.OTHER)
         val objective: (DoubleArray) -> Double = { x: DoubleArray ->
-            model.evaluate(x)
+            for ((ai, activity) in activities.withIndex()) {
+                val dcFunction = finder.locChoiceWeightFuns[activity]!!
+                for ((gi, cell) in omod.grid.withIndex()) {
+                    cell.updateAttractionScaler(dcFunction, x[ai * omod.grid.size + gi])
+                }
+            }
+            val flows = runBatch(0.1)
+            flowMSE(flows)
         }
-        val d = PSO.run(
-            omod.grid.size - 1, objective, Random(), out=File("TestPSO${activityType}.csv"),
+
+        var d = PSO.run(
+            omod.grid.size * activities.size, objective, Random(), out=File("PSO_oneshot.csv"),
             vClamp = 1.0,
             w = 0.8,
             phiP = 0.8 * 2,
             phiG = 0.8 * 2,
-            nParticles = 40
+            nParticles = 20,
+            iterations = 10
         )
-        return d
-    }
 
-    fun calibrateMetaModelLBFGS(activityType: ActivityType) : DoubleArray {
-        val mModel = MetaModel.build(omod)!!
-        return mModel.calibrateK1(activityType, sensors, affectedSensors).toDoubleArray() // TODO Activities
-    }
-
-    fun calibrateSPSA(activityType: ActivityType) : DoubleArray {
-        val model = MetaModel.build(omod)!!.getDiffModel(activityType, sensors, affectedSensors)
-
-        val objective: (DoubleArray) -> Double = { x: DoubleArray ->
-            model.evaluate(x)
+        for ((ai, activity) in activities.withIndex()) {
+            val dcFunction = finder.locChoiceWeightFuns[activity]!!
+            for ((gi, cell) in omod.grid.withIndex()) {
+                cell.updateAttractionScaler(dcFunction, d[ai * omod.grid.size + gi])
+            }
         }
-        val d0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-        val d = SPSA.run(d0, objective, Random(), out=File("TestPSO.csv"))
-        return d
+    }
+
+    fun calibratePSO() {
+        val finder = omod.destinationFinder as DestinationFinderDefault
+
+        for (activity in listOf(ActivityType.OTHER)) {
+            val objective: (DoubleArray) -> Double = { x: DoubleArray ->
+                val dcFunction = finder.locChoiceWeightFuns[activity]!!
+                for ((i, cell) in omod.grid.withIndex()) {
+                    cell.updateAttractionScaler(dcFunction, x[i])
+                }
+                val flows = runBatch(0.1)
+                flowMSE(flows)
+            }
+
+            var d = PSO.run(
+                omod.grid.size, objective, Random(), out=File("TestPSO${activity}.csv"),
+                vClamp = 1.0,
+                w = 0.8,
+                phiP = 0.8 * 2,
+                phiG = 0.8 * 2,
+                nParticles = 20
+            )
+
+            val dcFunction = finder.locChoiceWeightFuns[activity]!!
+            for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
+                cell.updateAttractionScaler(dcFunction, x)
+            }
+        }
+    }
+
+    fun calibratePSO_MM(){
+        val finder = omod.destinationFinder as DestinationFinderDefault
+
+        for (activity in listOf(ActivityType.OTHER)) {
+            val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
+
+            val objective: (DoubleArray) -> Double = { x: DoubleArray ->
+                model.evaluate(x)
+            }
+            var d = PSO.run(
+                omod.grid.size - 1, objective, Random(), out = File("TestPSO${activity}.csv"),
+                vClamp = 1.0,
+                w = 0.8,
+                phiP = 0.8 * 2,
+                phiG = 0.8 * 2,
+                nParticles = 20
+            )
+
+            d = (d.toList() + listOf(1.0)).toDoubleArray()
+
+            val dcFunction = finder.locChoiceWeightFuns[activity]!!
+            for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
+                cell.updateAttractionScaler(dcFunction, x)
+            }
+        }
+    }
+
+    fun calibrateMetaModelLBFGS() {
+        val finder = omod.destinationFinder as DestinationFinderDefault
+
+        for (activity in listOf(ActivityType.OTHER)) {
+            val mModel = MetaModel.build(omod)!!
+            var d = mModel.calibrateK1(activity, sensors, affectedSensors).toDoubleArray()
+            d = (d.toList() + listOf(1.0)).toDoubleArray()
+            val dcFunction = finder.locChoiceWeightFuns[activity]!!
+            for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
+                cell.updateAttractionScaler(dcFunction, x)
+            }
+        }
+    }
+
+    fun calibrateSPSA() {
+        val finder = omod.destinationFinder as DestinationFinderDefault
+        for (activity in listOf(ActivityType.OTHER)) {
+            val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
+            val objective: (DoubleArray) -> Double = { x: DoubleArray ->
+                model.evaluate(x)
+            }
+            val d0 = DoubleArray(omod.grid.size - 1) { 1.0 }
+            var d = SPSA.run(d0, objective, Random(), out = File("TestPSO.csv"))
+
+            d = (d.toList() + listOf(1.0)).toDoubleArray()
+            val dcFunction = finder.locChoiceWeightFuns[activity]!!
+            for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
+                cell.updateAttractionScaler(dcFunction, x)
+            }
+        }
     }
 
     /*private fun fourStepCal() : List<Double> {
@@ -223,7 +303,7 @@ class TrafficCountCalibrator(
 
        // Run Simulation
        val agents = omod.run(sharePop, verbose = false)
-       omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
+       omod.doModeChoice(agents, ModeChoiceOption.FAST, false, verbose = false)
 
        // Determine counts at sensors
        val simCount = sensors.associateWith { Array(T) {0.0} }.toMutableMap()
@@ -253,9 +333,18 @@ class TrafficCountCalibrator(
                allFlows[sensor]!![t] = simFlow
            }
        }
-
        return allFlows
    }
+
+    private fun flowMSE(flowCal: Map<TrafficSensor, DoubleArray>) : Double {
+        var mse = 0.0
+        for (sensor in sensors) {
+            for ( t in 0 until T) {
+                mse += (flowCal[sensor]!![t] - sensor.measuredFlow[t]).pow(2)
+            }
+        }
+        return mse / sensors.size
+    }
 }
 
 
