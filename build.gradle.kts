@@ -68,7 +68,7 @@ sourceSets {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(17)
     target {
         compilations.getByName("benchmark")
             .associateWith(compilations.getByName("main"))
@@ -76,8 +76,8 @@ kotlin {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
 tasks.shadowJar {

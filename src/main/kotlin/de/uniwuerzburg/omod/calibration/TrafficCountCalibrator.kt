@@ -175,7 +175,6 @@ class TrafficCountCalibrator(
             phiP = 0.8 * 2,
             phiG = 0.8 * 2,
             nParticles = 20,
-            iterations = 10
         )
 
         for ((ai, activity) in activities.withIndex()) {
