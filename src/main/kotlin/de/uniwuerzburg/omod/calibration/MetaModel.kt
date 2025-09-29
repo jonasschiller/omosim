@@ -466,7 +466,7 @@ class MetaModel private constructor(
 
         // Run Simulation
         val agents = omod.run(n, verbose = false)
-        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
+        omod.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
 
         val visitor: TripVisitor = { _, _, destinationActivity, departureTime, _, _ ->
             val arr = distr[destinationActivity.type]!!

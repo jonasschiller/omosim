@@ -213,7 +213,7 @@ class Run : CliktCommand() {
         }
 
         // Mode Choice
-        omod.doModeChoice(agents, mode_choice, return_path_coords)
+        omod.doModeChoice(agents, mode_choice, return_path_coords, verbose = true)
 
         // Store output
         logger.get()?.info("Saving results...")

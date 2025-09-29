@@ -451,6 +451,8 @@ class Omod(
     fun run(
         n_agents: Int, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1, verbose: Boolean = true
     ) : List<MobiAgent> {
+        logger.on = verbose
+
         val agents = agentFactory.createAgents(n_agents, zones, populateBufferArea, mainRng)
         return run(agents, start_wd, n_days, verbose)
     }
@@ -472,6 +474,7 @@ class Omod(
                 "Agent population is supposed to be based on the population but no census file is provided." +
                         "Consider adding a census file with --census or use --n_agents instead.")
         }
+        logger.on = verbose
 
         val agents = agentFactory.createAgents(shareOfPop, zones, populateBufferArea, mainRng)
         return run(agents, start_wd, n_days, verbose)
@@ -492,6 +495,8 @@ class Omod(
         n_days: Int = 1,
         verbose: Boolean = true
     ) : List<MobiAgent> {
+        logger.on = verbose
+
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
         val jobsDone = AtomicInteger()
@@ -558,14 +563,16 @@ class Omod(
      * @return agents. Now their trips have specified modes.
      */
     fun doModeChoice(
-        agents: List<MobiAgent>, modeChoiceOption: ModeChoiceOption, withPath: Boolean
+        agents: List<MobiAgent>, modeChoiceOption: ModeChoiceOption, withPath: Boolean, verbose: Boolean
     ) : List<MobiAgent> {
+        logger.on = verbose
+
         when (modeChoiceOption) {
             ModeChoiceOption.NONE -> { return agents } // Do nothing
             ModeChoiceOption.CAR_ONLY -> {
                 setupHopper()
                 val modeChoice = ModeChoiceCarOnly(hopper!!, withPath)
-                modeChoice.doModeChoice(agents, mainRng, dispatcher)
+                modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
                 return agents
             }
             ModeChoiceOption.GTFS -> {
@@ -577,7 +584,7 @@ class Omod(
                         gtfsComponents!!.ptSimDays, gtfsComponents!!.timeZone,
                         withPath
                     )
-                    modeChoice.doModeChoice(agents, mainRng, dispatcher)
+                    modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
                     return agents
                 } finally {
                     gtfsComponents!!.gtfsHopper.close()
@@ -585,7 +592,7 @@ class Omod(
             }
             ModeChoiceOption.FAST -> {
                 val modeChoice = ModeChoiceFast(routingCache)
-                modeChoice.doModeChoice(agents, mainRng, dispatcher)
+                modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
                 // TODO test code
                 /*
                 val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, departureWD, finished ->
