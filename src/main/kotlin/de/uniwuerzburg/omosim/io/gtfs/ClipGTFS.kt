@@ -33,19 +33,7 @@ import kotlin.io.path.inputStream
  */
 fun clipGTFSFile(bbBox: Envelope, gtfsPath: Path, cacheDir: Path, dispatcher: CoroutineDispatcher) {
     logger.info("Clipping GTFS to bounding box...")
-    val inputStreams: MutableMap<String, InputStream> = mutableMapOf()
-    if (gtfsPath.isDirectory()){
-        for (file in gtfsPath.listDirectoryEntries("*.txt")) {
-            inputStreams[file.name] = file.inputStream()
-        }
-    } else if (gtfsPath.toFile().extension == "zip") {
-        val zipFile = ZipFile(gtfsPath.toFile())
-        for (entry in zipFile.entries()) {
-            inputStreams[entry.name] = zipFile.getInputStream(entry)
-        }
-    } else {
-        throw IOException("GTFS file must be directory or .zip!")
-    }
+    var inputStreams = loadInputStreams(gtfsPath)
 
     // Create directory in cache
     Files.createDirectories(Paths.get(cacheDir.toString(),"clippedGTFS"))
@@ -59,7 +47,7 @@ fun clipGTFSFile(bbBox: Envelope, gtfsPath: Path, cacheDir: Path, dispatcher: Co
         dispatcher
     ).first()
 
-    // Filter stop times
+    // Get trips
     val trips = filterGTFSFile(
         inputStreams["stop_times.txt"]!!,
         Paths.get(cacheDir.toString(), "clippedGTFS/stop_times.txt"),
@@ -78,6 +66,19 @@ fun clipGTFSFile(bbBox: Envelope, gtfsPath: Path, cacheDir: Path, dispatcher: Co
     )
     val routes   = tripsFKeys[0]
     val services = tripsFKeys[1]
+
+    // Reload input streams. Necessary to access stop times again.
+    inputStreams.forEach{ it.value.close() }
+    inputStreams = loadInputStreams(gtfsPath)
+
+    // Filter stop times
+    filterGTFSFile(
+        inputStreams["stop_times.txt"]!!,
+        Paths.get(cacheDir.toString(), "clippedGTFS/stop_times.txt"),
+        listOf("trip_id"),
+        ForeignKeyFilter(stops, "trip_id"),
+        dispatcher
+    ).first()
 
     // Filter routes
     val agencies = filterGTFSFile(
@@ -195,4 +196,21 @@ private fun filterGTFSFile(
     inputStream.close()
     outputStream.close()
     return extractedSets
+}
+
+private fun loadInputStreams( gtfsPath: Path ) : MutableMap<String, InputStream> {
+    val inputStreams: MutableMap<String, InputStream> = mutableMapOf()
+    if (gtfsPath.isDirectory()){
+        for (file in gtfsPath.listDirectoryEntries("*.txt")) {
+            inputStreams[file.name] = file.inputStream()
+        }
+    } else if (gtfsPath.toFile().extension == "zip") {
+        val zipFile = ZipFile(gtfsPath.toFile())
+        for (entry in zipFile.entries()) {
+            inputStreams[entry.name] = zipFile.getInputStream(entry)
+        }
+    } else {
+        throw IOException("GTFS file must be directory or .zip!")
+    }
+    return inputStreams
 }
