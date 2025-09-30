@@ -39,7 +39,7 @@ fun clipGTFSFile(bbBox: Envelope, gtfsPath: Path, cacheDir: Path, dispatcher: Co
     Files.createDirectories(Paths.get(cacheDir.toString(),"clippedGTFS"))
 
     // Clip Stops
-    val stops = filterGTFSFile(
+    var stops = filterGTFSFile(
         inputStreams["stops.txt"]!!,
         Paths.get(cacheDir.toString(),"clippedGTFS/stops.txt"),
         listOf("stop_id"),
@@ -56,6 +56,28 @@ fun clipGTFSFile(bbBox: Envelope, gtfsPath: Path, cacheDir: Path, dispatcher: Co
         dispatcher
     ).first()
 
+    // Reload input streams. Necessary to access stop times again.
+    inputStreams.forEach{ it.value.close() }
+    inputStreams = loadInputStreams(gtfsPath)
+
+    // Filter stop times
+    stops = filterGTFSFile(
+        inputStreams["stop_times.txt"]!!,
+        Paths.get(cacheDir.toString(), "clippedGTFS/stop_times.txt"),
+        listOf("stop_id"),
+        ForeignKeyFilter(trips, "trip_id"),
+        dispatcher
+    ).first()
+
+    // Get stops on trips
+    filterGTFSFile(
+        inputStreams["stops.txt"]!!,
+        Paths.get(cacheDir.toString(),"clippedGTFS/stops.txt"),
+        listOf(),
+        ForeignKeyFilter(stops, "stop_id"),
+        dispatcher
+    )
+
     // Filter trips
     val tripsFKeys = filterGTFSFile(
         inputStreams["trips.txt"]!!,
@@ -66,19 +88,6 @@ fun clipGTFSFile(bbBox: Envelope, gtfsPath: Path, cacheDir: Path, dispatcher: Co
     )
     val routes   = tripsFKeys[0]
     val services = tripsFKeys[1]
-
-    // Reload input streams. Necessary to access stop times again.
-    inputStreams.forEach{ it.value.close() }
-    inputStreams = loadInputStreams(gtfsPath)
-
-    // Filter stop times
-    filterGTFSFile(
-        inputStreams["stop_times.txt"]!!,
-        Paths.get(cacheDir.toString(), "clippedGTFS/stop_times.txt"),
-        listOf("trip_id"),
-        ForeignKeyFilter(stops, "trip_id"),
-        dispatcher
-    ).first()
 
     // Filter routes
     val agencies = filterGTFSFile(
