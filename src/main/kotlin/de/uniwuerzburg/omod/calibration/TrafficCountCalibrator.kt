@@ -1,6 +1,7 @@
 package de.uniwuerzburg.omod.calibration
 
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
+import de.uniwuerzburg.omod.calibration.algorithms.GradientDescent
 import de.uniwuerzburg.omod.calibration.algorithms.PSO
 import de.uniwuerzburg.omod.calibration.algorithms.SPSA
 import de.uniwuerzburg.omod.core.CarOwnership
@@ -13,7 +14,7 @@ import java.util.*
 import kotlin.math.pow
 
 enum class CalibrationOption {
-    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS
+    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG
 }
 
 class TrafficCountCalibrator(
@@ -79,6 +80,7 @@ class TrafficCountCalibrator(
             CalibrationOption.PSO       -> calibratePSO()
             CalibrationOption.PSO_OS    -> calibratePSO_oenShot()
             CalibrationOption.MM_PSO    -> calibratePSO_MM()
+            CalibrationOption.MM_GG     -> calibrateGG_MM()
             CalibrationOption.MM_LBFGS  -> calibrateMetaModelLBFGS()
             CalibrationOption.SPSA      -> calibrateSPSA()
         }
@@ -206,6 +208,23 @@ class TrafficCountCalibrator(
                 phiG = 0.8 * 2,
                 nParticles = 20
             )
+
+            val dcFunction = finder.locChoiceWeightFuns[activity]!!
+            for ((cell, x) in omod.grid.zip(d.toTypedArray())) {
+                cell.updateAttractionScaler(dcFunction, x)
+            }
+        }
+    }
+
+    fun calibrateGG_MM(){
+        val finder = omod.destinationFinder as DestinationFinderDefault
+
+        for (activity in listOf(ActivityType.OTHER)) {
+            val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
+            val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
+            var d = GradientDescent.run(model, x0, iterations=400, lr=1e-4, out = File("CAL_GG_${activity}.csv"))
+
+            d = (d.toList() + listOf(1.0)).toDoubleArray()
 
             val dcFunction = finder.locChoiceWeightFuns[activity]!!
             for ((cell, x) in omod.grid.zip(d.toTypedArray())) {

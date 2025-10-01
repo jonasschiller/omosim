@@ -15,7 +15,7 @@ allOpen {
 }
 
 group = "de.uniwuerzburg.omod"
-version = "2.0.19-calibration-time-slice-rb"
+version = "2.0.20-calibration-time-slice"
 
 repositories {
     mavenLocal()
