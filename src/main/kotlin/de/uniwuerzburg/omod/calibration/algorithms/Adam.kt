@@ -13,7 +13,7 @@ object Adam {
         model: DifferentiableModel,
         x0: DoubleArray,
         iterations: Int = 1000,
-        lr: Double = 1.0e-9,
+        lr: Double = 1.0e-4,
         b1: Double = 0.9,
         b2: Double = 0.999,
         eps: Double = 1.0e-8,
@@ -23,6 +23,11 @@ object Adam {
             BufferedWriter(FileWriter(out))
         } else {
             null
+        }
+        val header = "Iteration, time, Objective Value"
+        if (writer != null) {
+            writer.write(header)
+            writer.newLine()
         }
 
         val x = x0.copyOf()

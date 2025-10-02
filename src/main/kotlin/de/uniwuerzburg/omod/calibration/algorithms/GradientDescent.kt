@@ -19,6 +19,11 @@ object GradientDescent {
         } else {
             null
         }
+        val header = "Iteration, time, Objective Value"
+        if (writer != null) {
+            writer.write(header)
+            writer.newLine()
+        }
 
         val x = x0.copyOf()
         val g = DoubleArray(x0.size) { 0.0 }

@@ -42,7 +42,7 @@ object GA {
         }
         println("Initializing GA... done!")
 
-        val header = "Iteration, time, Objective Value, inbound"
+        val header = "Iteration, time, Objective Value"
         if (writer != null) {
             writer.write(header)
             writer.newLine()

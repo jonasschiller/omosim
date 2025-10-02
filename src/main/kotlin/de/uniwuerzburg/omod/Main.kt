@@ -5,10 +5,7 @@ package de.uniwuerzburg.omod
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.groups.*
-import com.github.ajalt.clikt.parameters.options.convert
-import com.github.ajalt.clikt.parameters.options.default
-import com.github.ajalt.clikt.parameters.options.option
-import com.github.ajalt.clikt.parameters.options.required
+import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.clikt.parameters.types.*
 import de.uniwuerzburg.omod.calibration.CalibrationInfo
 import de.uniwuerzburg.omod.calibration.CalibrationOption
@@ -16,6 +13,7 @@ import de.uniwuerzburg.omod.calibration.TrafficCountCalibrator
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.logger
+import de.uniwuerzburg.omod.core.models.ActivityType
 import de.uniwuerzburg.omod.core.models.ModeChoiceOption
 import de.uniwuerzburg.omod.core.models.Weekday
 import de.uniwuerzburg.omod.io.formatOutput
@@ -50,6 +48,12 @@ class CalibrationOptions : OptionGroup (
     val cal_out by option(
         help = "Calibration output file. Stores the result of a calibration run"
     ).file().default(File("omosim_calibration.json"))
+    val cal_activity by option(
+        help = ""
+    ).enum<ActivityType>().multiple()
+    val cal_iterations by option(
+        help = ""
+    ).int().default(1000)
 }
 
 /**
@@ -194,9 +198,15 @@ class Run : CliktCommand() {
             //calibrator.matrixTestRun()
             /*altPercentages = calibrator.altPercentages*/
 
+            val calOutFile = calibrationParameter!!.cal_out
+            val lossLogFile = File(calOutFile.parent + calOutFile.name + ".losslog")
+
             calibrator.calibrate(
                 calibrationParameter!!.cal_out,
-                calibrationParameter!!.cal_method
+                calibrationParameter!!.cal_method,
+                calibrationParameter!!.cal_activity,
+                calibrationParameter!!.cal_iterations,
+                lossLogFile
             )
             //return
         }
