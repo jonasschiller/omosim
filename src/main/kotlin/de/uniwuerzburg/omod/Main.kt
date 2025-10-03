@@ -199,7 +199,11 @@ class Run : CliktCommand() {
             /*altPercentages = calibrator.altPercentages*/
 
             val calOutFile = calibrationParameter!!.cal_out
-            val lossLogFile = File(calOutFile.parent + calOutFile.name + ".losslog")
+            val lossLogFile = File(
+                calOutFile.parent + "/" +
+                        calOutFile.name.replace(".json", "") +
+                        ".losslog"
+            )
 
             calibrator.calibrate(
                 calibrationParameter!!.cal_out,

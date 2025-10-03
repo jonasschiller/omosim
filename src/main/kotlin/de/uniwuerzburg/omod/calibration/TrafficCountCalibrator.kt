@@ -316,7 +316,10 @@ class TrafficCountCalibrator(
     }*/
     private fun activityLogFile(activity: ActivityType, lossLog: File?) : File? {
         return if(lossLog != null) {
-            File(lossLog.parent + lossLog.name + "$activity" + ".losslog")
+            File(
+                lossLog.parent + "/" +
+                        lossLog.name.replace(".losslog", "") +
+                        "$activity" + ".losslog")
         } else {
             null
         }
