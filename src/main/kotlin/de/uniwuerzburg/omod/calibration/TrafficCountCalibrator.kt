@@ -280,7 +280,7 @@ class TrafficCountCalibrator(
 
     private fun calibrateSPSAAllAtOnce(lossLog: File?, activities: List<ActivityType>, iterations: Int) {
         val objective = batchObj(activities)
-        val x0 = DoubleArray(omod.grid.size ) { 1.0 }
+        val x0 = DoubleArray(omod.grid.size * activities.size) { 1.0 }
         val d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLog)
         updateCalibration(d, activities)
     }

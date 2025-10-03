@@ -15,7 +15,7 @@ allOpen {
 }
 
 group = "de.uniwuerzburg.omod"
-version = "2.0.21-calibration-time-slice"
+version = "2.0.22-calibration-time-slice"
 
 repositories {
     mavenLocal()
@@ -68,7 +68,7 @@ sourceSets {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
     target {
         compilations.getByName("benchmark")
             .associateWith(compilations.getByName("main"))
@@ -76,8 +76,8 @@ kotlin {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 }
 
 tasks.shadowJar {
