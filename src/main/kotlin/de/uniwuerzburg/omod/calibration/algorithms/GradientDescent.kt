@@ -1,6 +1,10 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
@@ -11,7 +15,8 @@ object GradientDescent {
         model: DifferentiableModel,
         x0: DoubleArray,
         iterations: Int = 1000,
-        lr: Double = 1.0e-9,
+        lr: Double = 1.0e-6,
+        dispatcher: CoroutineDispatcher = Dispatchers.Default,
         out: File? = null
     ) : DoubleArray {
         val writer = if (out != null) {
@@ -31,8 +36,12 @@ object GradientDescent {
         for (i in 0 until iterations) {
             val time = measureTime {
                 // Determine gradients
-                for (j in x.indices) {
-                    g[j] = model.gradient(j, x)
+                runBlocking(dispatcher) {
+                    for (j in x.indices) {
+                        launch {
+                            g[j] = model.gradient(j, x)
+                        }
+                    }
                 }
 
                 // Step

@@ -103,7 +103,6 @@ object SPSA {
             }
             val oval = objective(x)
             val line = "$i,$time,$oval"
-            println(line)
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()

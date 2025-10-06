@@ -121,9 +121,9 @@ object PSO {
         for(iteration in 0 until iterations ) {
             var nInbound = 0 // Performance indicator for INFINITY bound handling
             val time = measureTime {
-                //runBlocking(dispatcher) {
+                runBlocking(dispatcher) {
                     for (particle in particles) {
-                        //launch {
+                        launch {
                             var inBound = true
                             for (i in 0 until nDimensions) {
                                 val rp = rng.nextDouble()
@@ -162,15 +162,14 @@ object PSO {
 
                                 nInbound += 1
                             }
-                        //}
-                    //}
+                        }
+                    }
                 }
 
                 for (particle in particles) {
                     if (particle.best < globalBest) {
                         globalBestPosition = particle.bestPosition.copyOf()
                         globalBest = particle.best
-                        println(globalBestPosition.toList())
                     }
                 }
             }

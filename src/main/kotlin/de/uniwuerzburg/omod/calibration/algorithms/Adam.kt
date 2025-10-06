@@ -1,6 +1,10 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
@@ -13,10 +17,11 @@ object Adam {
         model: DifferentiableModel,
         x0: DoubleArray,
         iterations: Int = 1000,
-        lr: Double = 1.0e-4,
+        lr: Double = 1.0e-6,
         b1: Double = 0.9,
         b2: Double = 0.999,
         eps: Double = 1.0e-8,
+        dispatcher: CoroutineDispatcher = Dispatchers.Default,
         out: File? = null
     ) : DoubleArray {
         val writer = if (out != null) {
@@ -40,20 +45,24 @@ object Adam {
         for (i in 0 until iterations) {
             val time = measureTime {
                 // Determine gradients
-                for (j in x.indices) {
-                    g[j] = model.gradient(j, x)
+                runBlocking(Dispatchers.Default) {
+                    for (j in x.indices) {
+                        launch {
+                            g[j] = model.gradient(j, x)
+                        }
+                    }
                 }
 
                 // Update momentum
                 for (j in x.indices) {
                     m[j] = b1 * m[j] + (1 - b1) * g[j]
-                    mHat[j] = m[j] / (1-b1.pow(j+1))
+                    mHat[j] = m[j] / (1-b1.pow(i+1))
                 }
 
                 // Update velocity
                 for (j in x.indices) {
                     v[j] = b2 * v[j] + (1 - b2) * g[j] * g[j]
-                    vHat[j] = v[j] / (1-b2.pow(j+1))
+                    vHat[j] = v[j] / (1-b2.pow(i+1))
                 }
 
                 // Step

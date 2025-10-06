@@ -1,5 +1,9 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
@@ -21,6 +25,7 @@ object GA {
         pM: Double = 0.8,
         pGM: Double = 0.02,
         sigGM: Double = (ub - lb) / 6.0,
+        dispatcher: CoroutineDispatcher = Dispatchers.Default,
         out: File? = null
     ) : DoubleArray {
         val writer = if (out != null) {
@@ -54,57 +59,61 @@ object GA {
                 currentGeneration.sortBy { it.loss }
                 val nextGeneration = currentGeneration.take(nSurvivors).toMutableList()
                 val fathers = currentGeneration.takeLast(generationSize - nSurvivors)
-                val offspring = mutableListOf<Candidate>()
+                val offspring = Array<Candidate?>(fathers.size) { null }
 
-                for (father in fathers) {
-                    var x = father.x.copyOf()
+                runBlocking(dispatcher) {
+                    for ((i, father) in fathers.withIndex()) {
+                        launch {
+                            var x = father.x.copyOf()
 
-                    // Recombination
-                    if (rng.nextDouble() < pR) {
-                        val mother = currentGeneration[rng.nextInt(generationSize)]
+                            // Recombination
+                            if (rng.nextDouble() < pR) {
+                                val mother = currentGeneration[rng.nextInt(generationSize)]
 
-                        // Crossovers
-                        val cPoint = rng.nextInt(x.size)
-                        for (i in cPoint until x.size) {
-                            x[i] = mother.x[i]
-                        }
-                    }
-
-                    // Mutation
-                    if (rng.nextDouble() < pM) {
-                        for (i in x.indices) {
-                            if (rng.nextDouble() < pGM) {
-                                x[i] =  x[i] + rng.nextGaussian(0.0, sigGM)
+                                // Crossovers
+                                val cPoint = rng.nextInt(x.size)
+                                for (i in cPoint until x.size) {
+                                    x[i] = mother.x[i]
+                                }
                             }
+
+                            // Mutation
+                            if (rng.nextDouble() < pM) {
+                                for (i in x.indices) {
+                                    if (rng.nextDouble() < pGM) {
+                                        x[i] = x[i] + rng.nextGaussian(0.0, sigGM)
+                                    }
+                                }
+                            }
+
+                            // Check if feasible
+                            var feasible = true
+                            for (i in x.indices) {
+                                if (x[i] < lb) {
+                                    feasible = false
+                                    break
+                                }
+                                if (x[i] >= ub) {
+                                    feasible = false
+                                    break
+                                }
+                            }
+
+                            // If not feasible replace with random
+                            if (!feasible) {
+                                x = DoubleArray(nDimensions) { rng.nextDouble(lb, ub) }
+                            }
+
+                            // Evaluate loss
+                            val loss = objective(x)
+
+                            val newborn = Candidate(x, loss)
+                            offspring[i] = newborn
                         }
                     }
-
-                    // Check if feasible
-                    var feasible = true
-                    for (i in x.indices) {
-                        if (x[i] < lb) {
-                            feasible = false
-                            break
-                        }
-                        if (x[i] >= ub) {
-                            feasible = false
-                            break
-                        }
-                    }
-
-                    // If not feasible replace with random
-                    if(!feasible) {
-                        x = DoubleArray(nDimensions) { rng.nextDouble(lb, ub) }
-                    }
-
-                    // Evaluate loss
-                    val loss = objective(x)
-
-                    val newborn = Candidate(x, loss)
-                    offspring.add(newborn)
                 }
 
-                val newCandidates = (fathers + offspring).toMutableList()
+                val newCandidates = (fathers + offspring.map {it!!}).toMutableList()
 
                 // Elite selection
                 newCandidates.sortBy{ it.loss }
