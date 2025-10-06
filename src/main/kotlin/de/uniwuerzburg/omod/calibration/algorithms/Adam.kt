@@ -66,6 +66,10 @@ object Adam {
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()
+
+                if (i % 10 == 0) {
+                    writer.flush()
+                }
             }
         }
         writer?.flush()
