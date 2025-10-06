@@ -24,6 +24,7 @@ import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
 import java.util.*
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.pow
 
 class MetaModel private constructor(
@@ -470,7 +471,9 @@ class MetaModel private constructor(
 
         val visitor: TripVisitor = { _, _, destinationActivity, departureTime, _, _ ->
             val arr = distr[destinationActivity.type]!!
-            arr[departureTime.hour] = arr[departureTime.hour] + 1
+            val mod = departureTime.minute + departureTime.hour * 60
+            val i = floor((mod % 1440.0) / 1440.0 * T).toInt()
+            arr[i] = arr[i] + 1
         }
 
         // Determine counts at sensors

@@ -8,10 +8,11 @@ import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
 import java.io.File
 import java.util.*
+import kotlin.math.floor
 import kotlin.math.pow
 
 enum class CalibrationOption {
-    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_ADAM, SPSA_OS, DUMMY
+    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_ADAM, SPSA_OS, MM_GA, DUMMY
 }
 
 class TrafficCountCalibrator(
@@ -19,10 +20,23 @@ class TrafficCountCalibrator(
     val omod: Omod,
     val carOwnership: CarOwnership
 ) {
-    private val sensors = TrafficSensor.readSensorData(linkDataFile, omod)
-    private val affectedSensors = TrafficSensor.affectedSensors(sensors, omod)
+    private val sensors: List<TrafficSensor>
+    private val affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     private val finder = omod.destinationFinder as DestinationFinderDefault
 
+    init {
+        sensors = TrafficSensor.readSensorData(linkDataFile, omod)
+        T = sensors.first().measuredFlow.size
+        if (!sensors.all { it.measuredFlow.size == T }) {
+            throw IllegalArgumentException(
+                "Sensor measurement arrays are not uniformly sized!" +
+                "Validate the --cal_traffic_count_file file. "
+            )
+        }
+
+        affectedSensors = TrafficSensor.affectedSensors(sensors, omod)
+
+    }
     /*fun matrixTestRun() {
         val model = MetaModel.build(omod)
         val wm = model!!.calibrateMatrix(ActivityType.OTHER, sensors, affectedSensors)
@@ -77,6 +91,7 @@ class TrafficCountCalibrator(
             CalibrationOption.PSO       -> calibratePSO(lossLog, activities, iterations)
             CalibrationOption.PSO_OS    -> calibratePSOAllAtOnce(lossLog, activities, iterations)
             CalibrationOption.MM_PSO    -> calibratePSOMM(lossLog, activities, iterations)
+            CalibrationOption.MM_GA      -> calibrateGAMM(lossLog, activities, iterations)
             CalibrationOption.MM_GG     -> calibrateGGMM(lossLog, activities, iterations)
             CalibrationOption.MM_ADAM   -> calibrateAdamMM(lossLog, activities, iterations)
             CalibrationOption.MM_LBFGS  -> calibrateLBFGSMM(lossLog, activities, iterations)
@@ -230,12 +245,28 @@ class TrafficCountCalibrator(
         }
     }
 
+    private fun calibrateGAMM(lossLog: File?, activities: List<ActivityType>, iterations: Int){
+        for (activity in activities) {
+            val lossLogA = activityLogFile(activity, lossLog)
+            val objective = metaModelObj(activity)
+
+            var d = GA.run(
+                omod.grid.size - 1, objective, Random(), out=lossLogA,
+                iterations = iterations
+            )
+
+            d = (d.toList() + listOf(1.0)).toDoubleArray()
+
+            updateCalibration(d, activity)
+        }
+    }
+
     private fun calibrateGGMM(lossLog: File?, activities: List<ActivityType>, iterations: Int){
         for (activity in activities) {
             val lossLogA = activityLogFile(activity, lossLog)
             val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-            var d = GradientDescent.run(model, x0, iterations=iterations, lr=1e-4, out=lossLogA)
+            var d = GradientDescent.run(model, x0, iterations=iterations, lr=1e-6, out=lossLogA)
 
             d = (d.toList() + listOf(1.0)).toDoubleArray()
 
@@ -248,7 +279,7 @@ class TrafficCountCalibrator(
              val lossLogA = activityLogFile(activity, lossLog)
              val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
              val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-             var d = Adam.run(model, x0, iterations=iterations, lr=1e-4, out=lossLogA)
+             var d = Adam.run(model, x0, iterations=iterations, lr=1e-2, out=lossLogA)
 
              d = (d.toList() + listOf(1.0)).toDoubleArray()
              updateCalibration(d, activity)
@@ -393,7 +424,9 @@ class TrafficCountCalibrator(
                        val sensors = affectedSensors[od]!!
                        for (sensor in sensors) {
                            val arr = simCount[sensor]!!
-                           arr[departureTime.hour] = arr[departureTime.hour] + 1
+                           val mod = departureTime.minute + departureTime.hour * 60
+                           val i = floor((mod % 1440.0) / 1440.0 * T).toInt()
+                           arr[i] = arr[i] + 1
                        }
                    }
                }
