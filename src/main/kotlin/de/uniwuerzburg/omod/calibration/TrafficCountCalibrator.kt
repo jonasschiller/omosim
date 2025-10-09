@@ -91,7 +91,7 @@ class TrafficCountCalibrator(
             CalibrationOption.PSO       -> calibratePSO(lossLog, activities, iterations)
             CalibrationOption.PSO_OS    -> calibratePSOAllAtOnce(lossLog, activities, iterations)
             CalibrationOption.MM_PSO    -> calibratePSOMM(lossLog, activities, iterations)
-            CalibrationOption.MM_GA      -> calibrateGAMM(lossLog, activities, iterations)
+            CalibrationOption.MM_GA     -> calibrateGAMM(lossLog, activities, iterations)
             CalibrationOption.MM_GG     -> calibrateGGMM(lossLog, activities, iterations)
             CalibrationOption.MM_ADAM   -> calibrateAdamMM(lossLog, activities, iterations)
             CalibrationOption.MM_LBFGS  -> calibrateLBFGSMM(lossLog, activities, iterations)

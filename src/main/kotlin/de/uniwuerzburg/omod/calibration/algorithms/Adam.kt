@@ -21,6 +21,8 @@ object Adam {
         b1: Double = 0.9,
         b2: Double = 0.999,
         eps: Double = 1.0e-8,
+        lb: Double = 0.0,
+        ub: Double = 100.0,
         dispatcher: CoroutineDispatcher = Dispatchers.Default,
         out: File? = null
     ) : DoubleArray {
@@ -68,6 +70,16 @@ object Adam {
                 // Step
                 for (j in x.indices) {
                     x[j] -= lr * mHat[j] / (sqrt(vHat[j]) + eps)
+                }
+
+                // Bounds
+                for (j in x.indices) {
+                    if (x[j] < lb) {
+                        x[j] = lb
+                    }
+                    if (x[j] > ub) {
+                        x[j] = ub
+                    }
                 }
             }
             val oval = model.evaluate(x)

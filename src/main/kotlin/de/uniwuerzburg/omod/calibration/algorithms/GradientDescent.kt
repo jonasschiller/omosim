@@ -16,6 +16,8 @@ object GradientDescent {
         x0: DoubleArray,
         iterations: Int = 1000,
         lr: Double = 1.0e-6,
+        lb: Double = 0.0,
+        ub: Double = 100.0,
         dispatcher: CoroutineDispatcher = Dispatchers.Default,
         out: File? = null
     ) : DoubleArray {
@@ -47,6 +49,16 @@ object GradientDescent {
                 // Step
                 for (j in x.indices) {
                     x[j] -= lr * g[j]
+                }
+
+                // Bounds
+                for (j in x.indices) {
+                    if (x[j] < lb) {
+                        x[j] = lb
+                    }
+                    if (x[j] > ub) {
+                        x[j] = ub
+                    }
                 }
             }
             val oval = model.evaluate(x)
