@@ -6,9 +6,13 @@ class LinearTerm(
     val terms = mutableListOf<Term>()
     val coefficients = mutableListOf<Double>()
     var intercept = 0.0
+    override var nReceivers = 0
+    var received = 0
+    var adjoint = 0.0
 
     var evalCache = ThreadLocal<Double>()
     var gradientCache = ThreadLocal<Double>()
+    val receivers = mutableListOf<Term?>()
 
     fun addTerm(term: Term, coefficient: Double) {
         terms.add(term)
@@ -20,8 +24,15 @@ class LinearTerm(
     }
 
     override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
-        for (i in terms.indices) {
-            terms[i].chainBackward(vals, partials, seed * coefficients[i])
+        if (received != nReceivers) {
+            adjoint += seed
+            received += 1
+        }
+
+        if (received == nReceivers) {
+            for (i in terms.indices) {
+                terms[i].chainBackward(vals, partials, adjoint * coefficients[i])
+            }
         }
     }
 
@@ -58,11 +69,29 @@ class LinearTerm(
         }
     }
 
-    override fun clearGradientCache() {
+    override fun clearGradientCache(caller:Term?) {
         if (gradientCache.get() != null) {
             gradientCache.set(null)
             for (term in terms) {
-                term.clearGradientCache()
+                term.clearGradientCache(this)
+            }
+        }
+        if (received != 0) {
+            received = 0
+            adjoint = 0.0
+            for (term in terms) {
+                term.clearGradientCache(this)
+            }
+        }
+    }
+
+    override fun countReceivers(caller:Term?) {
+        receivers.add(caller)
+        nReceivers += 1
+
+        if (nReceivers == 1) {
+            for (term in terms) {
+                term.countReceivers(this)
             }
         }
     }

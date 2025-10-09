@@ -43,6 +43,7 @@ class SlowTerm(
 ): Term {
     var evalCacheHot = false
     var gradientCacheHot = false
+    override var nReceivers: Int = 0
 
 
     override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {

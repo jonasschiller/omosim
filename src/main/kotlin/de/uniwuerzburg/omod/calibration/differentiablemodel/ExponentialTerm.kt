@@ -8,9 +8,19 @@ class ExponentialTerm(
 ): Term {
     var evalCache = ThreadLocal<Double>()
     var gradientCache = ThreadLocal<Double>()
+    override var nReceivers = 0
+    var received = 0
+    var adjoint = 0.0
 
     override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
-        exponent.chainBackward(vals, partials, seed * exp(exponent.evaluate(vals)))
+        if (received != nReceivers) {
+            adjoint += seed
+            received += 1
+        }
+
+        if (received == nReceivers) {
+            exponent.chainBackward(vals, partials, adjoint * exp(exponent.evaluate(vals)))
+        }
     }
 
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
@@ -38,10 +48,22 @@ class ExponentialTerm(
         }
     }
 
-    override fun clearGradientCache() {
+    override fun clearGradientCache(caller:Term?) {
         if (gradientCache.get() != null) {
             gradientCache.set(null)
-            exponent.clearGradientCache()
+            exponent.clearGradientCache(this)
+        }
+        if (received != 0) {
+            received = 0
+            adjoint = 0.0
+            exponent.clearGradientCache(this)
+        }
+    }
+
+    override fun countReceivers(caller:Term?) {
+        nReceivers += 1
+        if (nReceivers == 1) {
+            exponent.countReceivers(this)
         }
     }
 }

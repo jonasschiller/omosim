@@ -9,9 +9,19 @@ class PowerTerm(
 ): Term {
     var evalCache = ThreadLocal<Double>()
     var gradientCache = ThreadLocal<Double>()
+    override var nReceivers = 0
+    var received = 0
+    var adjoint = 0.0
 
     override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
-        throw NotImplementedError()
+        if (received != nReceivers) {
+            adjoint += seed
+            received += 1
+        }
+
+        if (received == nReceivers) {
+            base.chainBackward(vals, partials, adjoint * power * base.evaluate(vals).pow(power-1))
+        }
     }
 
     override fun gradient(variable: Int, vals: DoubleArray) : Double {
@@ -39,10 +49,22 @@ class PowerTerm(
         }
     }
 
-    override fun clearGradientCache() {
+    override fun clearGradientCache(caller:Term?) {
         if (gradientCache.get() != null) {
             gradientCache.set(null)
-            base.clearGradientCache()
+            base.clearGradientCache(this)
+        }
+        if (received != 0) {
+            received = 0
+            adjoint = 0.0
+            base.clearGradientCache(this)
+        }
+    }
+
+    override fun countReceivers(caller:Term?) {
+        nReceivers += 1
+        if (nReceivers == 1) {
+            base.countReceivers(this)
         }
     }
 }

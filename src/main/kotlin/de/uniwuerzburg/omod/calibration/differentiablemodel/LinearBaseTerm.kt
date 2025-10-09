@@ -6,6 +6,7 @@ class LinearBaseTerm(
     val coefficients = DoubleArray(nVars) {0.0}
     var intercept = 0.0
     var evalCache = ThreadLocal<Double>()
+    override var nReceivers = 0
 
     fun addTerm(variable: Int, coefficient: Double) {
         coefficients[variable] += coefficient
@@ -41,5 +42,7 @@ class LinearBaseTerm(
         evalCache.set(null)
     }
 
-    override fun clearGradientCache() { }
+    override fun clearGradientCache(caller:Term?) { }
+
+    override fun countReceivers(caller:Term?) { }
 }

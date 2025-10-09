@@ -33,19 +33,29 @@ object GradientDescent {
         }
 
         val x = x0.copyOf()
-        val g = DoubleArray(x0.size) { 0.0 }
+        val gF = DoubleArray(x0.size) { 0.0 }
 
         for (i in 0 until iterations) {
+            println(i)
             val time = measureTime {
                 // Determine gradients
                 runBlocking(dispatcher) {
                     for (j in x.indices) {
                         launch {
-                            g[j] = model.gradient(j, x)
+                            gF[j] = model.gradient(j, x)
                         }
                     }
                 }
-
+                val g = DoubleArray(x0.size) { 0.0 }
+                //model.evaluate(x)
+                //println("TEst")
+                model.clearGradientCache()
+                model.clearEvalCache()
+                model.chainBackward(x, g, 1.0)
+                model.clearGradientCache()
+                model.clearEvalCache()
+                println(gF.toList().take(10))
+                println(g.toList().take(10))
                 // Step
                 for (j in x.indices) {
                     x[j] -= lr * g[j]
@@ -63,6 +73,7 @@ object GradientDescent {
             }
             val oval = model.evaluate(x)
             val line = "$i,$time,$oval"
+            println(line)
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()

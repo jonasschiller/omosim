@@ -6,9 +6,11 @@ class DifferentiableModel (
     override val nVars: Int
 ) : Term, DifferentiableMultivariateFunction {
     var root: Term = LinearBaseTerm(nVars)
+    override var nReceivers = 0
 
     fun setRootTerm(term: Term) {
         root = term
+        countReceivers(null)
     }
 
     override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
@@ -31,8 +33,12 @@ class DifferentiableModel (
         root.clearEvalCache()
     }
 
-    override fun clearGradientCache() {
-        root.clearGradientCache()
+    override fun clearGradientCache(caller:Term?) {
+        root.clearGradientCache(this)
+    }
+
+    override fun countReceivers(caller:Term?) {
+        root.countReceivers(this)
     }
 
     // SMILE interface

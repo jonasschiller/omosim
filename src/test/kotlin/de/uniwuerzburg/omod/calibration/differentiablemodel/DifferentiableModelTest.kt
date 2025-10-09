@@ -2,8 +2,60 @@ package de.uniwuerzburg.omod.calibration.differentiablemodel
 
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import kotlin.math.abs
 
 class DifferentiableModelTest {
+
+    fun buildLargeTestModel(nVars: Int) : DifferentiableModel {
+
+        val model = DifferentiableModel(nVars)
+
+        val lTerm1 = LinearTerm(nVars)
+        for (i in 0 until nVars) {
+            val lbTerm = LinearBaseTerm(nVars)
+            lbTerm.addConstant(1.3)
+            lbTerm.addTerm(i, 3.3)
+            lTerm1.addTerm(lbTerm, 1.0)
+        }
+
+        val p1 = LinearBaseTerm(nVars)
+        p1.addConstant(2.2)
+        p1.addTerm(0, 1.1)
+
+        val p2 = LinearBaseTerm(nVars)
+        p2.addConstant(2.2)
+        p2.addTerm(1, 1.1)
+
+        val top = QuadraticTerm(nVars, p1, p2,-1.1)
+
+        val dTerm = DivisionTerm(nVars, lTerm1, top)
+        model.setRootTerm(dTerm)
+        return  model
+    }
+
+    @Test
+    fun largerModel() {
+        val nVars = 1000
+        val model = buildLargeTestModel(nVars)
+
+        val vars = DoubleArray(nVars) { 1.1 }
+
+        // Backward
+        val gradientB = DoubleArray(nVars) { 0.0 }
+        model.evaluate(vars)
+        model.chainBackward(vars, gradientB, 1.0)
+        model.clearGradientCache()
+        model.clearEvalCache()
+
+        // Forward
+        val gradientF = DoubleArray(nVars) { 0.0 }
+        for (i in 0 until nVars) {
+            gradientF[i] = model.gradient(i, vars)
+        }
+
+        assert(gradientF.zip(gradientB).all { abs(it.first - it.second) <= 1e-5 })
+    }
+
     /**
      * f: 3x + 1y
      * vars: x=1, y=1
@@ -20,11 +72,13 @@ class DifferentiableModelTest {
         val term = LinearBaseTerm(2)
         term.addTerm(0, 3.0)
         term.addTerm(1, 1.0)
+        val model = DifferentiableModel(2)
+        model.setRootTerm(term)
 
         // Test
         val gradient = DoubleArray(2) { 0.0 }
-        val x = term.evaluate(vars)
-        term.chainBackward(vars, gradient, 1.0)
+        val x = model.evaluate(vars)
+        model.chainBackward(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -51,11 +105,13 @@ class DifferentiableModelTest {
         val yTerm = LinearBaseTerm(2)
         yTerm.addTerm(1, 1.0)
         val qTerm = QuadraticTerm(2, xTerm, yTerm, 3.0)
+        val model = DifferentiableModel(2)
+        model.setRootTerm(qTerm)
 
         // Test
         val gradient = DoubleArray(2) { 0.0 }
-        val x = qTerm.evaluate(vars)
-        qTerm.chainBackward(vars, gradient, 1.0)
+        val x = model.evaluate(vars)
+        model.chainBackward(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -80,11 +136,13 @@ class DifferentiableModelTest {
         val xTerm = LinearBaseTerm(2)
         xTerm.addTerm(0, 1.0)
         val qTerm = QuadraticTerm(2, xTerm, xTerm, 1.5)
+        val model = DifferentiableModel(2)
+        model.setRootTerm(qTerm)
 
         // Test
         val gradient = DoubleArray(2) { 0.0 }
-        val x = qTerm.evaluate(vars)
-        qTerm.chainBackward(vars, gradient, 1.0)
+        val x = model.evaluate(vars)
+        model.chainBackward(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -114,11 +172,13 @@ class DifferentiableModelTest {
         val eTerm = ExponentialTerm(2, qTerm)
         val fTerm = LinearTerm(2)
         fTerm.addTerm(eTerm, 2.0)
+        val model = DifferentiableModel(2)
+        model.setRootTerm(fTerm)
 
         // Test
         val gradient = DoubleArray(2) { 0.0 }
-        val x = fTerm.evaluate(vars)
-        fTerm.chainBackward(vars, gradient, 1.0)
+        val x = model.evaluate(vars)
+        model.chainBackward(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -155,11 +215,13 @@ class DifferentiableModelTest {
         val eTerm = ExponentialTerm(2, exponent)
         val fTerm = LinearTerm(2)
         fTerm.addTerm(eTerm, 3.3)
+        val model = DifferentiableModel(2)
+        model.setRootTerm(fTerm)
 
         // Test
         val gradient = DoubleArray(2) { 0.0 }
-        val x = fTerm.evaluate(vars)
-        fTerm.chainBackward(vars, gradient, 1.0)
+        val x = model.evaluate(vars)
+        model.chainBackward(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -187,11 +249,13 @@ class DifferentiableModelTest {
         val yTerm = LinearBaseTerm(2)
         yTerm.addTerm(1, 1.0)
         val dTerm = DivisionTerm(2, xTerm, yTerm)
+        val model = DifferentiableModel(2)
+        model.setRootTerm(dTerm)
 
         // Test
         val gradient = DoubleArray(2) { 0.0 }
-        val x = dTerm.evaluate(vars)
-        dTerm.chainBackward(vars, gradient, 1.0)
+        val x = model.evaluate(vars)
+        model.chainBackward(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -220,11 +284,13 @@ class DifferentiableModelTest {
         divisor.addTerm(0, 1.0)
         divisor.addTerm(1, 2.0)
         val dTerm = DivisionTerm(2, dividend, divisor)
+        val model = DifferentiableModel(2)
+        model.setRootTerm(dTerm)
 
         // Test
         val gradient = DoubleArray(2) { 0.0 }
-        val x = dTerm.evaluate(vars)
-        dTerm.chainBackward(vars, gradient, 1.0)
+        val x = model.evaluate(vars)
+        model.chainBackward(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
