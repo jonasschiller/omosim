@@ -50,7 +50,7 @@ object Adam {
                 runBlocking(Dispatchers.Default) {
                     for (j in x.indices) {
                         launch {
-                            g[j] = model.gradient(j, x)
+                            g[j] = model.gradientForward(j, x)
                         }
                     }
                 }

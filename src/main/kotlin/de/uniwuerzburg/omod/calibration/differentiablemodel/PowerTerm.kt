@@ -7,28 +7,30 @@ class PowerTerm(
     val base: Term,
     val power: Int
 ): Term {
-    var evalCache = ThreadLocal<Double>()
-    var gradientCache = ThreadLocal<Double>()
+    private var evalCache = ThreadLocal<Double>()
+    private var gradientCache = ThreadLocal<Double>()
     override var nReceivers = 0
-    var received = 0
-    var adjoint = 0.0
+    private var received = 0
+    private var adjoint = 0.0
 
-    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+    override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        // Accumulate adjoint variable
         if (received != nReceivers) {
             adjoint += seed
             received += 1
         }
 
+        // If finalized continue
         if (received == nReceivers) {
-            base.chainBackward(vals, partials, adjoint * power * base.evaluate(vals).pow(power-1))
+            base.gradientReverse(vals, partials, adjoint * power * base.evaluate(vals).pow(power-1))
         }
     }
 
-    override fun gradient(variable: Int, vals: DoubleArray) : Double {
+    override fun gradientForward(variable: Int, vals: DoubleArray) : Double {
         if (gradientCache.get() != null) {
             return gradientCache.get()
         }
-        val result = power * base.evaluate(vals).pow(power-1) * base.gradient(variable, vals)
+        val result = power * base.evaluate(vals).pow(power-1) * base.gradientForward(variable, vals)
         gradientCache.set(result)
         return result
     }
@@ -49,29 +51,22 @@ class PowerTerm(
         }
     }
 
-    override fun clearGradientCache(caller:Term?) {
+    override fun clearGradientCache() {
         if (gradientCache.get() != null) {
             gradientCache.set(null)
-            base.clearGradientCache(this)
+            base.clearGradientCache()
         }
         if ((received != 0) || (adjoint != 0.0)) {
             received = 0
             adjoint = 0.0
-            base.clearGradientCache(this)
+            base.clearGradientCache()
         }
     }
 
-    override fun countReceivers(caller:Term?) {
+    override fun countReceivers() {
         nReceivers += 1
         if (nReceivers == 1) {
-            base.countReceivers(this)
-            if (gradientCache.get() != null) {
-                print("power errorA")
-            }
-            if (evalCache.get() != null) {
-                print("power errorB")
-            }
-
+            base.countReceivers()
         }
     }
 

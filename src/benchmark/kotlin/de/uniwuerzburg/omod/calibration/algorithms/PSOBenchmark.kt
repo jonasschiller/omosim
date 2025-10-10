@@ -46,11 +46,11 @@ class SlowTerm(
     override var nReceivers: Int = 0
 
 
-    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+    override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
         throw NotImplementedError()
     }
 
-    override fun gradient(variable: Int, vals: DoubleArray) : Double {
+    override fun gradientForward(variable: Int, vals: DoubleArray) : Double {
         if (gradientCacheHot) {
             return 0.0
         }
@@ -79,4 +79,8 @@ class SlowTerm(
             gradientCacheHot = false
         }
     }
+
+    override fun countReceivers() { }
+
+    override fun clearReceivers() { }
 }

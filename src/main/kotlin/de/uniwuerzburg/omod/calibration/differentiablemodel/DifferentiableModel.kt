@@ -2,6 +2,9 @@ package de.uniwuerzburg.omod.calibration.differentiablemodel
 
 import smile.util.function.DifferentiableMultivariateFunction
 
+/**
+ * Warning: Don't use within coroutines!! ThreadLocal cache will be unstable. Use an ExecutorService instead.
+ */
 class DifferentiableModel (
     override val nVars: Int
 ) : Term, DifferentiableMultivariateFunction {
@@ -10,23 +13,28 @@ class DifferentiableModel (
 
     fun setRootTerm(term: Term) {
         root = term
-        countReceivers(null)
+
+        // Determine value receivers for Reverse mode
+        clearReceivers()
+        countReceivers()
     }
 
-    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
-        root.chainBackward(vals, partials, seed)
+    override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        root.gradientReverse(vals, partials, seed)
+        root.clearGradientCache()
+        root.clearEvalCache()
     }
 
-    override fun gradient(variable: Int, vals: DoubleArray): Double {
+    override fun gradientForward(variable: Int, vals: DoubleArray): Double {
+        val result = root.gradientForward(variable, vals)
         root.clearGradientCache()
-        val result = root.gradient(variable, vals)
-        root.clearGradientCache()
+        root.clearEvalCache()
         return result
     }
 
     override fun evaluate(vals: DoubleArray): Double {
         val result = root.evaluate(vals)
-        root.clearEvalCache()
+        root.clearEvalCache() // Safer, but slows down reverse mode a bit.
         return result
     }
 
@@ -34,12 +42,12 @@ class DifferentiableModel (
         root.clearEvalCache()
     }
 
-    override fun clearGradientCache(caller:Term?) {
-        root.clearGradientCache(this)
+    override fun clearGradientCache() {
+        root.clearGradientCache()
     }
 
-    override fun countReceivers(caller:Term?) {
-        root.countReceivers(this)
+    override fun countReceivers() {
+        root.countReceivers()
     }
 
     override fun clearReceivers() {
@@ -53,11 +61,7 @@ class DifferentiableModel (
 
     override fun g(x: DoubleArray?, gradient: DoubleArray?): Double {
         val result = evaluate(x!!)
-        for (i in 0 until nVars) {
-            gradient!![i] = gradient(i, x)
-        }
-        clearGradientCache()
-        clearEvalCache()
+        gradientReverse(x, gradient!!, 1.0)
         return result
     }
 }

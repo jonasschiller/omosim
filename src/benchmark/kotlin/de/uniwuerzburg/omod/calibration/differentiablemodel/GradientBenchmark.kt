@@ -1,14 +1,9 @@
 package de.uniwuerzburg.omod.calibration.differentiablemodel
 
 
-import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
-import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearTerm
-import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 import kotlinx.benchmark.Blackhole
 import org.openjdk.jmh.annotations.*
-import java.lang.Thread.sleep
-import java.util.*
-import java.util.concurrent.*
+import java.util.concurrent.TimeUnit
 
 @BenchmarkMode(Mode.AverageTime)
 @Fork(value = 2)
@@ -55,7 +50,7 @@ class GradientBenchmark {
     fun forwardBench(bh: Blackhole) {
         val g = DoubleArray(model!!.nVars) {0.0}
         for (i in 0 until model!!.nVars) {
-            g[i] = model!!.gradient(i, vars!!)
+            g[i] = model!!.gradientForward(i, vars!!)
         }
         bh.consume(g)
     }
@@ -63,10 +58,7 @@ class GradientBenchmark {
     @Benchmark
     fun reverseBench(bh: Blackhole) {
         val g = DoubleArray(model!!.nVars) {0.0}
-        model!!.evaluate(vars!!)
-        model!!.chainBackward(vars!!, g, 1.0)
-        model!!.clearGradientCache()
-        model!!.clearEvalCache()
+        model!!.gradientReverse(vars!!, g, 1.0)
         bh.consume(g)
     }
 }

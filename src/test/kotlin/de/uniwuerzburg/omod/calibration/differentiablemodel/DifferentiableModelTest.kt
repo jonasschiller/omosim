@@ -42,15 +42,12 @@ class DifferentiableModelTest {
 
         // Backward
         val gradientB = DoubleArray(nVars) { 0.0 }
-        model.evaluate(vars)
-        model.chainBackward(vars, gradientB, 1.0)
-        model.clearGradientCache()
-        model.clearEvalCache()
+        model.gradientReverse(vars, gradientB, 1.0)
 
         // Forward
         val gradientF = DoubleArray(nVars) { 0.0 }
         for (i in 0 until nVars) {
-            gradientF[i] = model.gradient(i, vars)
+            gradientF[i] = model.gradientForward(i, vars)
         }
 
         assert(gradientF.zip(gradientB).all { abs(it.first - it.second) <= 1e-5 })
@@ -78,7 +75,7 @@ class DifferentiableModelTest {
         // Test
         val gradient = DoubleArray(2) { 0.0 }
         val x = model.evaluate(vars)
-        model.chainBackward(vars, gradient, 1.0)
+        model.gradientReverse(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -111,7 +108,7 @@ class DifferentiableModelTest {
         // Test
         val gradient = DoubleArray(2) { 0.0 }
         val x = model.evaluate(vars)
-        model.chainBackward(vars, gradient, 1.0)
+        model.gradientReverse(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -142,7 +139,7 @@ class DifferentiableModelTest {
         // Test
         val gradient = DoubleArray(2) { 0.0 }
         val x = model.evaluate(vars)
-        model.chainBackward(vars, gradient, 1.0)
+        model.gradientReverse(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -178,7 +175,7 @@ class DifferentiableModelTest {
         // Test
         val gradient = DoubleArray(2) { 0.0 }
         val x = model.evaluate(vars)
-        model.chainBackward(vars, gradient, 1.0)
+        model.gradientReverse(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -221,7 +218,7 @@ class DifferentiableModelTest {
         // Test
         val gradient = DoubleArray(2) { 0.0 }
         val x = model.evaluate(vars)
-        model.chainBackward(vars, gradient, 1.0)
+        model.gradientReverse(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -255,7 +252,7 @@ class DifferentiableModelTest {
         // Test
         val gradient = DoubleArray(2) { 0.0 }
         val x = model.evaluate(vars)
-        model.chainBackward(vars, gradient, 1.0)
+        model.gradientReverse(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -290,7 +287,7 @@ class DifferentiableModelTest {
         // Test
         val gradient = DoubleArray(2) { 0.0 }
         val x = model.evaluate(vars)
-        model.chainBackward(vars, gradient, 1.0)
+        model.gradientReverse(vars, gradient, 1.0)
         val gx = gradient[0]
         val gy = gradient[1]
 
@@ -317,9 +314,9 @@ class DifferentiableModelTest {
         term.addTerm(1, 1.0)
 
         // Test
-        val gx = term.gradient(0, vars)
+        val gx = term.gradientForward(0, vars)
         term.clearGradientCache()
-        val gy = term.gradient(1, vars)
+        val gy = term.gradientForward(1, vars)
         term.clearGradientCache()
         val x = term.evaluate(vars)
 
@@ -348,9 +345,9 @@ class DifferentiableModelTest {
         val qTerm = QuadraticTerm(2, xTerm, yTerm, 3.0)
 
         // Test
-        val gx = qTerm.gradient(0, vars)
+        val gx = qTerm.gradientForward(0, vars)
         qTerm.clearGradientCache()
-        val gy = qTerm.gradient(1, vars)
+        val gy = qTerm.gradientForward(1, vars)
         qTerm.clearGradientCache()
         val x = qTerm.evaluate(vars)
 
@@ -377,9 +374,9 @@ class DifferentiableModelTest {
         val qTerm = QuadraticTerm(2, xTerm, xTerm, 1.5)
 
         // Test
-        val gx = qTerm.gradient(0, vars)
+        val gx = qTerm.gradientForward(0, vars)
         qTerm.clearGradientCache()
-        val gy = qTerm.gradient(1, vars)
+        val gy = qTerm.gradientForward(1, vars)
         qTerm.clearGradientCache()
         val x = qTerm.evaluate(vars)
 
@@ -411,9 +408,9 @@ class DifferentiableModelTest {
         fTerm.addTerm(eTerm, 2.0)
 
         // Test
-        val gx = fTerm.gradient(0, vars)
+        val gx = fTerm.gradientForward(0, vars)
         fTerm.clearGradientCache()
-        val gy = fTerm.gradient(1, vars)
+        val gy = fTerm.gradientForward(1, vars)
         fTerm.clearGradientCache()
         val x = fTerm.evaluate(vars)
 
@@ -451,9 +448,9 @@ class DifferentiableModelTest {
         fTerm.addTerm(eTerm, 3.3)
 
         // Test
-        val gx = fTerm.gradient(0, vars)
+        val gx = fTerm.gradientForward(0, vars)
         fTerm.clearGradientCache()
-        val gy = fTerm.gradient(1, vars)
+        val gy = fTerm.gradientForward(1, vars)
         fTerm.clearGradientCache()
         val x = fTerm.evaluate(vars)
 
@@ -483,9 +480,9 @@ class DifferentiableModelTest {
         val dTerm = DivisionTerm(2, xTerm, yTerm)
 
         // Test
-        val gx = dTerm.gradient(0, vars)
+        val gx = dTerm.gradientForward(0, vars)
         dTerm.clearGradientCache()
-        val gy = dTerm.gradient(1, vars)
+        val gy = dTerm.gradientForward(1, vars)
         dTerm.clearGradientCache()
         val x = dTerm.evaluate(vars)
 
@@ -516,9 +513,9 @@ class DifferentiableModelTest {
         val dTerm = DivisionTerm(2, dividend, divisor)
 
         // Test
-        val gx = dTerm.gradient(0, vars)
+        val gx = dTerm.gradientForward(0, vars)
         dTerm.clearGradientCache()
-        val gy = dTerm.gradient(1, vars)
+        val gy = dTerm.gradientForward(1, vars)
         dTerm.clearGradientCache()
         val x = dTerm.evaluate(vars)
 
@@ -558,9 +555,9 @@ class DifferentiableModelTest {
 
         // Test 1
         val vars = doubleArrayOf(1.0, 5.0)
-        val gx = fTerm.gradient(0, vars)
+        val gx = fTerm.gradientForward(0, vars)
         fTerm.clearGradientCache()
-        val gy = fTerm.gradient(1, vars)
+        val gy = fTerm.gradientForward(1, vars)
         fTerm.clearGradientCache()
         val x = fTerm.evaluate(vars)
         fTerm.clearEvalCache()
@@ -571,9 +568,9 @@ class DifferentiableModelTest {
 
         // TEST 2
         val vars2 = doubleArrayOf(1.0, -1.0)
-        val gx2 = fTerm.gradient(0, vars2)
+        val gx2 = fTerm.gradientForward(0, vars2)
         fTerm.clearGradientCache()
-        val gy2 = fTerm.gradient(1, vars2)
+        val gy2 = fTerm.gradientForward(1, vars2)
         fTerm.clearGradientCache()
         val x2 = fTerm.evaluate(vars2)
         fTerm.clearEvalCache()

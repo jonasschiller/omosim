@@ -6,28 +6,30 @@ class ExponentialTerm(
     override val nVars: Int,
     val exponent: Term
 ): Term {
-    var evalCache = ThreadLocal<Double>()
-    var gradientCache = ThreadLocal<Double>()
+    private var evalCache = ThreadLocal<Double>()
+    private var gradientCache = ThreadLocal<Double>()
     override var nReceivers = 0
-    var received = 0
-    var adjoint = 0.0
+    private var received = 0
+    private var adjoint = 0.0
 
-    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+    override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        // Accumulate adjoint variable
         if (received != nReceivers) {
             adjoint += seed
             received += 1
         }
 
+        // If finalized continue
         if (received == nReceivers) {
-            exponent.chainBackward(vals, partials, adjoint * exp(exponent.evaluate(vals)))
+            exponent.gradientReverse(vals, partials, adjoint * exp(exponent.evaluate(vals)))
         }
     }
 
-    override fun gradient(variable: Int, vals: DoubleArray) : Double {
+    override fun gradientForward(variable: Int, vals: DoubleArray) : Double {
         if (gradientCache.get() != null) {
             return gradientCache.get()
         }
-        val result = exponent.gradient(variable, vals) * exp(exponent.evaluate(vals))
+        val result = exponent.gradientForward(variable, vals) * exp(exponent.evaluate(vals))
         gradientCache.set(result)
         return result
     }
@@ -48,29 +50,22 @@ class ExponentialTerm(
         }
     }
 
-    override fun clearGradientCache(caller:Term?) {
+    override fun clearGradientCache() {
         if (gradientCache.get() != null) {
             gradientCache.set(null)
-            exponent.clearGradientCache(this)
+            exponent.clearGradientCache()
         }
         if ((received != 0) || (adjoint != 0.0)) {
             received = 0
             adjoint = 0.0
-            exponent.clearGradientCache(this)
+            exponent.clearGradientCache()
         }
     }
 
-    override fun countReceivers(caller:Term?) {
+    override fun countReceivers() {
         nReceivers += 1
         if (nReceivers == 1) {
-            exponent.countReceivers(this)
-
-            if (gradientCache.get() != null) {
-                print("exp errorA")
-            }
-            if (evalCache.get() != null) {
-                print("exp errorB")
-            }
+            exponent.countReceivers()
         }
     }
 

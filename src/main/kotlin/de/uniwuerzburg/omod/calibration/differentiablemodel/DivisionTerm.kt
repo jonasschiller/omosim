@@ -10,28 +10,30 @@ class DivisionTerm(
     var evalCache = ThreadLocal<Double>()
     var gradientCache = ThreadLocal<Double>()
     override var nReceivers = 0
-    var received = 0
-    var adjoint = 0.0
+    private var received = 0
+    private var adjoint = 0.0
 
-    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+    override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        // Accumulate adjoint variable
         if (received != nReceivers) {
             adjoint += seed
             received += 1
         }
 
+        // If finalized continue
         if (received == nReceivers) {
-            dividend.chainBackward(vals, partials, adjoint / divisor.evaluate(vals))
-            divisor.chainBackward(vals, partials, adjoint * dividend.evaluate(vals) / - divisor.evaluate(vals).pow(2.0))
+            dividend.gradientReverse(vals, partials, adjoint / divisor.evaluate(vals))
+            divisor.gradientReverse(vals, partials, adjoint * dividend.evaluate(vals) / - divisor.evaluate(vals).pow(2.0))
         }
     }
 
-    override fun gradient(variable: Int, vals: DoubleArray) : Double {
+    override fun gradientForward(variable: Int, vals: DoubleArray) : Double {
         if (gradientCache.get() != null) {
             return gradientCache.get()
         }
         val divisorEval = divisor.evaluate(vals)
-        val result = (dividend.gradient(variable, vals) * divisorEval -
-                      dividend.evaluate(vals) * divisor.gradient(variable, vals)) / (divisorEval * divisorEval)
+        val result = (dividend.gradientForward(variable, vals) * divisorEval -
+                      dividend.evaluate(vals) * divisor.gradientForward(variable, vals)) / (divisorEval * divisorEval)
         gradientCache.set(result)
         return result
     }
@@ -46,7 +48,6 @@ class DivisionTerm(
     }
 
     override fun clearEvalCache() {
-        //println("${Thread.currentThread()}")
         if (evalCache.get() != null) {
             evalCache.set(null)
             dividend.clearEvalCache()
@@ -54,32 +55,25 @@ class DivisionTerm(
         }
     }
 
-    override fun clearGradientCache(caller:Term?) {
+    override fun clearGradientCache() {
         if (gradientCache.get() != null) {
             gradientCache.set(null)
-            dividend.clearGradientCache(this)
-            divisor.clearGradientCache(this)
+            dividend.clearGradientCache()
+            divisor.clearGradientCache()
         }
         if ((received != 0) || (adjoint != 0.0)) {
             received = 0
             adjoint = 0.0
-            dividend.clearGradientCache(this)
-            divisor.clearGradientCache(this)
+            dividend.clearGradientCache()
+            divisor.clearGradientCache()
         }
     }
 
-    override fun countReceivers(caller:Term?) {
+    override fun countReceivers() {
         nReceivers += 1
         if (nReceivers == 1) {
-            dividend.countReceivers(this)
-            divisor.countReceivers(this)
-
-            if (gradientCache.get() != null) {
-                print("div errorA")
-            }
-            if (evalCache.get() != null) {
-                print("div errorB")
-            }
+            dividend.countReceivers()
+            divisor.countReceivers()
         }
     }
 

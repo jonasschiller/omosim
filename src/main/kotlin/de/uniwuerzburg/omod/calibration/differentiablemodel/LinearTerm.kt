@@ -3,16 +3,15 @@ package de.uniwuerzburg.omod.calibration.differentiablemodel
 class LinearTerm(
     override val nVars: Int
 ): Term {
-    val terms = mutableListOf<Term>()
-    val coefficients = mutableListOf<Double>()
-    var intercept = 0.0
+    private val terms = mutableListOf<Term>()
+    private val coefficients = mutableListOf<Double>()
+    private var intercept = 0.0
     override var nReceivers = 0
-    var received = 0
-    var adjoint = 0.0
+    private var received = 0
+    private var adjoint = 0.0
 
-    var evalCache = ThreadLocal<Double>()
-    var gradientCache = ThreadLocal<Double>()
-    val receivers = mutableListOf<Term?>()
+    private var evalCache = ThreadLocal<Double>()
+    private var gradientCache = ThreadLocal<Double>()
 
     fun addTerm(term: Term, coefficient: Double) {
         terms.add(term)
@@ -23,26 +22,28 @@ class LinearTerm(
         intercept += value
     }
 
-    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+    override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        // Accumulate adjoint variable
         if (received != nReceivers) {
             adjoint += seed
             received += 1
         }
 
+        // If finalized continue
         if (received == nReceivers) {
             for (i in terms.indices) {
-                terms[i].chainBackward(vals, partials, adjoint * coefficients[i])
+                terms[i].gradientReverse(vals, partials, adjoint * coefficients[i])
             }
         }
     }
 
-    override fun gradient(variable: Int, vals: DoubleArray) : Double {
+    override fun gradientForward(variable: Int, vals: DoubleArray) : Double {
         if (gradientCache.get() != null) {
             return gradientCache.get()
         }
         var result = 0.0
         for (i in terms.indices) {
-            result += terms[i].gradient(variable, vals) * coefficients[i]
+            result += terms[i].gradientForward(variable, vals) * coefficients[i]
         }
         gradientCache.set(result)
         return result
@@ -69,36 +70,27 @@ class LinearTerm(
         }
     }
 
-    override fun clearGradientCache(caller:Term?) {
+    override fun clearGradientCache() {
         if (gradientCache.get() != null) {
             gradientCache.set(null)
             for (term in terms) {
-                term.clearGradientCache(this)
+                term.clearGradientCache()
             }
         }
         if ((received != 0) || (adjoint != 0.0)) {
             received = 0
             adjoint = 0.0
             for (term in terms) {
-                term.clearGradientCache(this)
+                term.clearGradientCache()
             }
         }
     }
 
-    override fun countReceivers(caller:Term?) {
-        receivers.add(caller)
+    override fun countReceivers() {
         nReceivers += 1
-
         if (nReceivers == 1) {
             for (term in terms) {
-                term.countReceivers(this)
-            }
-
-            if (gradientCache.get() != null) {
-                print("lin errorA")
-            }
-            if (evalCache.get() != null) {
-                print("lin errorB")
+                term.countReceivers()
             }
         }
     }

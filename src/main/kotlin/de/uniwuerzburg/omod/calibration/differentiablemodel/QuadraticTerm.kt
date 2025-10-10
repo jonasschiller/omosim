@@ -6,32 +6,35 @@ class QuadraticTerm(
     val termB: Term,
     val coefficient: Double,
 ): Term {
-    var evalCache = ThreadLocal<Double>()
-    var gradientCache = ThreadLocal<Double>()
+    private var evalCache = ThreadLocal<Double>()
+    private var gradientCache = ThreadLocal<Double>()
     override var nReceivers = 0
-    var received = 0
-    var adjoint = 0.0
+    private var received = 0
+    private var adjoint = 0.0
 
-    override fun gradient(variable: Int, vals: DoubleArray) : Double {
-        if (gradientCache.get() != null) {
-            return gradientCache.get()
-        }
-        val result = termA.evaluate(vals) * termB.gradient(variable, vals) * coefficient +
-                     termB.evaluate(vals) * termA.gradient(variable, vals) * coefficient
-        gradientCache.set(result)
-        return result
-    }
-
-    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+    override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        // Accumulate adjoint variable
         if (received != nReceivers) {
             adjoint += seed
             received += 1
         }
 
+        // If finalized continue
         if (received == nReceivers) {
-            termA.chainBackward(vals, partials, adjoint * termB.evaluate(vals) * coefficient)
-            termB.chainBackward(vals, partials, adjoint * termA.evaluate(vals) * coefficient)
+            termA.gradientReverse(vals, partials, adjoint * termB.evaluate(vals) * coefficient)
+            termB.gradientReverse(vals, partials, adjoint * termA.evaluate(vals) * coefficient)
         }
+    }
+
+    override fun gradientForward(variable: Int, vals: DoubleArray) : Double {
+        if (gradientCache.get() != null) {
+            return gradientCache.get()
+        }
+
+        val result = termA.evaluate(vals) * termB.gradientForward(variable, vals) * coefficient +
+                     termB.evaluate(vals) * termA.gradientForward(variable, vals) * coefficient
+        gradientCache.set(result)
+        return result
     }
 
     override fun evaluate(vals: DoubleArray) : Double {
@@ -51,34 +54,28 @@ class QuadraticTerm(
         }
     }
 
-    override fun clearGradientCache(caller:Term?) {
+    override fun clearGradientCache() {
         if (gradientCache.get() != null) {
             gradientCache.set(null)
-            termA.clearGradientCache(this)
-            termB.clearGradientCache(this)
+            termA.clearGradientCache()
+            termB.clearGradientCache()
         }
         if ((received != 0) || (adjoint != 0.0)) {
             received = 0
             adjoint = 0.0
-            termA.clearGradientCache(this)
-            termB.clearGradientCache(this)
+            termA.clearGradientCache()
+            termB.clearGradientCache()
         }
     }
 
-    override fun countReceivers(caller:Term?) {
+    override fun countReceivers() {
         nReceivers += 1
         if (nReceivers == 1) {
-            termA.countReceivers(this)
-            termB.countReceivers(this)
-
-            if (gradientCache.get() != null) {
-                print("quad errorA")
-            }
-            if (evalCache.get() != null) {
-                print("quad errorB")
-            }
+            termA.countReceivers()
+            termB.countReceivers()
         }
     }
+
     override fun clearReceivers() {
         if (nReceivers != 0) {
             nReceivers = 0

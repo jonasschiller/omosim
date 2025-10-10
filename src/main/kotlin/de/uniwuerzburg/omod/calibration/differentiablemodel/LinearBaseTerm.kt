@@ -1,11 +1,15 @@
 package de.uniwuerzburg.omod.calibration.differentiablemodel
 
+/**
+ * Leaf Term. We use this instead of individual variable terms because the lowest level currently always is
+ * a sum over all variables.
+ */
 class LinearBaseTerm(
     override val nVars: Int
 ): Term {
-    val coefficients = DoubleArray(nVars) {0.0}
-    var intercept = 0.0
-    var evalCache = ThreadLocal<Double>()
+    private val coefficients = DoubleArray(nVars) {0.0}
+    private var intercept = 0.0
+    private var evalCache = ThreadLocal<Double>()
     override var nReceivers = 0
 
     fun addTerm(variable: Int, coefficient: Double) {
@@ -16,13 +20,13 @@ class LinearBaseTerm(
         intercept += value
     }
 
-    override fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+    override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
         for (i in partials.indices) {
             partials[i] += seed * coefficients[i]
         }
     }
 
-    override fun gradient(variable: Int, vals: DoubleArray) : Double {
+    override fun gradientForward(variable: Int, vals: DoubleArray) : Double {
         return coefficients[variable]
     }
 
@@ -42,13 +46,9 @@ class LinearBaseTerm(
         evalCache.set(null)
     }
 
-    override fun clearGradientCache(caller:Term?) { }
+    override fun clearGradientCache() { }
 
-    override fun countReceivers(caller:Term?) {
-        if (evalCache.get() != null) {
-            print("errorB")
-        }
-    }
+    override fun countReceivers() { }
 
     override fun clearReceivers() { }
 }
