@@ -10,11 +10,12 @@ object BFGS {
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
-        lb: Double = 0.0,
-        ub: Double = 1e3,
-        m: Int = 5,
         iterations: Int = 100,
-        gTol: Double = 1e-5,
+        parameters: Map<String, String>? = null,
+        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
+        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 1e3,
+        m: Int = parameters?.get("m")?.toIntOrNull() ?: 5,
+        gTol: Double = parameters?.get("gTol")?.toDoubleOrNull() ?: 1e-5,
         out: File? = null
     ) : DoubleArray {
         val writer = if (out != null) {

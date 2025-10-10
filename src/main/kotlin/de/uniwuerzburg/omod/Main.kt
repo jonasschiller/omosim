@@ -54,7 +54,11 @@ class CalibrationOptions : OptionGroup (
     val cal_iterations by option(
         help = ""
     ).int().default(1000)
-
+    val cal_parameter by option(
+        help = ""
+    ).splitPair()
+     .multiple()
+     .toMap()
 }
 
 /**
@@ -211,7 +215,8 @@ class Run : CliktCommand() {
                 calibrationParameter!!.cal_method,
                 calibrationParameter!!.cal_activity,
                 calibrationParameter!!.cal_iterations,
-                lossLogFile
+                lossLogFile,
+                calibrationParameter!!.cal_parameter
             )
             //return
         }

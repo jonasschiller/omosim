@@ -14,53 +14,17 @@ import kotlin.time.measureTime
 // TODO test WSPSA, MSPSA
 
 object SPSA {
-    fun hpGridSearch(
-        x0: DoubleArray,
-        objective: (DoubleArray) -> Double,
-        rng: Random,
-        outPath: Path,
-        lb: Double = 0.00,
-        ub: Double = 1e3,
-        iterations: Int = 10000,
-        a0: List<Double> = listOf(1.0),
-        c0: List<Double> = listOf(1.0),
-        gamma: List<Double> =  listOf(1.0 / 3.0),
-    ) {
-        for (a in a0) {
-            for (c in c0) {
-                for (g in gamma) {
-                    val out = Paths.get(
-                        outPath.toString(),
-                        "SPSA_GS_a${a}_c${c}_gamma${g}.csv"
-                    ).toFile()
-
-                    run(
-                        x0,
-                        objective,
-                        rng,
-                        lb = lb,
-                        ub = ub,
-                        iterations= iterations,
-                        a0 = a,
-                        c0 = c,
-                        gamma = g,
-                        out = out
-                    )
-                }
-            }
-        }
-    }
-
     fun run(
         x0: DoubleArray,
         objective: (DoubleArray) -> Double,
         rng: Random,
-        lb: Double = 0.00,
-        ub: Double = 1e3,
         iterations: Int = 10000,
-        a0: Double = 1.0,
-        c0: Double = 1.0,
-        gamma: Double = 1.0 / 3.0,
+        parameters: Map<String, String>? = null,
+        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
+        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 1e3,
+        a0: Double = parameters?.get("a0")?.toDoubleOrNull() ?: 1.0,
+        c0: Double = parameters?.get("c0")?.toDoubleOrNull() ?: 1.0,
+        gamma: Double = parameters?.get("gamma")?.toDoubleOrNull() ?: (1.0 / 3.0),
         out: File? = null
     ) : DoubleArray {
         println("SPSA...")

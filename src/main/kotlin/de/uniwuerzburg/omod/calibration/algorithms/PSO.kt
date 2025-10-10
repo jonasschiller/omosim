@@ -1,5 +1,6 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
+import de.uniwuerzburg.omod.calibration.algorithms.GradientDescent.LearningRateUpdateStrategy
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,69 +23,20 @@ import kotlin.time.measureTime
 // Bound handling: https://ieeexplore.ieee.org/abstract/document/6163405
 
 object PSO {
-    // Defaults
-    const val dNParticles = 20
-    const val dW = 0.7
-    const val dPhiP = 1.4
-    const val dPhiG = 1.4
-    const val dVClamp = 0.5
-    val dBoundStrategy = BoundStrategy.REFLECT_Z
-
-    fun hpGridSearch(
-        nDimensions: Int,
-        objective: (DoubleArray) -> Double,
-        rng: Random,
-        outPath: Path,
-        lb: Double = 0.0,
-        ub: Double = 1e3,
-        nParticles: List<Int> = listOf(dNParticles),
-        chi: List<Double> = listOf(dW),
-        vClamp: List<Double> = listOf(dVClamp),
-        boundStrategy: List<BoundStrategy> = listOf(dBoundStrategy)
-    ) {
-        for (iVClamp in vClamp) {
-            for (iBoundStrategy in boundStrategy) {
-                for (iChi in chi) {
-                    for (iNParticles in nParticles) {
-                        val out = Paths.get(
-                            outPath.toString(),
-                            "PSO_GS_Clamp${iVClamp}_bs${iBoundStrategy}_chi${iChi}_n${iNParticles}.csv"
-                        ).toFile()
-
-                        run(
-                            nDimensions,
-                            objective,
-                            rng,
-                            lb = lb,
-                            ub = ub,
-                            iterations = 1000,
-                            nParticles = iNParticles,
-                            w = iChi,
-                            phiP = iChi * 2,
-                            phiG = iChi * 2,
-                            vClamp = iVClamp,
-                            boundStrategy = iBoundStrategy,
-                            out = out
-                        )
-                    }
-                }
-            }
-        }
-    }
-
     fun run(
         nDimensions: Int,
         objective: (DoubleArray) -> Double,
         rng: Random,
-        lb: Double = 0.0,
-        ub: Double = 1e3,
         iterations: Int = 1000,
-        nParticles: Int = dNParticles,
-        w: Double = dW,
-        phiP: Double = dPhiP,
-        phiG: Double = dPhiG,
-        vClamp: Double = dVClamp,
-        boundStrategy: BoundStrategy = dBoundStrategy,
+        parameters: Map<String, String>? = null,
+        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
+        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 1e3,
+        nParticles: Int = parameters?.get("nParticles")?.toIntOrNull() ?: 20,
+        w: Double = parameters?.get("w")?.toDoubleOrNull() ?: 0.8,
+        phiP: Double = parameters?.get("phiP")?.toDoubleOrNull() ?: 1.6,
+        phiG: Double = parameters?.get("phiG")?.toDoubleOrNull() ?: 1.6,
+        vClamp: Double = parameters?.get("vClamp")?.toDoubleOrNull() ?: 1.0,
+        boundStrategy: BoundStrategy = parameters?.get("boundStrategy")?.toBoundStrategy() ?: BoundStrategy.REFLECT_Z,
         nWorker: Int? = null,
         out: File? = null
     ) : DoubleArray {
@@ -202,6 +154,15 @@ object PSO {
     */
     enum class BoundStrategy {
         INFINITY, REFLECT_Z
+    }
+
+    private fun String.toBoundStrategy() : BoundStrategy? {
+        for (entry in BoundStrategy.entries) {
+            if (this == entry.toString()) {
+                return entry
+            }
+        }
+        return null
     }
 
     /**

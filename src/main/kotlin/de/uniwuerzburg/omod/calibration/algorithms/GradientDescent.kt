@@ -7,17 +7,24 @@ import java.io.FileWriter
 import kotlin.math.abs
 import kotlin.time.measureTime
 
+
+
 object GradientDescent {
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
         iterations: Int = 1000,
-        lr0: Double = 1.0e-8,
-        lb: Double = 0.0,
-        ub: Double = 100.0,
-        lrStrategy: LearningRateUpdateStrategy = LearningRateUpdateStrategy.STATIC,
+        parameters: Map<String, String>? = null,
+        lr0: Double = parameters?.get("lr0")?.toDoubleOrNull() ?: 1.0e-8,
+        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
+        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 100.0,
+        lrStrategy: LearningRateUpdateStrategy = parameters?.get("lrStrategy")?.toLearningRateUpdateStrategy() ?: LearningRateUpdateStrategy.STATIC,
         out: File? = null
     ) : DoubleArray {
+        // TODO fill args based on parameters
+
+        println("Parameter:$lr0,$lb,$ub,$lrStrategy") // TODO add this to losslog or something
+
         val writer = if (out != null) {
             BufferedWriter(FileWriter(out))
         } else {
@@ -102,6 +109,15 @@ object GradientDescent {
 
     enum class LearningRateUpdateStrategy {
         STATIC, BARZILAI_BORWEIN
+    }
+
+    private fun String.toLearningRateUpdateStrategy() : LearningRateUpdateStrategy? {
+        for (entry in LearningRateUpdateStrategy.entries) {
+            if (this == entry.toString()) {
+                return entry
+            }
+        }
+        return null
     }
 
     fun barBowUpdate(x: DoubleArray, g: DoubleArray, xPrior: DoubleArray, gPrior: DoubleArray) : Double {

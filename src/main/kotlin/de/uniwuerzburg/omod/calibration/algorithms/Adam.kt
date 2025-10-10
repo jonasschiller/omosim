@@ -17,13 +17,14 @@ object Adam {
         model: DifferentiableModel,
         x0: DoubleArray,
         iterations: Int = 1000,
-        lr: Double = 1.0e-6,
-        b1: Double = 0.9,
-        b2: Double = 0.999,
-        eps: Double = 1.0e-8,
-        lb: Double = 0.0,
-        ub: Double = 100.0,
-        out: File? = null
+        parameters: Map<String, String>? = null,
+        lr: Double = parameters?.get("lr")?.toDoubleOrNull() ?: 1.0e-6,
+        b1: Double = parameters?.get("b1")?.toDoubleOrNull() ?: 0.9,
+        b2: Double = parameters?.get("b2")?.toDoubleOrNull() ?:  0.999,
+        eps: Double = parameters?.get("eps")?.toDoubleOrNull() ?: 1.0e-8,
+        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
+        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 100.0,
+        out: File? = null,
     ) : DoubleArray {
         val writer = if (out != null) {
             BufferedWriter(FileWriter(out))

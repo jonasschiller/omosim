@@ -12,7 +12,7 @@ import kotlin.math.floor
 import kotlin.math.pow
 
 enum class CalibrationOption {
-    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_ADAM, SPSA_OS, MM_GA, DUMMY
+    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_ADAM, SPSA_OS, MM_GA
 }
 
 class TrafficCountCalibrator(
@@ -35,8 +35,8 @@ class TrafficCountCalibrator(
         }
 
         affectedSensors = TrafficSensor.affectedSensors(sensors, omod)
-
     }
+
     /*fun matrixTestRun() {
         val model = MetaModel.build(omod)
         val wm = model!!.calibrateMatrix(ActivityType.OTHER, sensors, affectedSensors)
@@ -51,53 +51,21 @@ class TrafficCountCalibrator(
         evaluate(DoubleArray(omod.grid.size) {1.0})
     }*/
 
-    /*fun hpTune(activity: ActivityType, option: CalibrationOption) {
-        val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
-        val objective: (DoubleArray) -> Double = { x: DoubleArray ->
-            model.evaluate(x)
-        }
-        val outPath =  Paths.get("output/")
-
-        when(option) {
-            CalibrationOption.PSO -> PSO.hpGridSearch(
-                omod.grid.size - 1, objective, Random(), outPath,
-                nParticles = listOf(20, 40),
-                chi = listOf(0.6, 0.8, 0.9),
-                vClamp = listOf(0.5, 1.0),
-                boundStrategy = listOf(PSO.BoundStrategy.INFINITY, PSO.BoundStrategy.REFLECT_Z)
-            )
-            CalibrationOption.SPSA -> {
-                val d0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-                SPSA.hpGridSearch(
-                    d0,
-                    objective,
-                    Random(),
-                    outPath,
-                    a0 = listOf(2.0, 1.0, 0.5),
-                    c0 = listOf(5.0, 2.0, 1.0, 0.5),
-                    gamma =  listOf(1.0 / 3.0, 1.0 / 5.0, 1.0 / 10.0)
-                )
-            }
-            else -> throw NotImplementedError()
-        }
-    }*/
-
     fun calibrate(
         file: File, option: CalibrationOption, activities: List<ActivityType>,
-        iterations: Int = 100, lossLog: File? = null
+        iterations: Int = 100, lossLog: File? = null, parameters: Map<String, String>? = null
     ) {
         when (option) {
-            CalibrationOption.DUMMY     -> calibrateDummy(lossLog, activities, iterations)
-            CalibrationOption.PSO       -> calibratePSO(lossLog, activities, iterations)
-            CalibrationOption.PSO_OS    -> calibratePSOAllAtOnce(lossLog, activities, iterations)
-            CalibrationOption.MM_PSO    -> calibratePSOMM(lossLog, activities, iterations)
-            CalibrationOption.MM_GA     -> calibrateGAMM(lossLog, activities, iterations)
-            CalibrationOption.MM_GG     -> calibrateGGMM(lossLog, activities, iterations)
-            CalibrationOption.MM_ADAM   -> calibrateAdamMM(lossLog, activities, iterations)
-            CalibrationOption.MM_LBFGS  -> calibrateLBFGSMM(lossLog, activities, iterations)
-            CalibrationOption.SPSA      -> calibrateSPSA(lossLog, activities, iterations)
-            CalibrationOption.SPSA_OS   -> calibrateSPSAAllAtOnce(lossLog, activities, iterations)
-            CalibrationOption.MM_SPSA   -> calibrateSPSAMM(lossLog, activities, iterations)
+            CalibrationOption.PSO       -> calibratePSO(lossLog, activities, iterations, parameters)
+            CalibrationOption.PSO_OS    -> calibratePSOAllAtOnce(lossLog, activities, iterations, parameters)
+            CalibrationOption.MM_PSO    -> calibratePSOMM(lossLog, activities, iterations, parameters)
+            CalibrationOption.MM_GA     -> calibrateGAMM(lossLog, activities, iterations, parameters)
+            CalibrationOption.MM_GG     -> calibrateGGMM(lossLog, activities, iterations, parameters)
+            CalibrationOption.MM_ADAM   -> calibrateAdamMM(lossLog, activities, iterations, parameters)
+            CalibrationOption.MM_LBFGS  -> calibrateLBFGSMM(lossLog, activities, iterations, parameters)
+            CalibrationOption.SPSA      -> calibrateSPSA(lossLog, activities, iterations, parameters)
+            CalibrationOption.SPSA_OS   -> calibrateSPSAAllAtOnce(lossLog, activities, iterations, parameters)
+            CalibrationOption.MM_SPSA   -> calibrateSPSAMM(lossLog, activities, iterations, parameters)
         }
 
         val finder = omod.destinationFinder as DestinationFinderDefault
@@ -171,72 +139,42 @@ class TrafficCountCalibrator(
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    private fun calibrateDummy(lossLog: File?, activities: List<ActivityType>, iterations: Int){
-        for (activity in activities) {
-            val lossLogA = activityLogFile(activity, lossLog)
-            val objective = metaModelObj(activity)
-            var d = PSO.run(
-                omod.grid.size - 1, objective, Random(), out=lossLogA,
-                vClamp = 1.0,
-                w = 0.8,
-                phiP = 0.8 * 2,
-                phiG = 0.8 * 2,
-                nParticles = 1,
-                iterations = 1
-            )
-
-            d = (d.toList() + listOf(1.0)).toDoubleArray()
-
-            updateCalibration(d, activity)
-        }
-    }
-
-    private fun calibratePSOAllAtOnce(lossLog: File?, activities: List<ActivityType>, iterations: Int) {
+    private fun calibratePSOAllAtOnce(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ) {
         val objective = batchObj(activities)
         val d = PSO.run(
             omod.grid.size * activities.size, objective, Random(), out=lossLog,
-            vClamp = 1.0,
-            w = 0.8,
-            phiP = 0.8 * 2,
-            phiG = 0.8 * 2,
-            nParticles = 20,
-            iterations = iterations
+            iterations = iterations, parameters = parameters
         )
         updateCalibration(d, activities)
     }
 
-    private fun calibratePSO(lossLog: File?, activities: List<ActivityType>, iterations: Int) {
+    private fun calibratePSO(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ) {
         for (activity in activities) {
             val lossLogA = activityLogFile(activity, lossLog)
 
             val objective = batchObj(activity)
             val d = PSO.run(
                 omod.grid.size, objective, Random(), out=lossLogA,
-                vClamp = 1.0,
-                w = 0.8,
-                phiP = 0.8 * 2,
-                phiG = 0.8 * 2,
-                nParticles = 20,
-                iterations = iterations
+                iterations = iterations, parameters = parameters
             )
             updateCalibration(d, activity)
         }
     }
 
-    private fun calibratePSOMM(lossLog: File?, activities: List<ActivityType>, iterations: Int){
+    private fun calibratePSOMM(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ){
         for (activity in activities) {
             val lossLogA = activityLogFile(activity, lossLog)
             val objective = metaModelObj(activity)
 
             var d = PSO.run(
                 omod.grid.size - 1, objective, Random(), out=lossLogA,
-                vClamp = 1.0,
-                w = 0.8,
-                phiP = 0.8 * 2,
-                phiG = 0.8 * 2,
-                nParticles = 20,
-                iterations = iterations
+                iterations = iterations, parameters = parameters
             )
 
             d = (d.toList() + listOf(1.0)).toDoubleArray()
@@ -245,14 +183,16 @@ class TrafficCountCalibrator(
         }
     }
 
-    private fun calibrateGAMM(lossLog: File?, activities: List<ActivityType>, iterations: Int){
+    private fun calibrateGAMM(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ){
         for (activity in activities) {
             val lossLogA = activityLogFile(activity, lossLog)
             val objective = metaModelObj(activity)
 
             var d = GA.run(
                 omod.grid.size - 1, objective, Random(), out=lossLogA,
-                iterations = iterations
+                iterations = iterations, parameters = parameters
             )
 
             d = (d.toList() + listOf(1.0)).toDoubleArray()
@@ -261,12 +201,14 @@ class TrafficCountCalibrator(
         }
     }
 
-    private fun calibrateGGMM(lossLog: File?, activities: List<ActivityType>, iterations: Int){
+    private fun calibrateGGMM(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ){
         for (activity in activities) {
             val lossLogA = activityLogFile(activity, lossLog)
             val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-            var d = GradientDescent.run(model, x0, iterations=iterations, lr0=1e-8, out=lossLogA)
+            var d = GradientDescent.run(model, x0, iterations=iterations, lr0=1e-8, out=lossLogA, parameters = parameters ?: mapOf())
 
             d = (d.toList() + listOf(1.0)).toDoubleArray()
 
@@ -274,54 +216,64 @@ class TrafficCountCalibrator(
         }
     }
 
-    private fun calibrateAdamMM(lossLog: File?, activities: List<ActivityType>, iterations: Int){
+    private fun calibrateAdamMM(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ){
          for (activity in activities) {
              val lossLogA = activityLogFile(activity, lossLog)
              val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
              val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-             var d = Adam.run(model, x0, iterations=iterations, lr=1e-2, out=lossLogA)
+             var d = Adam.run(model, x0, iterations=iterations, lr=1e-2, out=lossLogA, parameters = parameters)
 
              d = (d.toList() + listOf(1.0)).toDoubleArray()
              updateCalibration(d, activity)
         }
     }
 
-    fun calibrateLBFGSMM(lossLog: File?, activities: List<ActivityType>, iterations: Int)  {
+    fun calibrateLBFGSMM(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    )  {
         for (activity in activities) {
             val lossLogA = activityLogFile(activity, lossLog)
             val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-            var d =  BFGS.run(model, x0, iterations=iterations, out=lossLogA)
+            var d =  BFGS.run(model, x0, iterations=iterations, out=lossLogA, parameters = parameters)
             d = (d.toList() + listOf(1.0)).toDoubleArray()
             updateCalibration(d, activity)
         }
     }
 
-    fun calibrateSPSAMM(lossLog: File?, activities: List<ActivityType>, iterations: Int) {
+    fun calibrateSPSAMM(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ) {
          for (activity in activities) {
             val lossLogA = activityLogFile(activity, lossLog)
             val objective = metaModelObj(activity)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-            var d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLogA)
+            var d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLogA, parameters = parameters)
 
             d = (d.toList() + listOf(1.0)).toDoubleArray()
             updateCalibration(d, activity)
         }
     }
 
-    private fun calibrateSPSAAllAtOnce(lossLog: File?, activities: List<ActivityType>, iterations: Int) {
+    private fun calibrateSPSAAllAtOnce(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ) {
         val objective = batchObj(activities)
         val x0 = DoubleArray(omod.grid.size * activities.size) { 1.0 }
-        val d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLog)
+        val d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLog, parameters = parameters)
         updateCalibration(d, activities)
     }
 
-    private fun calibrateSPSA(lossLog: File?, activities: List<ActivityType>, iterations: Int) {
+    private fun calibrateSPSA(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ) {
          for (activity in activities) {
             val lossLogA = activityLogFile(activity, lossLog)
             val objective = batchObj(activity)
             val x0 = DoubleArray(omod.grid.size ) { 1.0 }
-            val d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLogA)
+            val d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLogA, parameters = parameters)
             updateCalibration(d, activity)
         }
     }
