@@ -23,7 +23,6 @@ object Adam {
         eps: Double = 1.0e-8,
         lb: Double = 0.0,
         ub: Double = 100.0,
-        dispatcher: CoroutineDispatcher = Dispatchers.Default,
         out: File? = null
     ) : DoubleArray {
         val writer = if (out != null) {
@@ -31,29 +30,27 @@ object Adam {
         } else {
             null
         }
-        val header = "Iteration, time, Objective Value"
+        val header = "Iteration, time, Objective Value, Best"
         if (writer != null) {
             writer.write(header)
             writer.newLine()
         }
 
+        // Init
         val x = x0.copyOf()
-        val g = DoubleArray(x0.size) { 0.0 }
+        var bestX = x0.copyOf()
+        var bestLoss = model.evaluate(x0)
+
         val m = DoubleArray(x0.size) { 0.0 }
         val mHat = DoubleArray(x0.size) { 0.0 }
         val v = DoubleArray(x0.size) { 0.0 }
         val vHat = DoubleArray(x0.size) { 0.0 }
 
         for (i in 0 until iterations) {
+            val g = DoubleArray(x0.size) { 0.0 }
             val time = measureTime {
-                // Determine gradients
-                runBlocking(Dispatchers.Default) {
-                    for (j in x.indices) {
-                        launch {
-                            g[j] = model.gradientForward(j, x)
-                        }
-                    }
-                }
+                // Compute Gradient
+                model.gradientReverse(x, g, 1.0)
 
                 // Update momentum
                 for (j in x.indices) {
@@ -82,8 +79,16 @@ object Adam {
                     }
                 }
             }
-            val oval = model.evaluate(x)
-            val line = "$i,$time,$oval"
+
+            // Evaluate
+            val loss = model.evaluate(x)
+
+            if (loss < bestLoss) {
+                bestX = x.copyOf()
+                bestLoss = loss
+            }
+
+            val line = "$i,$time,$loss,$bestLoss"
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()
@@ -95,7 +100,7 @@ object Adam {
         }
         writer?.flush()
         writer?.close()
-        return x
+        return bestX
     }
 }
 

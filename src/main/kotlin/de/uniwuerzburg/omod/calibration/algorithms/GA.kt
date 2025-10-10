@@ -8,6 +8,8 @@ import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
 import java.util.*
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.time.measureTime
 
 object GA {
@@ -25,7 +27,7 @@ object GA {
         pM: Double = 0.8,
         pGM: Double = 0.02,
         sigGM: Double = (ub - lb) / 6.0,
-        dispatcher: CoroutineDispatcher = Dispatchers.Default,
+        nWorker: Int? = null,
         out: File? = null
     ) : DoubleArray {
         val writer = if (out != null) {
@@ -61,57 +63,62 @@ object GA {
                 val fathers = currentGeneration.takeLast(generationSize - nSurvivors)
                 val offspring = Array<Candidate?>(fathers.size) { null }
 
-                runBlocking(dispatcher) {
-                    for ((i, father) in fathers.withIndex()) {
-                        launch {
-                            var x = father.x.copyOf()
+                val executor = if (nWorker == null)
+                    Executors.newWorkStealingPool()
+                else {
+                    Executors.newWorkStealingPool(nWorker)
+                }
+                for ((i, father) in fathers.withIndex()) {
+                    executor.submit{
+                        var x = father.x.copyOf()
 
-                            // Recombination
-                            if (rng.nextDouble() < pR) {
-                                val mother = currentGeneration[rng.nextInt(generationSize)]
+                        // Recombination
+                        if (rng.nextDouble() < pR) {
+                            val mother = currentGeneration[rng.nextInt(generationSize)]
 
-                                // Crossovers
-                                val cPoint = rng.nextInt(x.size)
-                                for (i in cPoint until x.size) {
-                                    x[i] = mother.x[i]
-                                }
+                            // Crossovers
+                            val cPoint = rng.nextInt(x.size)
+                            for (j in cPoint until x.size) {
+                                x[j] = mother.x[j]
                             }
-
-                            // Mutation
-                            if (rng.nextDouble() < pM) {
-                                for (i in x.indices) {
-                                    if (rng.nextDouble() < pGM) {
-                                        x[i] = x[i] + rng.nextGaussian(0.0, sigGM)
-                                    }
-                                }
-                            }
-
-                            // Check if feasible
-                            var feasible = true
-                            for (i in x.indices) {
-                                if (x[i] < lb) {
-                                    feasible = false
-                                    break
-                                }
-                                if (x[i] >= ub) {
-                                    feasible = false
-                                    break
-                                }
-                            }
-
-                            // If not feasible replace with random
-                            if (!feasible) {
-                                x = DoubleArray(nDimensions) { rng.nextDouble(lb, ub) }
-                            }
-
-                            // Evaluate loss
-                            val loss = objective(x)
-
-                            val newborn = Candidate(x, loss)
-                            offspring[i] = newborn
                         }
+
+                        // Mutation
+                        if (rng.nextDouble() < pM) {
+                            for (j in x.indices) {
+                                if (rng.nextDouble() < pGM) {
+                                    x[j] = x[j] + rng.nextGaussian(0.0, sigGM)
+                                }
+                            }
+                        }
+
+                        // Check if feasible
+                        var feasible = true
+                        for (j in x.indices) {
+                            if (x[j] < lb) {
+                                feasible = false
+                                break
+                            }
+                            if (x[j] >= ub) {
+                                feasible = false
+                                break
+                            }
+                        }
+
+                        // If not feasible replace with random
+                        if (!feasible) {
+                            x = DoubleArray(nDimensions) { rng.nextDouble(lb, ub) }
+                        }
+
+                        // Evaluate loss
+                        val loss = objective(x)
+
+                        val newborn = Candidate(x, loss)
+                        offspring[i] = newborn
                     }
                 }
+                executor.shutdown()
+                executor.awaitTermination(5, TimeUnit.HOURS) // Wait as long as necessary.
 
                 val newCandidates = (fathers + offspring.map {it!!}).toMutableList()
 

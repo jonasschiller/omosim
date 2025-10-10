@@ -4,8 +4,6 @@ import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.time.measureTime
 
@@ -106,7 +104,7 @@ object GradientDescent {
         STATIC, BARZILAI_BORWEIN
     }
 
-    private fun barBowUpdate(x: DoubleArray, g: DoubleArray, xPrior: DoubleArray, gPrior: DoubleArray) : Double {
+    fun barBowUpdate(x: DoubleArray, g: DoubleArray, xPrior: DoubleArray, gPrior: DoubleArray) : Double {
         var top = 0.0
         var bot = 0.0
         for (i in x.indices) {

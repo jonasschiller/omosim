@@ -10,6 +10,8 @@ import java.io.FileWriter
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.*
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.time.measureTime
@@ -83,7 +85,7 @@ object PSO {
         phiG: Double = dPhiG,
         vClamp: Double = dVClamp,
         boundStrategy: BoundStrategy = dBoundStrategy,
-        dispatcher: CoroutineDispatcher = Dispatchers.Default,
+        nWorker: Int? = null,
         out: File? = null
     ) : DoubleArray {
         val writer = if (out != null) {
@@ -110,7 +112,6 @@ object PSO {
             }
             PSOParticle(v, x, x, oval)
         }
-        //println("Initializing PSO... done!")
 
         val header = "Iteration, time, Objective Value, inbound"
         if (writer != null) {
@@ -121,50 +122,55 @@ object PSO {
         for(iteration in 0 until iterations ) {
             var nInbound = 0 // Performance indicator for INFINITY bound handling
             val time = measureTime {
-                runBlocking(dispatcher) {
-                    for (particle in particles) {
-                        launch {
-                            var inBound = true
-                            for (i in 0 until nDimensions) {
-                                val rp = rng.nextDouble()
-                                val rg = rng.nextDouble()
+                val executor = if (nWorker == null)
+                    Executors.newWorkStealingPool()
+                else {
+                    Executors.newWorkStealingPool(nWorker)
+                }
+                for (particle in particles) {
+                    executor.submit {
+                        var inBound = true
+                        for (i in 0 until nDimensions) {
+                            val rp = rng.nextDouble()
+                            val rg = rng.nextDouble()
 
-                                // Update velocity
-                                var velocity =
-                                    w * particle.velocity[i] +
-                                            phiP * rp * (particle.bestPosition[i] - particle.position[i]) +
-                                            phiG * rg * (globalBestPosition[i] - particle.position[i])
+                            // Update velocity
+                            var velocity =
+                                w * particle.velocity[i] +
+                                        phiP * rp * (particle.bestPosition[i] - particle.position[i]) +
+                                        phiG * rg * (globalBestPosition[i] - particle.position[i])
 
-                                // Clamp
-                                velocity = min(velocity, maxVelocity)
-                                velocity = max(velocity, -maxVelocity)
-                                particle.velocity[i] = velocity
+                            // Clamp
+                            velocity = min(velocity, maxVelocity)
+                            velocity = max(velocity, -maxVelocity)
+                            particle.velocity[i] = velocity
 
-                                // Update position
-                                particle.position[i] += particle.velocity[i]
+                            // Update position
+                            particle.position[i] += particle.velocity[i]
 
-                                // Bound handling
-                                val dInBound = when(boundStrategy) {
-                                    BoundStrategy.REFLECT_Z -> bhReflectZ(particle, i, lb, ub, rng)
-                                    BoundStrategy.INFINITY -> bhInfinity(particle, i, lb, ub, rng)
-                                }
-                                inBound = inBound && dInBound
+                            // Bound handling
+                            val dInBound = when(boundStrategy) {
+                                BoundStrategy.REFLECT_Z -> bhReflectZ(particle, i, lb, ub, rng)
+                                BoundStrategy.INFINITY -> bhInfinity(particle, i, lb, ub)
+                            }
+                            inBound = inBound && dInBound
+                        }
+
+                        if (inBound) {
+                            // Check performance
+                            val oval = objective(particle.position)
+
+                            if (oval < particle.best) {
+                                particle.bestPosition = particle.position.copyOf()
+                                particle.best = oval
                             }
 
-                            if (inBound) {
-                                // Check performance
-                                val oval = objective(particle.position)
-
-                                if (oval < particle.best) {
-                                    particle.bestPosition = particle.position.copyOf()
-                                    particle.best = oval
-                                }
-
-                                nInbound += 1
-                            }
+                            nInbound += 1
                         }
                     }
                 }
+                executor.shutdown()
+                executor.awaitTermination(5, TimeUnit.HOURS) // Wait as long as necessary.
 
                 for (particle in particles) {
                     if (particle.best < globalBest) {
@@ -205,8 +211,7 @@ object PSO {
         particle: PSOParticle,
         i: Int,
         lb: Double,
-        ub: Double,
-        rng: Random
+        ub: Double
     ) : Boolean {
         if (particle.position[i] < lb) { return false }
         if (particle.position[i] >= ub) { return false }
