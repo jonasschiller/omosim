@@ -57,7 +57,7 @@ class QuadraticTerm(
             termA.clearGradientCache(this)
             termB.clearGradientCache(this)
         }
-        if (received != 0) {
+        if ((received != 0) || (adjoint != 0.0)) {
             received = 0
             adjoint = 0.0
             termA.clearGradientCache(this)
@@ -70,6 +70,22 @@ class QuadraticTerm(
         if (nReceivers == 1) {
             termA.countReceivers(this)
             termB.countReceivers(this)
+
+            if (gradientCache.get() != null) {
+                print("quad errorA")
+            }
+            if (evalCache.get() != null) {
+                print("quad errorB")
+            }
         }
     }
+    override fun clearReceivers() {
+        if (nReceivers != 0) {
+            nReceivers = 0
+            termA.clearReceivers()
+            termB.clearReceivers()
+        }
+        nReceivers = 0
+    }
+
 }

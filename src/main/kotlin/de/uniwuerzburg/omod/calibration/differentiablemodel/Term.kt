@@ -10,4 +10,5 @@ interface Term {
     fun clearGradientCache(caller:Term? = null)
     fun chainBackward(vals: DoubleArray, partials: DoubleArray, seed: Double) // Determine gradients with backpropagation. This version is slower than the forward approach.
     fun countReceivers(caller:Term?)
+    fun clearReceivers()
 }

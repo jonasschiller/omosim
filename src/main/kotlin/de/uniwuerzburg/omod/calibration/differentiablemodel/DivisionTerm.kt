@@ -46,6 +46,7 @@ class DivisionTerm(
     }
 
     override fun clearEvalCache() {
+        //println("${Thread.currentThread()}")
         if (evalCache.get() != null) {
             evalCache.set(null)
             dividend.clearEvalCache()
@@ -59,7 +60,7 @@ class DivisionTerm(
             dividend.clearGradientCache(this)
             divisor.clearGradientCache(this)
         }
-        if (received != 0) {
+        if ((received != 0) || (adjoint != 0.0)) {
             received = 0
             adjoint = 0.0
             dividend.clearGradientCache(this)
@@ -72,6 +73,22 @@ class DivisionTerm(
         if (nReceivers == 1) {
             dividend.countReceivers(this)
             divisor.countReceivers(this)
+
+            if (gradientCache.get() != null) {
+                print("div errorA")
+            }
+            if (evalCache.get() != null) {
+                print("div errorB")
+            }
         }
+    }
+
+    override fun clearReceivers() {
+        if (nReceivers != 0) {
+            nReceivers = 0
+            dividend.clearReceivers()
+            divisor.clearReceivers()
+        }
+        nReceivers = 0
     }
 }

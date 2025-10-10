@@ -44,5 +44,11 @@ class LinearBaseTerm(
 
     override fun clearGradientCache(caller:Term?) { }
 
-    override fun countReceivers(caller:Term?) { }
+    override fun countReceivers(caller:Term?) {
+        if (evalCache.get() != null) {
+            print("errorB")
+        }
+    }
+
+    override fun clearReceivers() { }
 }

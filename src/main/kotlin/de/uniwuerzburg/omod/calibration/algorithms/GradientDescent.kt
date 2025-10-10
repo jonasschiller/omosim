@@ -1,16 +1,18 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearTerm
+import kotlinx.coroutines.*
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 import kotlin.time.measureTime
 
 object GradientDescent {
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
@@ -33,24 +35,54 @@ object GradientDescent {
         }
 
         val x = x0.copyOf()
-        val gF = DoubleArray(x0.size) { 0.0 }
-
+        //val gF = DoubleArray(x0.size) { 0.0 }
         for (i in 0 until iterations) {
-            println(i)
             val time = measureTime {
                 // Determine gradients
-                runBlocking(dispatcher) {
-                    for (j in x.indices) {
-                        launch {
-                            gF[j] = model.gradient(j, x)
-                        }
+                val executor = Executors.newWorkStealingPool()
+                val gF = DoubleArray(x0.size) { 0.0 }
+                val jobs = MutableList<Future<*>?>(x0.size) {null}
+                for (j in x.indices) {
+                    jobs[j] = executor.submit {
+                        //model.clearEvalCache()
+                        //model.clearReceivers()
+                        //model.countReceivers(null)
+                        gF[j] = model.gradient(j, x)
+                        gF[j]
                     }
                 }
+                executor.shutdown()
+                executor.awaitTermination(9999, TimeUnit.SECONDS)
+                /*runBlocking(dispatcher.limitedParallelism(1)) {
+                    for (j in x.indices) {
+                        //val jx = x.copyOf()
+                        launch {
+                            if (j == 0) {
+                                println(x[0])
+                                println("${Thread.currentThread()}")
+                                println("${(model.root as LinearTerm).gradientCache.get()}")
+                            }
+
+                            model.clearEvalCache()
+                            model.clearReceivers()
+                            //model.countReceivers(null)
+                            gF[j] = model.gradient(j, x)
+
+                            if (j == 0) {
+                                println(gF[j] )
+                                println("${Thread.currentThread()}")
+                                println("${(model.root as LinearTerm).gradientCache.get()}")
+                            }
+                        }
+                    }
+                }*/
+                //val gF = jobs.map { it!!.getCompleted() }.toDoubleArray()
+                //println(model.evaluate(x))
+                //println("Ye")
                 val g = DoubleArray(x0.size) { 0.0 }
                 //model.evaluate(x)
                 //println("TEst")
-                model.clearGradientCache()
-                model.clearEvalCache()
+
                 model.chainBackward(x, g, 1.0)
                 model.clearGradientCache()
                 model.clearEvalCache()
@@ -70,6 +102,7 @@ object GradientDescent {
                         x[j] = ub
                     }
                 }
+                println(x[0])
             }
             val oval = model.evaluate(x)
             val line = "$i,$time,$oval"

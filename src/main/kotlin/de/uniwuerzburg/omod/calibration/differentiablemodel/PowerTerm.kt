@@ -54,7 +54,7 @@ class PowerTerm(
             gradientCache.set(null)
             base.clearGradientCache(this)
         }
-        if (received != 0) {
+        if ((received != 0) || (adjoint != 0.0)) {
             received = 0
             adjoint = 0.0
             base.clearGradientCache(this)
@@ -65,6 +65,21 @@ class PowerTerm(
         nReceivers += 1
         if (nReceivers == 1) {
             base.countReceivers(this)
+            if (gradientCache.get() != null) {
+                print("power errorA")
+            }
+            if (evalCache.get() != null) {
+                print("power errorB")
+            }
+
         }
+    }
+
+    override fun clearReceivers() {
+        if (nReceivers != 0) {
+            nReceivers = 0
+            base.clearReceivers()
+        }
+        nReceivers = 0
     }
 }

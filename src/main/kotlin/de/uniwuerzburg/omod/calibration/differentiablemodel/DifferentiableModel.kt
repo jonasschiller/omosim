@@ -18,6 +18,7 @@ class DifferentiableModel (
     }
 
     override fun gradient(variable: Int, vals: DoubleArray): Double {
+        root.clearGradientCache()
         val result = root.gradient(variable, vals)
         root.clearGradientCache()
         return result
@@ -39,6 +40,10 @@ class DifferentiableModel (
 
     override fun countReceivers(caller:Term?) {
         root.countReceivers(this)
+    }
+
+    override fun clearReceivers() {
+        root.clearReceivers()
     }
 
     // SMILE interface

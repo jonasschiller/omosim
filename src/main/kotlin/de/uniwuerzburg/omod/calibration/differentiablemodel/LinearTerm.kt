@@ -76,7 +76,7 @@ class LinearTerm(
                 term.clearGradientCache(this)
             }
         }
-        if (received != 0) {
+        if ((received != 0) || (adjoint != 0.0)) {
             received = 0
             adjoint = 0.0
             for (term in terms) {
@@ -93,6 +93,23 @@ class LinearTerm(
             for (term in terms) {
                 term.countReceivers(this)
             }
+
+            if (gradientCache.get() != null) {
+                print("lin errorA")
+            }
+            if (evalCache.get() != null) {
+                print("lin errorB")
+            }
         }
+    }
+
+    override fun clearReceivers() {
+        if (nReceivers != 0) {
+            nReceivers = 0
+            for (term in terms) {
+                term.clearReceivers()
+            }
+        }
+        nReceivers = 0
     }
 }
