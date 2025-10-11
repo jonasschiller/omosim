@@ -13,24 +13,64 @@ import java.util.concurrent.TimeUnit
 import kotlin.time.measureTime
 
 object GA {
+    object Defaults {
+        const val lb = 0.0
+        const val ub = 100.0
+        const val generationSize = 100
+        const val shareSurvivors = 0.4
+        const val nEliteOffspring = 5
+        const val pR = 0.8
+        const val pM = 0.8
+        const val pGM = 0.02
+        val sigGM = null
+    }
+
     fun run(
         nDimensions: Int,
         objective: (DoubleArray) -> Double,
         rng: Random,
         iterations: Int = 1000,
-        parameters: Map<String, String>? = null,
-        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
-        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 1e3,
-        generationSize: Int = parameters?.get("generationSize")?.toIntOrNull() ?: 100,
-        shareSurvivors: Double = parameters?.get("shareSurvivors")?.toDoubleOrNull() ?: 0.4,
-        nEliteOffspring: Int = parameters?.get("nEliteOffspring")?.toIntOrNull() ?: 5,
-        pR: Double = parameters?.get("pR")?.toDoubleOrNull() ?: 0.8,
-        pM: Double = parameters?.get("pM")?.toDoubleOrNull() ?: 0.8,
-        pGM: Double = parameters?.get("pGM")?.toDoubleOrNull() ?: 0.02,
-        sigGM: Double = parameters?.get("sigGM")?.toDoubleOrNull() ?: ((ub - lb) / 6.0),
         nWorker: Int? = null,
-        out: File? = null
+        out: File? = null,
+        parameters: Map<String, String>? = null,
     ) : DoubleArray {
+        return run (
+            nDimensions,
+            objective,
+            rng, iterations,
+            nWorker,
+            out,
+            lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
+            ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
+            generationSize = parameters?.get("generationSize")?.toIntOrNull() ?: Defaults.generationSize,
+            shareSurvivors = parameters?.get("shareSurvivors")?.toDoubleOrNull() ?: Defaults.shareSurvivors,
+            nEliteOffspring = parameters?.get("nEliteOffspring")?.toIntOrNull() ?: Defaults.nEliteOffspring,
+            pR = parameters?.get("pR")?.toDoubleOrNull() ?: Defaults.pR,
+            pM = parameters?.get("pM")?.toDoubleOrNull() ?: Defaults.pM,
+            pGM = parameters?.get("pGM")?.toDoubleOrNull() ?: Defaults.pGM,
+            sigGMarg = parameters?.get("sigGM")?.toDoubleOrNull() ?: Defaults.sigGM,
+        )
+    }
+
+    fun run(
+        nDimensions: Int,
+        objective: (DoubleArray) -> Double,
+        rng: Random,
+        iterations: Int = 1000,
+        nWorker: Int? = null,
+        out: File? = null,
+        lb: Double = Defaults.lb,
+        ub: Double = Defaults.ub,
+        generationSize: Int = Defaults.generationSize,
+        shareSurvivors: Double = Defaults.shareSurvivors,
+        nEliteOffspring: Int = Defaults.nEliteOffspring,
+        pR: Double = Defaults.pR,
+        pM: Double = Defaults.pM,
+        pGM: Double = Defaults.pGM,
+        sigGMarg: Double? = Defaults.sigGM
+    ) : DoubleArray {
+        val sigGM = sigGMarg ?: ((ub - lb) / 6.0) // Computed default
+
         val writer = if (out != null) {
             BufferedWriter(FileWriter(out))
         } else {
@@ -50,8 +90,12 @@ object GA {
         }
         println("Initializing GA... done!")
 
+        val parameterLine = "Parameters:lb=$lb:ub$ub:generationSize$generationSize:shareSurvivors" +
+                "$shareSurvivors:nEliteOffspring$nEliteOffspring:pR$pR:pM$pM:pGM$pGM:sigGMarg$sigGM"
         val header = "Iteration, time, Objective Value"
         if (writer != null) {
+            writer.write(parameterLine)
+            writer.newLine()
             writer.write(header)
             writer.newLine()
         }

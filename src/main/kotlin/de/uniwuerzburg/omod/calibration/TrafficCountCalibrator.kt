@@ -208,7 +208,7 @@ class TrafficCountCalibrator(
             val lossLogA = activityLogFile(activity, lossLog)
             val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-            var d = GradientDescent.run(model, x0, iterations=iterations, lr0=1e-8, out=lossLogA, parameters = parameters ?: mapOf())
+            var d = GradientDescent.run(model, x0, iterations=iterations, out=lossLogA, parameters = parameters)
 
             d = (d.toList() + listOf(1.0)).toDoubleArray()
 
@@ -223,7 +223,7 @@ class TrafficCountCalibrator(
              val lossLogA = activityLogFile(activity, lossLog)
              val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
              val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-             var d = Adam.run(model, x0, iterations=iterations, lr=1e-2, out=lossLogA, parameters = parameters)
+             var d = Adam.run(model, x0, iterations=iterations, out=lossLogA, parameters = parameters)
 
              d = (d.toList() + listOf(1.0)).toDoubleArray()
              updateCalibration(d, activity)

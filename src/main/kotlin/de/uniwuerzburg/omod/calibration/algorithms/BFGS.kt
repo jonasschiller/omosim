@@ -7,24 +7,53 @@ import java.io.File
 import java.io.FileWriter
 
 object BFGS {
+    object Defaults {
+        const val m = 5
+        const val gTol = 1e-5
+        const val lb = 0.0
+        const val ub = 1e3
+    }
+
+    fun run (
+        model: DifferentiableModel,
+        x0: DoubleArray,
+        iterations: Int = 100,
+        out: File? = null,
+        parameters: Map<String, String>? = null,
+    ) : DoubleArray {
+        return run(
+            model,
+            x0,
+            iterations,
+            out,
+            lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
+            ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
+            m = parameters?.get("m")?.toIntOrNull() ?: Defaults.m,
+            gTol = parameters?.get("gTol")?.toDoubleOrNull() ?: Defaults.gTol,
+        )
+    }
+
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
         iterations: Int = 100,
-        parameters: Map<String, String>? = null,
-        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
-        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 1e3,
-        m: Int = parameters?.get("m")?.toIntOrNull() ?: 5,
-        gTol: Double = parameters?.get("gTol")?.toDoubleOrNull() ?: 1e-5,
-        out: File? = null
+        out: File? = null,
+        lb: Double = Defaults.lb,
+        ub: Double = Defaults.ub,
+        m: Int = Defaults.m,
+        gTol: Double = Defaults.gTol,
     ) : DoubleArray {
         val writer = if (out != null) {
             BufferedWriter(FileWriter(out))
         } else {
             null
         }
+
+        val parameterLine = "Parameters:lb=$lb:ub$ub:m$m:gTol$gTol"
         val header = "Iteration, Objective Value"
         if (writer != null) {
+            writer.write(parameterLine)
+            writer.newLine()
             writer.write(header)
             writer.newLine()
         }

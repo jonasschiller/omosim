@@ -14,18 +14,47 @@ import kotlin.time.measureTime
 // TODO test WSPSA, MSPSA
 
 object SPSA {
+    object Defaults {
+        const val lb = 0.0
+        const val ub = 100.0
+        const val a0 = 1.0
+        const val c0 = 1.0
+        const val gamma = (1.0 / 3.0)
+    }
+
     fun run(
         x0: DoubleArray,
         objective: (DoubleArray) -> Double,
         rng: Random,
         iterations: Int = 10000,
+        out: File? = null,
         parameters: Map<String, String>? = null,
-        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
-        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 1e3,
-        a0: Double = parameters?.get("a0")?.toDoubleOrNull() ?: 1.0,
-        c0: Double = parameters?.get("c0")?.toDoubleOrNull() ?: 1.0,
-        gamma: Double = parameters?.get("gamma")?.toDoubleOrNull() ?: (1.0 / 3.0),
-        out: File? = null
+    ) : DoubleArray {
+        return run(
+            x0 = x0,
+            objective = objective,
+            rng = rng,
+            iterations = iterations,
+            out = out,
+            lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
+            ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
+            a0 = parameters?.get("a0")?.toDoubleOrNull() ?: Defaults.a0,
+            c0 = parameters?.get("c0")?.toDoubleOrNull() ?: Defaults.c0,
+            gamma = parameters?.get("gamma")?.toDoubleOrNull() ?: Defaults.gamma,
+        )
+    }
+
+    fun run(
+        x0: DoubleArray,
+        objective: (DoubleArray) -> Double,
+        rng: Random,
+        iterations: Int = 10000,
+        out: File? = null,
+        lb: Double = Defaults.lb,
+        ub: Double = Defaults.ub,
+        a0: Double = Defaults.a0,
+        c0: Double = Defaults.c0,
+        gamma: Double = Defaults.gamma
     ) : DoubleArray {
         println("SPSA...")
         // Store results

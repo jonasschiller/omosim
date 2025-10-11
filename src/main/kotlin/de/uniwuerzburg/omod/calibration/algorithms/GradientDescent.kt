@@ -10,28 +10,55 @@ import kotlin.time.measureTime
 
 
 object GradientDescent {
+    object Defaults {
+        const val lr0 = 1.0e-8
+        const val lb = 0.0
+        const val ub = 100.0
+        val lrStrategy = LearningRateUpdateStrategy.STATIC
+    }
+
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
         iterations: Int = 1000,
         parameters: Map<String, String>? = null,
-        lr0: Double = parameters?.get("lr0")?.toDoubleOrNull() ?: 1.0e-8,
-        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
-        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 100.0,
-        lrStrategy: LearningRateUpdateStrategy = parameters?.get("lrStrategy")?.toLearningRateUpdateStrategy() ?: LearningRateUpdateStrategy.STATIC,
         out: File? = null
     ) : DoubleArray {
-        // TODO fill args based on parameters
+        return run(
+            model,
+            x0,
+            iterations,
+            out = out,
+            lr0 = parameters?.get("lr0")?.toDoubleOrNull() ?: Defaults.lr0,
+            lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
+            ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
+            lrStrategy = parameters?.get("lrStrategy")?.toLearningRateUpdateStrategy() ?: Defaults.lrStrategy
+        )
+    }
 
-        println("Parameter:$lr0,$lb,$ub,$lrStrategy") // TODO add this to losslog or something
 
+    fun run(
+        model: DifferentiableModel,
+        x0: DoubleArray,
+        iterations: Int = 1000,
+        out: File? = null,
+        lr0: Double = Defaults.lr0,
+        lb: Double = Defaults.lb,
+        ub: Double = Defaults.ub,
+        lrStrategy: LearningRateUpdateStrategy =  Defaults.lrStrategy,
+    ) : DoubleArray {
         val writer = if (out != null) {
             BufferedWriter(FileWriter(out))
         } else {
             null
         }
+
+        val parameterLine = "Parameters:lr0=$lr0:lb=$lb:ub$ub:lrStrategy$lrStrategy"
+        println(parameterLine)
         val header = "Iteration, time, Objective Value, Best"
         if (writer != null) {
+            writer.write(parameterLine)
+            writer.newLine()
             writer.write(header)
             writer.newLine()
         }

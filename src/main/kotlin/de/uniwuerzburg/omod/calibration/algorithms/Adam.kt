@@ -13,26 +13,59 @@ import kotlin.math.sqrt
 import kotlin.time.measureTime
 
 object Adam {
+    object Defaults {
+        const val lr = 1.0e-6
+        const val b1 = 0.9
+        const val b2 = 0.999
+        const val eps = 1.0e-8
+        const val lb = 0.0
+        const val ub = 100.0
+    }
+
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
         iterations: Int = 1000,
-        parameters: Map<String, String>? = null,
-        lr: Double = parameters?.get("lr")?.toDoubleOrNull() ?: 1.0e-6,
-        b1: Double = parameters?.get("b1")?.toDoubleOrNull() ?: 0.9,
-        b2: Double = parameters?.get("b2")?.toDoubleOrNull() ?:  0.999,
-        eps: Double = parameters?.get("eps")?.toDoubleOrNull() ?: 1.0e-8,
-        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
-        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 100.0,
         out: File? = null,
+        parameters: Map<String, String>? = null,
+    ) : DoubleArray {
+        return run(
+            model,
+            x0,
+            iterations,
+            out,
+            lr = parameters?.get("lr")?.toDoubleOrNull() ?: Defaults.lr,
+            b1 = parameters?.get("b1")?.toDoubleOrNull() ?: Defaults.b1,
+            b2 = parameters?.get("b2")?.toDoubleOrNull() ?:  Defaults.b2,
+            eps = parameters?.get("eps")?.toDoubleOrNull() ?: Defaults.eps,
+            lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
+            ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
+        )
+    }
+
+    fun run(
+        model: DifferentiableModel,
+        x0: DoubleArray,
+        iterations: Int = 1000,
+        out: File? = null,
+        lr: Double = Defaults.lr,
+        b1: Double = Defaults.b1,
+        b2: Double = Defaults.b2,
+        eps: Double = Defaults.eps,
+        lb: Double = Defaults.lb,
+        ub: Double = Defaults.ub,
     ) : DoubleArray {
         val writer = if (out != null) {
             BufferedWriter(FileWriter(out))
         } else {
             null
         }
+
+        val parameterLine = "Parameters:lr=$lr:lb=$lb:ub$ub:b1$b1:b2$b2:eps$eps"
         val header = "Iteration, time, Objective Value, Best"
         if (writer != null) {
+            writer.write(parameterLine)
+            writer.newLine()
             writer.write(header)
             writer.newLine()
         }

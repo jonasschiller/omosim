@@ -23,22 +23,59 @@ import kotlin.time.measureTime
 // Bound handling: https://ieeexplore.ieee.org/abstract/document/6163405
 
 object PSO {
+    object Defaults {
+        const val lb = 0.0
+        const val ub = 100.0
+        const val nParticles = 20
+        const val w = 0.8
+        const val phiP = 1.6
+        const val phiG = 1.6
+        const val vClamp = 1.0
+        val boundStrategy = BoundStrategy.REFLECT_Z
+    }
+
+    fun run (
+        nDimensions: Int,
+        objective: (DoubleArray) -> Double,
+        rng: Random,
+        iterations: Int = 1000,
+        nWorker: Int? = null,
+        out: File? = null,
+        parameters: Map<String, String>? = null,
+    ) : DoubleArray {
+        return run(
+            nDimensions,
+            objective,
+            rng,
+            iterations,
+            nWorker,
+            out,
+            lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
+            ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
+            nParticles = parameters?.get("nParticles")?.toIntOrNull() ?: Defaults.nParticles,
+            w = parameters?.get("w")?.toDoubleOrNull() ?: Defaults.w,
+            phiP = parameters?.get("phiP")?.toDoubleOrNull() ?: Defaults.phiP,
+            phiG = parameters?.get("phiG")?.toDoubleOrNull() ?: Defaults.phiG,
+            vClamp = parameters?.get("vClamp")?.toDoubleOrNull() ?: Defaults.vClamp,
+            boundStrategy = parameters?.get("boundStrategy")?.toBoundStrategy() ?: Defaults.boundStrategy,
+        )
+    }
+
     fun run(
         nDimensions: Int,
         objective: (DoubleArray) -> Double,
         rng: Random,
         iterations: Int = 1000,
-        parameters: Map<String, String>? = null,
-        lb: Double = parameters?.get("lb")?.toDoubleOrNull() ?: 0.0,
-        ub: Double = parameters?.get("ub")?.toDoubleOrNull() ?: 1e3,
-        nParticles: Int = parameters?.get("nParticles")?.toIntOrNull() ?: 20,
-        w: Double = parameters?.get("w")?.toDoubleOrNull() ?: 0.8,
-        phiP: Double = parameters?.get("phiP")?.toDoubleOrNull() ?: 1.6,
-        phiG: Double = parameters?.get("phiG")?.toDoubleOrNull() ?: 1.6,
-        vClamp: Double = parameters?.get("vClamp")?.toDoubleOrNull() ?: 1.0,
-        boundStrategy: BoundStrategy = parameters?.get("boundStrategy")?.toBoundStrategy() ?: BoundStrategy.REFLECT_Z,
         nWorker: Int? = null,
-        out: File? = null
+        out: File? = null,
+        lb: Double = Defaults.lb,
+        ub: Double = Defaults.ub,
+        nParticles: Int = Defaults.nParticles,
+        w: Double = Defaults.w,
+        phiP: Double = Defaults.phiP,
+        phiG: Double = Defaults.phiG,
+        vClamp: Double = Defaults.vClamp,
+        boundStrategy: BoundStrategy = Defaults.boundStrategy,
     ) : DoubleArray {
         val writer = if (out != null) {
             BufferedWriter(FileWriter(out))
@@ -65,8 +102,12 @@ object PSO {
             PSOParticle(v, x, x, oval)
         }
 
+        val parameterLine = "Parameters:b=$lb:ub$ub:nParticles$nParticles:w$w:phiP" +
+                "$phiP:phiG$phiG:vClamp$vClamp:boundStrategy$boundStrategy"
         val header = "Iteration, time, Objective Value, inbound"
         if (writer != null) {
+            writer.write(parameterLine)
+            writer.newLine()
             writer.write(header)
             writer.newLine()
         }
