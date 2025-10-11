@@ -7,8 +7,6 @@ import java.io.FileWriter
 import kotlin.math.abs
 import kotlin.time.measureTime
 
-
-
 object GradientDescent {
     object Defaults {
         const val lr0 = 1.0e-8
@@ -36,7 +34,6 @@ object GradientDescent {
         )
     }
 
-
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
@@ -54,7 +51,6 @@ object GradientDescent {
         }
 
         val parameterLine = "Parameters:lr0=$lr0:lb=$lb:ub$ub:lrStrategy$lrStrategy"
-        println(parameterLine)
         val header = "Iteration, time, Objective Value, Best"
         if (writer != null) {
             writer.write(parameterLine)
