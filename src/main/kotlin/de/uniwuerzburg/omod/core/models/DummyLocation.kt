@@ -24,4 +24,8 @@ data class DummyLocation (
     override fun getAggLoc() : AggLocation {
         return this
     }
+
+    override fun getCentralBuilding() : Building? {
+        return null
+    }
 }

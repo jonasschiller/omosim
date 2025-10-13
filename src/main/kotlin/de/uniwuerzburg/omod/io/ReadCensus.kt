@@ -46,7 +46,7 @@ fun readCensus(
             .map { it as BuildingData }
             .filter { it.geometry.intersects(censusZone) }
             .shuffled(rng)
-
+        //Population is equally distributed to all buildings in the census zone
         val populationPerBuilding = ceil(population / intersectingBuildings.count().toDouble())
         for (building in intersectingBuildings) {
             val populationBuilding = min(population, populationPerBuilding)

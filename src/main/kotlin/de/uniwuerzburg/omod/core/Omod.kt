@@ -213,7 +213,7 @@ class Omod(
         }
 
         // Agent factory
-        agentFactory = AgentFactoryDefault(destinationFinder, carOwnership, popStrata, dispatcher)
+        agentFactory = AgentFactorySynthPop(destinationFinder)
 
         logger.info("Initializing OMOD took: ${timeSource.markNow() - timestampStartInit}")
     }
@@ -393,7 +393,7 @@ class Omod(
         val locations = mutableListOf<LocationOption>()
         locations.add(start)
         for (i in 1 until activityChain.size) {
-            val location =
+            val location: LocationOption =
                 when (activityChain[i]) {
                     ActivityType.HOME -> agent.home
                     ActivityType.WORK -> agent.work

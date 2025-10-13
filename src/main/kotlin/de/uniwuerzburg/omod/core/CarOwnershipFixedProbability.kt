@@ -3,6 +3,7 @@ package de.uniwuerzburg.omod.core
 import de.uniwuerzburg.omod.core.models.MobiAgent
 import de.uniwuerzburg.omod.core.models.PopStratum
 import java.util.*
+import kotlin.text.compareTo
 
 /**
  * Determines car ownership with a fixed probability.
@@ -14,11 +15,12 @@ import java.util.*
 class CarOwnershipFixedProbability(
     private val minDrivingAge: Int
 ): CarOwnership {
-    override fun determine(agent: MobiAgent, stratum: PopStratum, rng: Random) : Boolean {
-       return if ((agent.age != null) && (agent.age < minDrivingAge)){
-           false
-       } else {
-           rng.nextDouble() < stratum.carOwnership
-       }
+    override fun determine(agent: MobiAgent, stratum: PopStratum, rng: Random): Boolean {
+        val age = agent.age
+        return if (age != null && age < minDrivingAge) {
+            false
+        } else {
+            rng.nextDouble() < stratum.carOwnership
+        }
     }
 }

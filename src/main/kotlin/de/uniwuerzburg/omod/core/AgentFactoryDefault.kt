@@ -8,13 +8,7 @@ import java.util.*
 /**
  * Creates agents by determining socio-demographic features as well as work and school locations.
  */
-class AgentFactoryDefault (
-    private val destinationFinder: DestinationFinder,
-    private val carOwnership: CarOwnership,
-    private val popStrata: List<PopStratum>,
-    private val dispatcher: CoroutineDispatcher
-) : AgentFactory {
-    private val strataDistr: DoubleArray = createCumDist(popStrata.map{it.stratumShare}.toDoubleArray())
+interface AgentFactoryDefault : AgentFactory {
 
     /**
      * Initialize population based on a share of the existing population.
@@ -26,26 +20,33 @@ class AgentFactoryDefault (
      * @param rng Random number generator
      * @return Population of agents
      */
+    val destinationFinder: DestinationFinder
     override fun createAgents(
         share: Double, zones: List<AggLocation>, populateBufferArea: Boolean, rng: Random
     ): List<MobiAgent> {
         print("Creating Population...\r")
-        // Real locations
+
         // Zones are aggregates created to reduce Routing effort
         // First routing between the zones then within zone
         val grid = zones.filterIsInstance<Cell>()
-
+        // Select buildings in focus area or all buildings, selects building from each cell and flattens the list
         val buildings = if (populateBufferArea) {
             grid.flatMap { it.buildings }
         } else {
             grid.flatMap { it.buildings }.filter { it.inFocusArea }
         }
 
+
         // Determine populations of dummy zones
+        // Attraction for ActivityType Home based on number of houses and POIs
         val weightSumCells = destinationFinder.getWeightsNoOrigin(grid, ActivityType.HOME).sum()
+        //Calculate total population in cells might not be high as most buildings don't have population assigned
         val totalPopCells = grid.sumOf { it.population }
+        // calculate home weights for all zones (cells and dummy locations)
+        // Dummy locations only used if OD File is provided
         val homeWeightsZones = destinationFinder.getWeightsNoOrigin(zones, ActivityType.HOME)
 
+        // Can mostly ignore this part since OD matrices not used in most cases
         val dummyZones = mutableListOf<DummyLocation>()
         val dummyZonePopulation = mutableListOf<Int>()
         if (populateBufferArea) {
@@ -59,14 +60,17 @@ class AgentFactoryDefault (
             }
         }
 
-        // Determine number of agents
+        // Determine number of agents, get the total number of agents to create based on building population and selected share
         val totalAgentsBuildings = (buildings.sumOf { it.population } * share).toInt()
+        // total population in dummy zones
         val totalAgentsDummy = (dummyZonePopulation.sum() * share).toInt()
         val totalNAgents = totalAgentsBuildings + totalAgentsDummy
 
         val homes = ArrayList<LocationOption>(totalNAgents)
-        // Living in buildings
+        // Create a distribution based on building population to sample homes
+        // Just adds buildings according to their population
         val buildingPopDistr = createCumDistWOR(buildings.map { it.population.toInt() }.toIntArray())
+        // Distribute agents to buildings according to their population
         for (id in 0 until totalAgentsBuildings) {
             val i = sampleCumDistWOR(buildingPopDistr, rng)
             homes.add( buildings[i] )
@@ -138,64 +142,9 @@ class AgentFactoryDefault (
         logger.info("Creating Population... Done!")
         return agents
     }
-
-    /**
-     * @param homes Home location
-     * @param zones Options for work and school locations
-     * @param rng Random number generator
-     * @return Population of agents
-     */
-    private fun createAgentsFromHomes(
+    fun createAgentsFromHomes(
         homes: List<LocationOption>, zones: List<AggLocation>, rng: Random
-    ) : List<MobiAgent> {
-        val agents = ArrayList<MobiAgent>(homes.size)
-        for (chunk in homes.withIndex().chunked(AppConstants.nAllowedCoroutines)) {
-            runBlocking(dispatcher) {
-                val agentsFutures = mutableListOf<Deferred<MobiAgent>>()
-                for ((id, home) in chunk) {
-                    val coroutineRng = Random(rng.nextLong())
-                    val agent = async {
-                        createAgent(id, home, home.getAggLoc()!!, zones, coroutineRng)
-                    }
-                    agentsFutures.add(agent)
-                }
-                agents.addAll(agentsFutures.awaitAll())
-            }
-        }
-        agents.shuffle(rng)
-        return agents
-    }
-
-    /**
-     * Create agent with given home.
-     *
-     * @param home Home of the agent. Either a Building or a DummyLocation.
-     * @param homeZone Routing cell of the home. Either a Cell or a DummyLocation
-     * @return Agent
-     */
-    private fun createAgent(
-        id: Int, home: LocationOption, homeZone: AggLocation, zones: List<AggLocation>, rng: Random
-    ) : MobiAgent {
-        // Sociodemographic features
-        val stratum = popStrata[sampleCumDist(strataDistr, rng)]
-        val featureSet = stratum.sampleSocDemFeatures(rng)
-
-        // Fixed locations
-        val work = destinationFinder.getLocation(homeZone, zones, ActivityType.WORK, rng)
-        val school = destinationFinder.getLocation(homeZone, zones, ActivityType.SCHOOL, rng)
-
-        val agent = MobiAgent(
-            id, featureSet.hom, featureSet.mob, featureSet.age, home, work, school, featureSet.sex
-        )
-        agent.carAccess = carOwnership.determine(agent, stratum, rng)
-        return agent
-    }
-
-    /** Here I want to create a function that instead of sampling from a stratum selects an agent from a synthetic population
-     * Should still get a home location and home zone -> could potentially use home zone to select
-     *
-     *
-     */
+    ) : List<MobiAgent>
     /**
      * Get the home weights of all destinations in the focus area and set the others to zero; or the other way around.
      *
@@ -203,7 +152,7 @@ class AgentFactoryDefault (
      * @param inside True: Only the weights inside the focus area. False: Only those outside.
      * @return List of weights
      */
-    private fun getHomeWeightsRestricted(destinations: List<LocationOption>, inside: Boolean) : List<Double> {
+    fun getHomeWeightsRestricted(destinations: List<LocationOption>, inside: Boolean) : List<Double> {
         val originalWeights = destinationFinder.getWeightsNoOrigin(destinations, ActivityType.HOME)
         return if (inside) {
             originalWeights.mapIndexed { i, weight -> destinations[i].inFocusArea.toDouble() * weight }
