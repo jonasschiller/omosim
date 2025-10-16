@@ -88,7 +88,7 @@ object GA {
 
         val parameterLine = "Parameters:lb=$lb:ub$ub:generationSize$generationSize:shareSurvivors" +
                 "$shareSurvivors:nEliteOffspring$nEliteOffspring:pR$pR:pM$pM:pGM$pGM:sigGMarg$sigGM"
-        val header = "Iteration, time, Objective Value"
+        val header = "Iteration,time,Objective Value,Best"
         if (writer != null) {
             writer.write(parameterLine)
             writer.newLine()
@@ -189,7 +189,7 @@ object GA {
                 }
             }
 
-            val line = "$iteration,$time,$bestLoss"
+            val line = "$iteration,$time,$bestLoss,$bestLoss"
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()

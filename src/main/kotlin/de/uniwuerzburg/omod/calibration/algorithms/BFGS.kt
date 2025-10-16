@@ -5,6 +5,8 @@ import smile.math.BFGS
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
+import kotlin.time.measureTime
+import kotlin.time.measureTimedValue
 
 object BFGS {
     object Defaults {
@@ -50,7 +52,7 @@ object BFGS {
         }
 
         val parameterLine = "Parameters:lb=$lb:ub$ub:m$m:gTol$gTol"
-        val header = "Iteration, Objective Value"
+        val header = "Iteration,time,Objective Value,Best"
         if (writer != null) {
             writer.write(parameterLine)
             writer.newLine()
@@ -63,15 +65,17 @@ object BFGS {
         val u = DoubleArray(model.nVars){ ub }
 
         if (writer != null) {
-            writer.write("0,${model.evaluate(x0)}")
+            writer.write("0,0,${model.evaluate(x0)},${model.evaluate(x0)}")
             writer.newLine()
             writer.flush()
         }
 
-        val solution = BFGS.minimize(model, m, x, l, u, gTol, iterations)
+        val (solution, time) = measureTimedValue {
+            BFGS.minimize(model, m, x, l, u, gTol, iterations)
+        }
 
         if (writer != null) {
-            writer.write("${iterations},${solution}")
+            writer.write("${iterations},${time},${solution},${solution}")
             writer.newLine()
         }
 

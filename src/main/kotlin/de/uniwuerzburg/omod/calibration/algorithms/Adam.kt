@@ -62,7 +62,7 @@ object Adam {
         }
 
         val parameterLine = "Parameters:lr=$lr:lb=$lb:ub$ub:b1$b1:b2$b2:eps$eps"
-        val header = "Iteration, time, Objective Value, Best"
+        val header = "Iteration,time,Objective Value,Best"
         if (writer != null) {
             writer.write(parameterLine)
             writer.newLine()

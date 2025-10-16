@@ -51,7 +51,7 @@ object GradientDescent {
         }
 
         val parameterLine = "Parameters:lr0=$lr0:lb=$lb:ub$ub:lrStrategy$lrStrategy"
-        val header = "Iteration, time, Objective Value, Best"
+        val header = "Iteration,time,Objective Value,Best"
         if (writer != null) {
             writer.write(parameterLine)
             writer.newLine()

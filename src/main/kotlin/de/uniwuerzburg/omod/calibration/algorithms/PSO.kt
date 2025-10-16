@@ -104,7 +104,7 @@ object PSO {
 
         val parameterLine = "Parameters:b=$lb:ub$ub:nParticles$nParticles:w$w:phiP" +
                 "$phiP:phiG$phiG:vClamp$vClamp:boundStrategy$boundStrategy"
-        val header = "Iteration, time, Objective Value, inbound"
+        val header = "Iteration,time,Objective Value,Best"
         if (writer != null) {
             writer.write(parameterLine)
             writer.newLine()
@@ -113,7 +113,6 @@ object PSO {
         }
 
         for(iteration in 0 until iterations ) {
-            var nInbound = 0 // Performance indicator for INFINITY bound handling
             val time = measureTime {
                 val executor = if (nWorker == null)
                     Executors.newWorkStealingPool()
@@ -158,7 +157,6 @@ object PSO {
                                 particle.best = oval
                             }
 
-                            nInbound += 1
                         }
                     }
                 }
@@ -173,8 +171,7 @@ object PSO {
                 }
             }
 
-            val oval = objective(globalBestPosition)
-            val line = "$iteration,$time,$oval,$nInbound"
+            val line = "$iteration,$time,$globalBest,$globalBest"
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()

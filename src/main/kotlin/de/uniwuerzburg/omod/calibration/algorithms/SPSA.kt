@@ -63,13 +63,16 @@ object SPSA {
         } else {
             null
         }
-        val header = "Iteration, time, Objective Value"
+        val header = "Iteration,time,Objective Value,Best"
         if (writer != null) {
             writer.write(header)
             writer.newLine()
         }
 
         val x = x0.copyOf()
+        var bestX = x0.copyOf()
+        var bestLoss = objective(x0)
+
         for (i in 1 .. iterations) {
             val time = measureTime {
                 val a = a0 / i.toDouble()
@@ -94,8 +97,14 @@ object SPSA {
                     x[j] = xj
                 }
             }
-            val oval = objective(x)
-            val line = "$i,$time,$oval"
+            val loss = objective(x)
+
+            if (loss < bestLoss) {
+                bestX = x.copyOf()
+                bestLoss = loss
+            }
+
+            val line = "$i,$time,$loss,$bestLoss"
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()
@@ -105,6 +114,6 @@ object SPSA {
         println("SPSA... Done!")
         writer?.flush()
         writer?.close()
-        return x
+        return bestX
     }
 }
