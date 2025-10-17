@@ -115,7 +115,6 @@ object GradientDescent {
             }
 
             val line = "$i,$time,$loss,$bestLoss"
-            println(line)
             if (writer != null) {
                 writer.write(line)
                 writer.newLine()
