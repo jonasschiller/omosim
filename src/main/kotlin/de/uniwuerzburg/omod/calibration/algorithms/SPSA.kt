@@ -19,7 +19,9 @@ object SPSA {
         const val ub = 100.0
         const val a0 = 1.0
         const val c0 = 1.0
-        const val gamma = (1.0 / 3.0)
+        const val A = 0.0
+        const val gamma = 0.1
+        const val alpha = 0.6
     }
 
     fun run(
@@ -40,7 +42,9 @@ object SPSA {
             ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
             a0 = parameters?.get("a0")?.toDoubleOrNull() ?: Defaults.a0,
             c0 = parameters?.get("c0")?.toDoubleOrNull() ?: Defaults.c0,
+            A = parameters?.get("A")?.toDoubleOrNull() ?: Defaults.A,
             gamma = parameters?.get("gamma")?.toDoubleOrNull() ?: Defaults.gamma,
+            alpha = parameters?.get("alpha")?.toDoubleOrNull() ?: Defaults.alpha,
         )
     }
 
@@ -54,17 +58,22 @@ object SPSA {
         ub: Double = Defaults.ub,
         a0: Double = Defaults.a0,
         c0: Double = Defaults.c0,
-        gamma: Double = Defaults.gamma
+        A: Double = Defaults.A,
+        gamma: Double = Defaults.gamma,
+        alpha: Double = Defaults.alpha
     ) : DoubleArray {
-        println("SPSA...")
         // Store results
         val writer = if (out != null) {
             BufferedWriter(FileWriter(out))
         } else {
             null
         }
+
+        val parameterLine = "Parameters:lb=$lb:ub$ub:ao=$a0:c0=$c0:A=$A:gamma=$gamma:alpha=$alpha"
         val header = "Iteration,time,Objective Value,Best"
         if (writer != null) {
+            writer.write(parameterLine)
+            writer.newLine()
             writer.write(header)
             writer.newLine()
         }
@@ -73,28 +82,53 @@ object SPSA {
         var bestX = x0.copyOf()
         var bestLoss = objective(x0)
 
-        for (i in 1 .. iterations) {
+        for (i in 0 until iterations) {
             val time = measureTime {
-                val a = a0 / i.toDouble()
-                val c = c0 / i.toDouble().pow(gamma)
+                val a = a0 / (A + i + 1).toDouble().pow(alpha)
+                val c = c0 / (i + 1).toDouble().pow(gamma)
 
                 val perturbation = DoubleArray(x0.size) { (rng.nextInt(0, 2) * 2 - 1).toDouble() }
 
-                // Gradient estimate
-                val xPlus = DoubleArray(x0.size) { j -> max(lb, x[j] + c * perturbation[j]) }
+                // Plus
+                val xPlus = DoubleArray(x0.size) { j -> x[j] + c * perturbation[j] }
+                for (j in xPlus.indices) {
+                    if (xPlus[j] < lb) {
+                        xPlus[j] = lb
+                    }
+                    if (xPlus[j] > ub) {
+                        xPlus[j] = ub
+                    }
+                }
                 val jPlus = objective(xPlus)
-                val xMinus = DoubleArray(x0.size) { j -> max(lb, x[j] - c * perturbation[j]) }
+
+                // Minus
+                val xMinus = DoubleArray(x0.size) { j -> x[j] - c * perturbation[j] }
+                for (j in xMinus.indices) {
+                    if (xMinus[j] < lb) {
+                        xMinus[j] = lb
+                    }
+                    if (xMinus[j] > ub) {
+                        xMinus[j] = ub
+                    }
+                }
                 val jMinus = objective(xMinus)
+
+                // Gradient estimate
                 val grad  = DoubleArray(x0.size) { j -> (jPlus - jMinus) / (2 * c * perturbation[j])}
 
-                for (j in 0 until x0.size) {
-                    // Gradient descent step
-                    var xj = x[j] - a*grad[j]
+                // Step
+                for (j in x.indices) {
+                    x[j] -= a*grad[j]
+                }
 
-                    // Bound handling
-                    xj = max(lb, xj)
-                    xj = min(ub, xj)
-                    x[j] = xj
+                // Bound Projection
+                for (j in x.indices) {
+                    if (x[j] < lb) {
+                        x[j] = lb
+                    }
+                    if (x[j] > ub) {
+                        x[j] = ub
+                    }
                 }
             }
             val loss = objective(x)
@@ -111,7 +145,6 @@ object SPSA {
                 writer.flush()
             }
         }
-        println("SPSA... Done!")
         writer?.flush()
         writer?.close()
         return bestX

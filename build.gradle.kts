@@ -15,7 +15,7 @@ allOpen {
 }
 
 group = "de.uniwuerzburg.omod"
-version = "2.0.25-calibration"
+version = "2.0.26-calibration"
 
 repositories {
     mavenLocal()

@@ -156,7 +156,6 @@ object PSO {
                                 particle.bestPosition = particle.position.copyOf()
                                 particle.best = oval
                             }
-
                         }
                     }
                 }
