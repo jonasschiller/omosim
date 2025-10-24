@@ -1,6 +1,5 @@
 package de.uniwuerzburg.omod.calibration.differentiablemodel
 
-import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import kotlin.math.abs
 

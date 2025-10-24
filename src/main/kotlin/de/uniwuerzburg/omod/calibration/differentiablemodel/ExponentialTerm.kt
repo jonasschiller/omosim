@@ -6,11 +6,12 @@ class ExponentialTerm(
     override val nVars: Int,
     val exponent: Term
 ): Term {
-    private var evalCache = ThreadLocal<Double>()
+    private var evalCache: Double? = null
     private var gradientCache = ThreadLocal<Double>()
     override var nReceivers = 0
     private var received = 0
     private var adjoint = 0.0
+    override var visited: Boolean = false
 
     override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
         // Accumulate adjoint variable
@@ -35,29 +36,26 @@ class ExponentialTerm(
     }
 
     override fun evaluate(vals: DoubleArray) : Double {
-        if (evalCache.get() != null) {
-            return evalCache.get()
+        if (evalCache != null) {
+            return evalCache!!
         }
         val result = exp(exponent.evaluate(vals))
-        evalCache.set(result)
+        evalCache = result
         return result
     }
 
     override fun clearEvalCache() {
-        if (evalCache.get() != null) {
-            evalCache.set(null)
+        if (!visited) {
+            evalCache = null
             exponent.clearEvalCache()
         }
     }
 
     override fun clearGradientCache() {
-        if (gradientCache.get() != null) {
-            gradientCache.set(null)
-            exponent.clearGradientCache()
-        }
-        if ((received != 0) || (adjoint != 0.0)) {
+        if (!visited) {
             received = 0
             adjoint = 0.0
+            gradientCache.set(null)
             exponent.clearGradientCache()
         }
     }
@@ -75,5 +73,12 @@ class ExponentialTerm(
             exponent.clearReceivers()
         }
         nReceivers = 0
+    }
+
+    override fun clearSearchMarkers() {
+        if (visited) {
+            visited = false
+            exponent.clearSearchMarkers()
+        }
     }
 }

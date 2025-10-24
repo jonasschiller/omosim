@@ -10,6 +10,7 @@ class DifferentiableModel (
 ) : Term, DifferentiableMultivariateFunction {
     var root: Term = LinearBaseTerm(nVars)
     override var nReceivers = 0
+    override var visited: Boolean = false
 
     fun setRootTerm(term: Term) {
         root = term
@@ -40,10 +41,12 @@ class DifferentiableModel (
 
     override fun clearEvalCache() {
         root.clearEvalCache()
+        root.clearSearchMarkers()
     }
 
     override fun clearGradientCache() {
         root.clearGradientCache()
+        root.clearSearchMarkers()
     }
 
     override fun countReceivers() {
@@ -63,5 +66,10 @@ class DifferentiableModel (
         val result = evaluate(x!!)
         gradientReverse(x, gradient!!, 1.0)
         return result
+    }
+
+    override fun clearSearchMarkers() {
+        visited = false
+        root.clearSearchMarkers()
     }
 }

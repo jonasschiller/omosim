@@ -10,8 +10,9 @@ class LinearTerm(
     private var received = 0
     private var adjoint = 0.0
 
-    private var evalCache = ThreadLocal<Double>()
+    private var evalCache: Double? = null
     private var gradientCache = ThreadLocal<Double>()
+    override var visited: Boolean = false
 
     fun addTerm(term: Term, coefficient: Double) {
         terms.add(term)
@@ -50,20 +51,20 @@ class LinearTerm(
     }
 
     override fun evaluate(vals: DoubleArray) : Double {
-        if (evalCache.get() != null) {
-            return evalCache.get()
+        if (evalCache != null) {
+            return evalCache!!
         }
         var result = intercept
         for (i in terms.indices) {
             result += terms[i].evaluate(vals) * coefficients[i]
         }
-        evalCache.set(result)
+        evalCache = result
         return result
     }
 
     override fun clearEvalCache() {
-        if (evalCache.get() != null) {
-            evalCache.set(null)
+        if (!visited) {
+            evalCache = null
             for (term in terms) {
                 term.clearEvalCache()
             }
@@ -71,15 +72,10 @@ class LinearTerm(
     }
 
     override fun clearGradientCache() {
-        if (gradientCache.get() != null) {
-            gradientCache.set(null)
-            for (term in terms) {
-                term.clearGradientCache()
-            }
-        }
-        if ((received != 0) || (adjoint != 0.0)) {
+        if (!visited) {
             received = 0
             adjoint = 0.0
+            gradientCache.set(null)
             for (term in terms) {
                 term.clearGradientCache()
             }
@@ -103,5 +99,14 @@ class LinearTerm(
             }
         }
         nReceivers = 0
+    }
+
+    override fun clearSearchMarkers() {
+        if (visited) {
+            visited = false
+            for (term in terms) {
+                term.clearSearchMarkers()
+            }
+        }
     }
 }
