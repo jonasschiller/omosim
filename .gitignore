@@ -10,3 +10,4 @@ debugOut/
 .gradle/
 regional_inputs/
 .kotlin/
+libs/
