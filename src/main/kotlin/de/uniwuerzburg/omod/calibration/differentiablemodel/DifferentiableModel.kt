@@ -22,31 +22,31 @@ class DifferentiableModel (
 
     override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
         root.gradientReverse(vals, partials, seed)
-        root.clearGradientCache()
-        root.clearEvalCache()
+        clearGradientCache()
+        clearEvalCache()
     }
 
     override fun gradientForward(variable: Int, vals: DoubleArray): Double {
         val result = root.gradientForward(variable, vals)
-        root.clearGradientCache()
-        root.clearEvalCache()
+        clearGradientCache()
+        clearEvalCache()
         return result
     }
 
     override fun evaluate(vals: DoubleArray): Double {
         val result = root.evaluate(vals)
-        root.clearEvalCache() // Safer, but slows down reverse mode a bit.
+        clearEvalCache() // Safer, but slows down reverse mode a bit.
         return result
     }
 
     override fun clearEvalCache() {
         root.clearEvalCache()
-        root.clearSearchMarkers()
+        clearSearchMarkers()
     }
 
     override fun clearGradientCache() {
         root.clearGradientCache()
-        root.clearSearchMarkers()
+        clearSearchMarkers()
     }
 
     override fun countReceivers() {
