@@ -218,7 +218,7 @@ class Run : CliktCommand() {
                 lossLogFile,
                 calibrationParameter!!.cal_parameter
             )
-            //return
+            return
         }
 
         if (calibration_file != null) {
