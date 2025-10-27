@@ -10,7 +10,7 @@ class DifferentiableModel (
 ) : Term, DifferentiableMultivariateFunction {
     var root: Term = LinearBaseTerm(nVars)
     override var nReceivers = 0
-    override var visited: Boolean = false
+    override var visited = ThreadLocal<Boolean>()
 
     fun setRootTerm(term: Term) {
         root = term
@@ -69,7 +69,7 @@ class DifferentiableModel (
     }
 
     override fun clearSearchMarkers() {
-        visited = false
+        visited.set(false)
         root.clearSearchMarkers()
     }
 }
