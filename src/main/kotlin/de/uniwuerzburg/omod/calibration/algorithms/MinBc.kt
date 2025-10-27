@@ -54,7 +54,6 @@ object MinBc {
             writer.newLine()
         }
 
-        println("0,0,${model.evaluate(x0)},${model.evaluate(x0)}")
         if (writer != null) {
             writer.write("0,0,${model.evaluate(x0)},${model.evaluate(x0)}")
             writer.newLine()
@@ -87,7 +86,6 @@ object MinBc {
         val reporter: ( DoubleArray?, Double, Any?) -> Unit  = { xi: DoubleArray?, fi: Double, _: Any? ->
             val now = timer.markNow()
             i += 1
-            println("${i},${now - tLast},${fi},${fi}")
             writer?.write("${i},${now - tLast},${fi},${fi}")
             writer?.newLine()
             writer?.flush()
@@ -102,7 +100,6 @@ object MinBc {
         // Result
         val result = alglib.minbcresults(state)
         val solution = model.evaluate(result.x)
-        println("${iterations},$time,${solution},${solution}")
         if (writer != null) {
             writer.write("${iterations},$time,${solution},${solution}")
             writer.newLine()
