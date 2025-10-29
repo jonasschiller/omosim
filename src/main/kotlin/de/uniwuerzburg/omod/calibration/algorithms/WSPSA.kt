@@ -1,11 +1,13 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelMultiOut
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.*
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -13,7 +15,7 @@ import kotlin.time.measureTime
 
 // TODO test WSPSA, MSPSA
 
-object SPSA {
+object WSPSA {
     object Defaults {
         const val lb = 0.0
         const val ub = 100.0
@@ -27,6 +29,8 @@ object SPSA {
     fun run(
         x0: DoubleArray,
         objective: (DoubleArray) -> Double,
+        measurements: List<Double>,
+        model: DifferentiableModelMultiOut,
         rng: Random,
         iterations: Int = 10000,
         out: File? = null,
@@ -35,6 +39,8 @@ object SPSA {
         return run(
             x0 = x0,
             objective = objective,
+            measurements = measurements,
+            model = model,
             rng = rng,
             iterations = iterations,
             out = out,
@@ -51,8 +57,10 @@ object SPSA {
     fun run(
         x0: DoubleArray,
         objective: (DoubleArray) -> Double,
+        measurements: List<Double>,
+        model: DifferentiableModelMultiOut,
         rng: Random,
-        iterations: Int = 10000,
+        iterations: Int = 1000,
         out: File? = null,
         lb: Double = Defaults.lb,
         ub: Double = Defaults.ub,
@@ -62,6 +70,8 @@ object SPSA {
         gamma: Double = Defaults.gamma,
         alpha: Double = Defaults.alpha
     ) : DoubleArray {
+        val m = measurements.toDoubleArray()
+
         // Store results
         val writer = if (out != null) {
             BufferedWriter(FileWriter(out))
@@ -99,7 +109,7 @@ object SPSA {
                         xPlus[j] = ub
                     }
                 }
-                val jPlus = objective(xPlus)
+                val jPlus = squareErrors(xPlus, model, m)
 
                 // Minus
                 val xMinus = DoubleArray(x0.size) { j -> x[j] - c * perturbation[j] }
@@ -111,10 +121,30 @@ object SPSA {
                         xMinus[j] = ub
                     }
                 }
-                val jMinus = objective(xMinus)
+                val jMinus = squareErrors(xMinus, model, m)
+
+                // Jacobian
+                val jac = model.jacobian(x0)
+
+                // Normalize
+                for (j in jac.indices) {
+                    for (k in jac[j].indices) {
+                        jac[j][k] = abs( jac[j][k] )
+                    }
+                }
+                /*
+                for (j in jac.indices) {
+                    val sum = jac[j].sum()
+                    if (sum == 0.0) { continue }
+
+                    for (k in jac[j].indices) {
+                        jac[j][k] /= sum
+                    }
+                }
+                */
 
                 // Gradient estimate
-                val grad  = DoubleArray(x0.size) { j -> (jPlus - jMinus) / (2 * c * perturbation[j])}
+                val grad = gradient(jPlus, jMinus, jac, c, perturbation)
 
                 // Step
                 for (j in x.indices) {
@@ -149,5 +179,38 @@ object SPSA {
         writer?.flush()
         writer?.close()
         return bestX
+    }
+
+    private fun squareErrors(x: DoubleArray, model: DifferentiableModelMultiOut, m: DoubleArray) : DoubleArray {
+        val s = model.evaluate(x)
+        var se = DoubleArray(s.size) { 0.0 }
+        for (i in s.indices) {
+            se[i] = (m[i] - s[i]).pow(2)
+        }
+        return se
+    }
+
+    private fun gradient(
+        jPlus: DoubleArray,
+        jMinus: DoubleArray,
+        wMatrix: Array<DoubleArray>,
+        c: Double,
+        perturbation: DoubleArray,
+    ) : DoubleArray {
+        val nVars = wMatrix.first().size
+        val nMeasures = wMatrix.size
+        val g = DoubleArray ( nVars ) { 0.0 }
+
+        val jDiff = DoubleArray ( nMeasures ) { 0.0 }
+        for (j in 0 until nMeasures) {
+            jDiff[j] = (jPlus[j] - jMinus[j])
+        }
+
+        for (i in 0 until nVars) {
+            for (j in 0 until nMeasures) {
+                g[i] += wMatrix[j][i] * jDiff[j] / (2 * c * perturbation[i])
+            }
+        }
+        return g
     }
 }

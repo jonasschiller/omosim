@@ -12,7 +12,7 @@ import kotlin.math.floor
 import kotlin.math.pow
 
 enum class CalibrationOption {
-    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_ADAM, SPSA_OS, MM_GA, MM_MINBC
+    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_WSPSA, MM_ADAM, SPSA_OS, MM_GA, MM_MINBC
 }
 
 class TrafficCountCalibrator(
@@ -66,6 +66,7 @@ class TrafficCountCalibrator(
             CalibrationOption.SPSA      -> calibrateSPSA(lossLog, activities, iterations, parameters)
             CalibrationOption.SPSA_OS   -> calibrateSPSAAllAtOnce(lossLog, activities, iterations, parameters)
             CalibrationOption.MM_SPSA   -> calibrateSPSAMM(lossLog, activities, iterations, parameters)
+            CalibrationOption.MM_WSPSA  -> calibrateWSPSAMM(lossLog, activities, iterations, parameters)
             CalibrationOption.MM_MINBC  -> calibrateMinBcMM(lossLog, activities, iterations, parameters)
         }
 
@@ -266,6 +267,25 @@ class TrafficCountCalibrator(
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLogA, parameters = parameters)
 
+            d = (d.toList() + listOf(1.0)).toDoubleArray()
+            updateCalibration(d, activity)
+        }
+    }
+
+    fun calibrateWSPSAMM(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ) {
+        val measurements = sensors.map { it.measuredFlow }.flatMap { it.toList() }
+
+        for (activity in activities) {
+            val lossLogA = activityLogFile(activity, lossLog)
+            val objective = metaModelObj(activity)
+            val model = MetaModel.build(omod)!!.getDiffModelSimCounts(activity, sensors, affectedSensors)
+            val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
+            var d = WSPSA.run(
+                x0, objective, measurements, model, Random(),
+                iterations = iterations, out=lossLogA, parameters = parameters
+            )
             d = (d.toList() + listOf(1.0)).toDoubleArray()
             updateCalibration(d, activity)
         }

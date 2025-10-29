@@ -15,7 +15,7 @@ allOpen {
 }
 
 group = "de.uniwuerzburg.omod"
-version = "2.0.29-calibration"
+version = "2.0.30-calibration"
 
 repositories {
     mavenLocal()
@@ -29,7 +29,7 @@ repositories {
 }
 
 dependencies {
-    implementation(files("C:/Users/les29rq/Nextcloud/Projekte/14_Omosim/omosim/libs/alglib-java/alglib406free.jar"))
+    implementation(files("libs/alglib-java/alglib406free.jar"))
     implementation("org.geotools:gt-epsg-hsql:31.+")
     implementation("org.geotools:gt-main:31.+")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.+")

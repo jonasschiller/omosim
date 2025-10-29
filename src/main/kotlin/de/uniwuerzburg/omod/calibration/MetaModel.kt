@@ -65,6 +65,27 @@ class MetaModel private constructor(
         return model
     }
 
+    fun getDiffModelSimCounts(
+        activityType: ActivityType,
+        sensors: List<TrafficSensor>,
+        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    ): DifferentiableModelMultiOut {
+        val m3rep = generateMatrixRep(activityType)
+
+        println("Building diff model multi out...")
+        val (_, simCounts) = buildDiffModel(m3rep, affectedSensors, sensors)
+
+        val countsFlat = mutableListOf<Term>()
+        for (sensor in sensors) {
+            for (t in 0 until T) {
+                countsFlat.add( simCounts[sensor]!![t] )
+            }
+        }
+        val model = DifferentiableModelMultiOut(countsFlat.first().nVars)
+        model.setRootTerms(countsFlat)
+        return model
+    }
+
     fun calibrateK1(
         activityType: ActivityType,
         sensors: List<TrafficSensor>,
@@ -494,7 +515,6 @@ class MetaModel private constructor(
 
         return distr
     }
-
 
     private fun buildDiffModel(
         m3rep: MetaModelMatrixRep,
