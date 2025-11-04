@@ -1,13 +1,10 @@
 package de.uniwuerzburg.omod.io.synthpop
 
 import de.uniwuerzburg.omod.core.models.HomogeneousGrp
-import de.uniwuerzburg.omod.core.models.MobiAgentSSWC
 import de.uniwuerzburg.omod.core.models.MobilityGrp
 import de.uniwuerzburg.omod.core.models.Sex
 import java.io.File
-import java.io.FileInputStream
-import java.io.InputStream
-import kotlin.random.Random.Default.nextDouble
+import kotlin.random.Random
 
 fun getSynthPopAgents(filePath: String): List<SynthPopAgent> {
     return File(filePath)
@@ -21,7 +18,7 @@ fun getSynthPopAgents(filePath: String): List<SynthPopAgent> {
                     // Parse and map fields directly into the final SynthPopAgent
                     SynthPopAgent(
                         id = 0,
-                        homogenousGroup = when (val occ = parts[8].trim().toInt()) {
+                        homogenousGroup = when (parts[8].trim().toInt()) {
                             in 1..11 -> HomogeneousGrp.WORKING
                             97 -> HomogeneousGrp.NON_WORKING
                             else -> HomogeneousGrp.UNDEFINED
@@ -38,7 +35,7 @@ fun getSynthPopAgents(filePath: String): List<SynthPopAgent> {
                         sex = if (parts[2].trim().toInt() == 1) Sex.MALE else Sex.FEMALE,
                         carAccess = parts[10].trim().toInt() > 0,
                         homeOfficeDays = parts[9].trim().toInt(),
-                        sharedOfficeRate = kotlin.random.Random.nextDouble(),
+                        sharedOfficeRate = Random.nextDouble(),
                         DRTprobability = 0.0
                     )
                 }.toList()
