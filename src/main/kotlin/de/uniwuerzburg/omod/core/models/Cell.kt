@@ -2,7 +2,6 @@ package de.uniwuerzburg.omod.core.models
 
 import org.locationtech.jts.geom.Coordinate
 import kotlin.math.PI
-import kotlin.times
 
 /**
  * Routing cell. Group of buildings used to faster calculate the approximate distance by car.
@@ -71,7 +70,7 @@ data class Cell (
         val avgLat = buildings.map { it.latlonCoord.y }.average()
         val avgLon = buildings.map { it.latlonCoord.x }.average()
 
-        val center = org.locationtech.jts.geom.Coordinate(avgLon, avgLat)
+        val center = Coordinate(avgLon, avgLat)
 
         val centralBuilding = buildings.minByOrNull {
             val coord = it.latlonCoord

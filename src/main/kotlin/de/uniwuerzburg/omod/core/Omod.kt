@@ -36,7 +36,12 @@ import java.nio.file.Paths
 import java.time.LocalDate
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.compareTo
 import kotlin.io.path.exists
+import kotlin.plus
+import kotlin.text.compareTo
+import kotlin.text.get
+import kotlin.text.set
 import kotlin.time.TimeSource
 
 /**
@@ -429,7 +434,11 @@ class Omod(
             ActivityType.SCHOOL -> agent.school
             else -> throw Exception("Start must be either Home, Work, School, or coordinates must be given. Agent: ${agent.id}")
         }
-        return getActivitySchedule(agent, rng, weekday, from, location )
+        if (agent is MobiAgentSSWCBase) {
+                return getActivityScheduleSSWC(agent, rng, weekday, from, location)
+            }else{
+            return getActivitySchedule(agent, rng, weekday, from, location)
+        }
     }
 
     /**
@@ -441,6 +450,58 @@ class Omod(
      * @param start Location the day starts at
      * @return Activity schedule
      */
+    private fun getActivityScheduleSSWC(
+        agent: MobiAgentSSWCBase,  rng: Random, weekday: Weekday = Weekday.UNDEFINED,
+        from: ActivityType = ActivityType.HOME, start: LocationOption
+    ): List<Activity> {
+        val activityChain = activityGenerator.getActivityChain(agent, weekday, from, rng).toMutableList()
+        val stayTimes = activityGenerator.getStayTimes(activityChain, agent, weekday, rng).toMutableList()
+        val locations = getLocations(agent, activityChain, start, rng).toMutableList()
+        // Here needs to be a function that replaces work with home if home office is done
+        var i = 0
+        while (i < activityChain.size) {
+            if (activityChain[i] == ActivityType.WORK && agent.homeOfficeDays / 5.0 > rng.nextDouble()) {
+                val prevIsHome = i > 0 && activityChain[i - 1] == ActivityType.HOME
+                val nextIsHome = i < activityChain.size - 1 && activityChain[i + 1] == ActivityType.HOME
+
+                when {
+                    prevIsHome && nextIsHome -> {
+                        stayTimes[i - 1] = (stayTimes[i - 1] ?: 0.0) + (stayTimes[i] ?: 0.0) + (stayTimes[i + 1] ?: 0.0)
+                        listOf(i + 1, i).forEach {
+                            stayTimes.removeAt(it)
+                            activityChain.removeAt(it)
+                            locations.removeAt(it)
+                        }
+                    }
+                    prevIsHome -> {
+                        activityChain[i] = ActivityType.HOME
+                        locations[i] = agent.home
+                        stayTimes[i - 1] = (stayTimes[i - 1] ?: 0.0) + (stayTimes[i] ?: 0.0)
+                        stayTimes.removeAt(i)
+                        activityChain.removeAt(i)
+                        locations.removeAt(i)
+                    }
+                    nextIsHome -> {
+                        activityChain[i] = ActivityType.HOME
+                        locations[i] = agent.home
+                        stayTimes[i] = (stayTimes[i] ?: 0.0) + (stayTimes[i + 1] ?: 0.0)
+                        stayTimes.removeAt(i + 1)
+                        activityChain.removeAt(i + 1)
+                        locations.removeAt(i + 1)
+                    }
+                    else -> {
+                        activityChain[i] = ActivityType.HOME
+                        locations[i] = agent.home
+                    }
+                }
+            }
+            i++
+        }
+        return List(activityChain.size) { i ->
+            Activity(activityChain[i], stayTimes[i], locations[i])
+        }
+    }
+
     private fun getActivitySchedule(
         agent: MobiAgent,  rng: Random, weekday: Weekday = Weekday.UNDEFINED,
         from: ActivityType = ActivityType.HOME, start: LocationOption

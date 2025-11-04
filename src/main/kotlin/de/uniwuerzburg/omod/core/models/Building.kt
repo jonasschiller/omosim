@@ -75,4 +75,7 @@ class Building  (
     override fun getAggLoc() : AggLocation? {
         return cell
     }
+    override fun getCentralBuilding() : Building? {
+        return this
+    }
 }

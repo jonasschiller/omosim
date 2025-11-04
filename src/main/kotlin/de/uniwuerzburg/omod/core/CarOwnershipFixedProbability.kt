@@ -3,7 +3,6 @@ package de.uniwuerzburg.omod.core
 import de.uniwuerzburg.omod.core.models.MobiAgent
 import de.uniwuerzburg.omod.core.models.PopStratum
 import java.util.*
-import kotlin.text.compareTo
 
 /**
  * Determines car ownership with a fixed probability.

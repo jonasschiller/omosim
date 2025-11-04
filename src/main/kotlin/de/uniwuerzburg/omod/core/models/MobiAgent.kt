@@ -21,7 +21,6 @@ abstract class MobiAgent(
     open val age: Int?,
     open val home: LocationOption,
     open val work: LocationOption,
-    open val shared_office: LocationOption?,
     open val school: LocationOption,
     open val sex: Sex,
     open var carAccess: Boolean = false,
@@ -30,33 +29,54 @@ abstract class MobiAgent(
     val ageGrp = AgeGrp.fromInt(age)
 }
 
+
 data class MobiAgentBase(
     override val id: Int,
     override val homogenousGroup: HomogeneousGrp,
     override val mobilityGroup: MobilityGrp,
     override val age: Int?,
     override val home: LocationOption,
-    override val shared_office: LocationOption?,
     override val work: LocationOption,
     override val school: LocationOption,
     override val sex: Sex,
     override var carAccess: Boolean = false,
     override val mobilityDemand: MutableList<Diary> = mutableListOf()
+) : MobiAgent(id, homogenousGroup, mobilityGroup, age, home, work, school, sex, carAccess, mobilityDemand)
+
+
+abstract class MobiAgentSSWC(
+    id: Int,
+    homogenousGroup: HomogeneousGrp,
+    mobilityGroup: MobilityGrp,
+    age: Int?,
+    home: LocationOption,
+    work: LocationOption,
+    school: LocationOption,
+    sex: Sex,
+    carAccess: Boolean = false,
+    mobilityDemand: MutableList<Diary> = mutableListOf(),
+    open val sharedOffice: LocationOption?,
+    open val homeOfficeDays: Int = 0,
+    open val sharedOfficeRate: Double = 0.0
 ) : MobiAgent(
-    id, homogenousGroup, mobilityGroup, age, home, work, shared_office, school,sex, carAccess, mobilityDemand
+    id, homogenousGroup, mobilityGroup, age, home, work, school, sex, carAccess, mobilityDemand
 )
 
-data class MobiAgentSSWC(
-    val id: Int,
-    val homogenousGroup: HomogeneousGrp,
-    val mobilityGroup: MobilityGrp,
-    val age: Int?,
-    val homeOfficeDays: Int,
-    val sharedOfficeRate: Double,
-    val DRTprobability: Double,
-    val sex: Sex,
-    var carAccess: Boolean = false,
-    val mobilityDemand: MutableList<Diary> = mutableListOf(),
-
+data class MobiAgentSSWCBase(
+    override val id: Int,
+    override val homogenousGroup: HomogeneousGrp,
+    override val mobilityGroup: MobilityGrp,
+    override val age: Int?,
+    override val home: LocationOption,
+    override val work: LocationOption,
+    override val school: LocationOption,
+    override val sex: Sex,
+    override var carAccess: Boolean = false,
+    override val sharedOffice: LocationOption?,
+    override val homeOfficeDays: Int = 0,
+    override val sharedOfficeRate: Double = 0.0,
+    override val mobilityDemand: MutableList<Diary> = mutableListOf()
+) : MobiAgentSSWC(
+    id, homogenousGroup, mobilityGroup, age, home, work, school, sex, carAccess, mobilityDemand,
+    sharedOffice, homeOfficeDays, sharedOfficeRate
 )
-
