@@ -17,9 +17,9 @@ class DifferentiableModelMultiOut (
     fun jacobian(vals: DoubleArray) : Array<DoubleArray> {
         val jac = Array(roots.size) { DoubleArray(nVars) { 0.0 } }
         for ((i, root) in roots.withIndex()) {
+            root.clearReceivers()
             root.countReceivers()
             root.gradientReverse(vals, jac[i], 1.0)
-            root.clearReceivers()
             clearGradientCache()
         }
         clearEvalCache()

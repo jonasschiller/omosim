@@ -1,5 +1,6 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelMultiOut
 import java.io.BufferedWriter
 import java.io.File
@@ -31,6 +32,7 @@ object WSPSA {
         objective: (DoubleArray) -> Double,
         measurements: List<Double>,
         model: DifferentiableModelMultiOut,
+        modelTst: DifferentiableModel,
         rng: Random,
         iterations: Int = 10000,
         out: File? = null,
@@ -41,6 +43,7 @@ object WSPSA {
             objective = objective,
             measurements = measurements,
             model = model,
+            modelTst = modelTst,
             rng = rng,
             iterations = iterations,
             out = out,
@@ -59,6 +62,7 @@ object WSPSA {
         objective: (DoubleArray) -> Double,
         measurements: List<Double>,
         model: DifferentiableModelMultiOut,
+        modelTst: DifferentiableModel,
         rng: Random,
         iterations: Int = 1000,
         out: File? = null,
@@ -124,11 +128,27 @@ object WSPSA {
                 val jMinus = squareErrors(xMinus, model, m)
 
                 // Jacobian
-                val jac = model.jacobian(x0)
+                val jac = model.jacobian(x)
+
+                // ---- Test realm -----
+                val evals = model.evaluate(x)
+                val tstG = DoubleArray(x0.size) { 0.0 }
+                modelTst.gradientReverse(x, tstG, 1.0)
+                val gShould = DoubleArray(x0.size) { 0.0 }
+                for (j in x0.indices) {
+                    for (k in measurements.indices) {
+                        gShould[j] += (2 * evals[k] - 2 * measurements[k]) * jac[k][j]
+                    }
+                }
+                var err = 0.0
+                for (k in measurements.indices) {
+                    err += (evals[k] - measurements[k]).pow(2)
+                }
+                // ---------------------
 
                 // Normalize
-                for (j in jac.indices) {
-                    for (k in jac[j].indices) {
+                for (j in 0 until measurements.size) {
+                    for (k in 0 until x0.size) {
                         jac[j][k] = abs( jac[j][k] )
                     }
                 }
@@ -146,7 +166,7 @@ object WSPSA {
                 // Gradient estimate
                 val grad = gradient(jPlus, jMinus, jac, c, perturbation)
 
-                // Step
+                // Step // TODO test static step size
                 for (j in x.indices) {
                     x[j] -= a*grad[j]
                 }
@@ -208,7 +228,8 @@ object WSPSA {
 
         for (i in 0 until nVars) {
             for (j in 0 until nMeasures) {
-                g[i] += wMatrix[j][i] * jDiff[j] / (2 * c * perturbation[i])
+                g[i] += wMatrix[j][i] * jDiff[j] / (2 * c * perturbation[i]) // TODO Gradient of square error not of error maybe?
+                // TODO try normed by 1
             }
         }
         return g

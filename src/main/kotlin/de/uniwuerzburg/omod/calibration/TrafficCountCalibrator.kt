@@ -281,10 +281,11 @@ class TrafficCountCalibrator(
             val lossLogA = activityLogFile(activity, lossLog)
             val objective = metaModelObj(activity)
             val model = MetaModel.build(omod)!!.getDiffModelSimCounts(activity, sensors, affectedSensors)
+            val modelTst = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = WSPSA.run(
-                x0, objective, measurements, model, Random(),
-                iterations = iterations, out=lossLogA, parameters = parameters
+                x0, objective, measurements, model, modelTst, Random(),
+                iterations = iterations, out = lossLogA, parameters = parameters
             )
             d = (d.toList() + listOf(1.0)).toDoubleArray()
             updateCalibration(d, activity)
