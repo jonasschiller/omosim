@@ -551,15 +551,17 @@ class DifferentiableModelTest {
         val eTerm = ExponentialTerm(2, qTerm)
         val fTerm = LinearTerm(2)
         fTerm.addTerm(eTerm, 2.0)
+        val model = DifferentiableModel(2)
+        model.setRootTerm(fTerm)
 
         // Test 1
         val vars = doubleArrayOf(1.0, 5.0)
-        val gx = fTerm.gradientForward(0, vars)
-        fTerm.clearGradientCache()
-        val gy = fTerm.gradientForward(1, vars)
-        fTerm.clearGradientCache()
-        val x = fTerm.evaluate(vars)
-        fTerm.clearEvalCache()
+        val gx = model.gradientForward(0, vars)
+        model.clearGradientCache()
+        val gy = model.gradientForward(1, vars)
+        model.clearGradientCache()
+        val x = model.evaluate(vars)
+        model.clearEvalCache()
 
         assert(gx == 1484.131591025766)
         assert(gy == 296.8263182051532)
@@ -567,12 +569,12 @@ class DifferentiableModelTest {
 
         // TEST 2
         val vars2 = doubleArrayOf(1.0, -1.0)
-        val gx2 = fTerm.gradientForward(0, vars2)
-        fTerm.clearGradientCache()
-        val gy2 = fTerm.gradientForward(1, vars2)
-        fTerm.clearGradientCache()
-        val x2 = fTerm.evaluate(vars2)
-        fTerm.clearEvalCache()
+        val gx2 = model.gradientForward(0, vars2)
+        model.clearGradientCache()
+        val gy2 = model.gradientForward(1, vars2)
+        model.clearGradientCache()
+        val x2 = model.evaluate(vars2)
+        model.clearEvalCache()
 
         assert(gx2 == -0.7357588823428847)
         assert(gy2 == 0.7357588823428847)
