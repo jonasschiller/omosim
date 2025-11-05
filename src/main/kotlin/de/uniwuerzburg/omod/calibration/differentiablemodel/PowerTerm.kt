@@ -7,22 +7,28 @@ class PowerTerm(
     val base: Term,
     val power: Int
 ): Term {
-    private var evalCache = ThreadLocal<Double>()
-    private var gradientCache = ThreadLocal<Double>()
-    override var nReceivers = 0
-    private var received = 0
-    private var adjoint = 0.0
+    var evalCache = ThreadLocal<Double>()
+    var gradientCache = ThreadLocal<Double>()
+    var nReceivers = ThreadLocal<Int>()
+    private var received = ThreadLocal<Int>()
+    private var adjoint = ThreadLocal<Double>()
     override var visited = ThreadLocal<Boolean>()
 
     override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        var adjoint = adjoint.get() ?: 0.0
+        var received = received.get() ?: 0
+
         // Accumulate adjoint variable
-        if (received != nReceivers) {
+        if (received != nReceivers.get()) {
             adjoint += seed
             received += 1
+
+            this.adjoint.set( adjoint)
+            this.received.set( received)
         }
 
         // If finalized continue
-        if (received == nReceivers) {
+        if (received == nReceivers.get()) {
             base.gradientReverse(vals, partials, adjoint * power * base.evaluate(vals).pow(power-1))
         }
     }
@@ -56,26 +62,27 @@ class PowerTerm(
     override fun clearGradientCache() {
         if ((visited.get() == null) || (visited.get() == false)) {
             visited.set(true)
-            received = 0
-            adjoint = 0.0
+            received.set(0)
+            adjoint.set(0.0)
             gradientCache.set(null)
             base.clearGradientCache()
         }
     }
 
     override fun countReceivers() {
-        nReceivers += 1
-        if (nReceivers == 1) {
+        nReceivers.set( (nReceivers.get() ?: 0) + 1)
+        if ((visited.get() == null) || (visited.get() == false)) {
+            visited.set(true)
             base.countReceivers()
         }
     }
 
     override fun clearReceivers() {
-        if (nReceivers != 0) {
-            nReceivers = 0
+        if ((visited.get() == null) || (visited.get() == false)) {
+            visited.set(true)
+            nReceivers.set(0)
             base.clearReceivers()
         }
-        nReceivers = 0
     }
 
     override fun clearSearchMarkers() {

@@ -2,7 +2,6 @@ package de.uniwuerzburg.omod.calibration.differentiablemodel
 
 interface Term {
     val nVars: Int
-    var nReceivers: Int
     var visited: ThreadLocal<Boolean>
 
     fun gradientForward(variable: Int, vals: DoubleArray) : Double

@@ -10,7 +10,6 @@ class LinearBaseTerm(
     private val coefficients = DoubleArray(nVars) {0.0}
     private var intercept = 0.0
     private var evalCache = ThreadLocal<Double>()
-    override var nReceivers = 0
     override var visited = ThreadLocal<Boolean>()
 
     fun addTerm(variable: Int, coefficient: Double) {

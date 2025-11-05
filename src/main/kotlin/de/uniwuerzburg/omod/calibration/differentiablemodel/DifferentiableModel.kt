@@ -9,7 +9,6 @@ class DifferentiableModel (
     override val nVars: Int
 ) : Term, DifferentiableMultivariateFunction {
     var root: Term = LinearBaseTerm(nVars)
-    override var nReceivers = 0
     override var visited = ThreadLocal<Boolean>()
 
     fun setRootTerm(term: Term) {
@@ -51,10 +50,12 @@ class DifferentiableModel (
 
     override fun countReceivers() {
         root.countReceivers()
+        clearSearchMarkers()
     }
 
     override fun clearReceivers() {
         root.clearReceivers()
+        clearSearchMarkers()
     }
 
     // SMILE interface

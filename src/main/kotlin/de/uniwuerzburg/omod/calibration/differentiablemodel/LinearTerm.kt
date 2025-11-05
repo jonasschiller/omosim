@@ -6,12 +6,12 @@ class LinearTerm(
     private val terms = mutableListOf<Term>()
     private val coefficients = mutableListOf<Double>()
     private var intercept = 0.0
-    override var nReceivers = 0
-    private var received = 0
-    private var adjoint = 0.0
 
-    private var evalCache = ThreadLocal<Double>()
-    private var gradientCache = ThreadLocal<Double>()
+    var evalCache = ThreadLocal<Double>()
+    var gradientCache = ThreadLocal<Double>()
+    var nReceivers = ThreadLocal<Int>()
+    private var received = ThreadLocal<Int>()
+    private var adjoint = ThreadLocal<Double>()
     override var visited = ThreadLocal<Boolean>()
 
     fun addTerm(term: Term, coefficient: Double) {
@@ -24,14 +24,20 @@ class LinearTerm(
     }
 
     override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+        var adjoint = adjoint.get() ?: 0.0
+        var received = received.get() ?: 0
+
         // Accumulate adjoint variable
-        if (received != nReceivers) {
+        if (received != nReceivers.get()) {
             adjoint += seed
             received += 1
+
+            this.adjoint.set( adjoint)
+            this.received.set( received)
         }
 
         // If finalized continue
-        if (received == nReceivers) {
+        if (received == nReceivers.get()) {
             for (i in terms.indices) {
                 terms[i].gradientReverse(vals, partials, adjoint * coefficients[i])
             }
@@ -75,8 +81,8 @@ class LinearTerm(
     override fun clearGradientCache() {
         if ((visited.get() == null) || (visited.get() == false)) {
             visited.set(true)
-            received = 0
-            adjoint = 0.0
+            received.set(0)
+            adjoint.set(0.0)
             gradientCache.set(null)
             for (term in terms) {
                 term.clearGradientCache()
@@ -85,8 +91,9 @@ class LinearTerm(
     }
 
     override fun countReceivers() {
-        nReceivers += 1
-        if (nReceivers == 1) {
+        nReceivers.set( (nReceivers.get() ?: 0) + 1)
+        if ((visited.get() == null) || (visited.get() == false)) {
+            visited.set(true)
             for (term in terms) {
                 term.countReceivers()
             }
@@ -94,13 +101,13 @@ class LinearTerm(
     }
 
     override fun clearReceivers() {
-        if (nReceivers != 0) {
-            nReceivers = 0
+        if ((visited.get() == null) || (visited.get() == false)) {
+            visited.set(true)
+            nReceivers.set(0)
             for (term in terms) {
                 term.clearReceivers()
             }
         }
-        nReceivers = 0
     }
 
     override fun clearSearchMarkers() {
