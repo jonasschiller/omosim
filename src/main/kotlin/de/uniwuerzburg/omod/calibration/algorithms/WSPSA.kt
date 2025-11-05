@@ -131,7 +131,7 @@ object WSPSA {
                 val jac = model.jacobian(x)
 
                 // ---- Test realm -----
-                val evals = model.evaluate(x)
+                /*val evals = model.evaluate(x)
                 val tstG = DoubleArray(x0.size) { 0.0 }
                 modelTst.gradientReverse(x, tstG, 1.0)
                 val gShould = DoubleArray(x0.size) { 0.0 }
@@ -143,7 +143,7 @@ object WSPSA {
                 var err = 0.0
                 for (k in measurements.indices) {
                     err += (evals[k] - measurements[k]).pow(2)
-                }
+                }*/
                 // ---------------------
 
                 // Normalize

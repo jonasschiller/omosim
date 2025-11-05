@@ -1,6 +1,8 @@
 package de.uniwuerzburg.omod.calibration.differentiablemodel
 
 import smile.util.function.DifferentiableMultivariateFunction
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Warning: Don't use within coroutines!! ThreadLocal cache will be unstable. Use an ExecutorService instead.
@@ -14,17 +16,27 @@ class DifferentiableModelMultiOut (
         roots = terms
     }
 
-    fun jacobian(vals: DoubleArray) : Array<DoubleArray> {
+    fun jacobian(vals: DoubleArray, nWorker: Int? = null) : Array<DoubleArray> {
+        val executor = if (nWorker == null)
+            Executors.newWorkStealingPool()
+        else {
+            Executors.newWorkStealingPool(nWorker)
+        }
+
         val jac = Array(roots.size) { DoubleArray(nVars) { 0.0 } }
         for ((i, root) in roots.withIndex()) {
-            root.clearReceivers()
-            root.clearSearchMarkers()
-            root.countReceivers()
-            root.clearSearchMarkers()
-            root.gradientReverse(vals, jac[i], 1.0)
-            clearGradientCache()
+            executor.submit {
+                root.clearReceivers()
+                root.clearSearchMarkers()
+                root.countReceivers()
+                root.clearSearchMarkers()
+                root.gradientReverse(vals, jac[i], 1.0)
+                clearGradientCache()
+                clearEvalCache()
+            }
         }
-        clearEvalCache()
+        executor.shutdown()
+        executor.awaitTermination(5, TimeUnit.HOURS) // Wait as long as necessary.
         return jac
     }
 
