@@ -12,7 +12,7 @@ import kotlin.time.measureTime
 
 object WSPSA {
     object Defaults {
-        const val lb = 0.0
+        const val lb = 1e-3
         const val ub = 100.0
         const val a0 = 1e-8
         const val c0 = 1.0

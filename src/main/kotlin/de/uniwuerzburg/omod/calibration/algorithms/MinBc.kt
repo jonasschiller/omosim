@@ -10,7 +10,7 @@ import kotlin.time.measureTime
 
 object MinBc {
     object Defaults {
-        const val lb = 0.001
+        const val lb = 1e-3
         const val ub = 1e3
     }
 

@@ -10,7 +10,7 @@ import kotlin.time.measureTime
 object GradientDescent {
     object Defaults {
         const val lr0 = 1.0e-8
-        const val lb = 0.0
+        const val lb = 1e-3
         const val ub = 100.0
         val lrStrategy = LearningRateUpdateStrategy.STATIC
     }

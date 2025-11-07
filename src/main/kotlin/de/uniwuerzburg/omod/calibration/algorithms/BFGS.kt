@@ -12,7 +12,7 @@ object BFGS {
     object Defaults {
         const val m = 5
         const val gTol = 1e-5
-        const val lb = 0.001
+        const val lb = 1e-3
         const val ub = 1e3
     }
 
