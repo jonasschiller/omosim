@@ -13,7 +13,7 @@ object SPSA {
         const val ub = 100.0
         const val a0 = 1.0
         const val c0 = 1.0
-        const val A = 0.0
+        const val A = 50.0
         const val gamma = 0.1
         const val alpha = 0.6
     }

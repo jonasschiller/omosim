@@ -14,12 +14,11 @@ object WSPSA {
     object Defaults {
         const val lb = 0.0
         const val ub = 100.0
-        const val a0 = 1.0
+        const val a0 = 1e-8
         const val c0 = 1.0
-        const val A = 0.0
+        const val A = 50.0
         const val gamma = 0.1
-        const val alpha = 0.6
-        const val constantLr = true
+        const val alpha = 0.0
     }
 
     fun run(
@@ -38,7 +37,6 @@ object WSPSA {
             objective = objective,
             measurements = measurements,
             model = model,
-            modelTst = modelTst,
             rng = rng,
             iterations = iterations,
             out = out,
@@ -48,8 +46,7 @@ object WSPSA {
             c0 = parameters?.get("c0")?.toDoubleOrNull() ?: Defaults.c0,
             A = parameters?.get("A")?.toDoubleOrNull() ?: Defaults.A,
             gamma = parameters?.get("gamma")?.toDoubleOrNull() ?: Defaults.gamma,
-            alpha = parameters?.get("alpha")?.toDoubleOrNull() ?: Defaults.alpha,
-            constantLr = parameters?.get("constantLr")?.toBoolean() ?: Defaults.constantLr,
+            alpha = parameters?.get("alpha")?.toDoubleOrNull() ?: Defaults.alpha
         )
     }
 
@@ -58,7 +55,6 @@ object WSPSA {
         objective: (DoubleArray) -> Double,
         measurements: List<Double>,
         model: DifferentiableModelMultiOut,
-        modelTst: DifferentiableModel,
         rng: Random,
         iterations: Int = 1000,
         out: File? = null,
@@ -68,8 +64,7 @@ object WSPSA {
         c0: Double = Defaults.c0,
         A: Double = Defaults.A,
         gamma: Double = Defaults.gamma,
-        alpha: Double = Defaults.alpha,
-        constantLr: Boolean = Defaults.constantLr
+        alpha: Double = Defaults.alpha
     ) : DoubleArray {
         val m = measurements.toDoubleArray()
 
@@ -95,11 +90,7 @@ object WSPSA {
 
         for (i in 0 until iterations) {
             val time = measureTime {
-                val a = if (constantLr) {
-                    a0
-                } else {
-                    a0 / (A + i + 1).pow(alpha)
-                }
+                val a = a0 / (A + i + 1).pow(alpha)
                 val c = c0 / (i + 1).toDouble().pow(gamma)
 
                 val perturbation = DoubleArray(x0.size) { (rng.nextInt(0, 2) * 2 - 1).toDouble() }
