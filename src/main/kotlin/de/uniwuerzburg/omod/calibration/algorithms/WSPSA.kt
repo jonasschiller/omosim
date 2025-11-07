@@ -5,16 +5,10 @@ import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelM
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
-import java.nio.file.Path
-import java.nio.file.Paths
 import java.util.*
 import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.pow
 import kotlin.time.measureTime
-
-// TODO test WSPSA, MSPSA
 
 object WSPSA {
     object Defaults {
@@ -25,6 +19,7 @@ object WSPSA {
         const val A = 0.0
         const val gamma = 0.1
         const val alpha = 0.6
+        const val constantLr = true
     }
 
     fun run(
@@ -54,6 +49,7 @@ object WSPSA {
             A = parameters?.get("A")?.toDoubleOrNull() ?: Defaults.A,
             gamma = parameters?.get("gamma")?.toDoubleOrNull() ?: Defaults.gamma,
             alpha = parameters?.get("alpha")?.toDoubleOrNull() ?: Defaults.alpha,
+            constantLr = parameters?.get("constantLr")?.toBoolean() ?: Defaults.constantLr,
         )
     }
 
@@ -72,7 +68,8 @@ object WSPSA {
         c0: Double = Defaults.c0,
         A: Double = Defaults.A,
         gamma: Double = Defaults.gamma,
-        alpha: Double = Defaults.alpha
+        alpha: Double = Defaults.alpha,
+        constantLr: Boolean = Defaults.constantLr
     ) : DoubleArray {
         val m = measurements.toDoubleArray()
 
@@ -98,7 +95,11 @@ object WSPSA {
 
         for (i in 0 until iterations) {
             val time = measureTime {
-                val a = a0 / (A + i + 1).toDouble().pow(alpha)
+                val a = if (constantLr) {
+                    a0
+                } else {
+                    a0 / (A + i + 1).pow(alpha)
+                }
                 val c = c0 / (i + 1).toDouble().pow(gamma)
 
                 val perturbation = DoubleArray(x0.size) { (rng.nextInt(0, 2) * 2 - 1).toDouble() }
@@ -130,43 +131,17 @@ object WSPSA {
                 // Jacobian
                 val jac = model.jacobian(x)
 
-                // ---- Test realm -----
-                /*val evals = model.evaluate(x)
-                val tstG = DoubleArray(x0.size) { 0.0 }
-                modelTst.gradientReverse(x, tstG, 1.0)
-                val gShould = DoubleArray(x0.size) { 0.0 }
-                for (j in x0.indices) {
-                    for (k in measurements.indices) {
-                        gShould[j] += (2 * evals[k] - 2 * measurements[k]) * jac[k][j]
-                    }
-                }
-                var err = 0.0
-                for (k in measurements.indices) {
-                    err += (evals[k] - measurements[k]).pow(2)
-                }*/
-                // ---------------------
-
                 // Normalize
                 for (j in 0 until measurements.size) {
                     for (k in 0 until x0.size) {
                         jac[j][k] = abs( jac[j][k] )
                     }
                 }
-                /*
-                for (j in jac.indices) {
-                    val sum = jac[j].sum()
-                    if (sum == 0.0) { continue }
-
-                    for (k in jac[j].indices) {
-                        jac[j][k] /= sum
-                    }
-                }
-                */
 
                 // Gradient estimate
                 val grad = gradient(jPlus, jMinus, jac, c, perturbation)
 
-                // Step // TODO test static step size
+                // Step
                 for (j in x.indices) {
                     x[j] -= a*grad[j]
                 }
@@ -203,7 +178,7 @@ object WSPSA {
 
     private fun squareErrors(x: DoubleArray, model: DifferentiableModelMultiOut, m: DoubleArray) : DoubleArray {
         val s = model.evaluate(x)
-        var se = DoubleArray(s.size) { 0.0 }
+        val se = DoubleArray(s.size) { 0.0 }
         for (i in s.indices) {
             se[i] = (m[i] - s[i]).pow(2)
         }
@@ -228,8 +203,7 @@ object WSPSA {
 
         for (i in 0 until nVars) {
             for (j in 0 until nMeasures) {
-                g[i] += wMatrix[j][i] * jDiff[j] / (2 * c * perturbation[i]) // TODO Gradient of square error not of error maybe?
-                // TODO try normed by 1
+                g[i] += wMatrix[j][i] * jDiff[j] / (2 * c * perturbation[i])
             }
         }
         return g
