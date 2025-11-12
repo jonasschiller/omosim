@@ -25,7 +25,7 @@ import kotlin.time.measureTime
 object PSO {
     object Defaults {
         const val lb = 1e-3
-        const val ub = 100.0
+        const val ub = 1e3
         const val nParticles = 20
         const val w = 0.8
         const val phiP = 1.6

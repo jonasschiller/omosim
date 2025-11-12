@@ -11,7 +11,7 @@ import kotlin.time.measureTime
 object GA {
     object Defaults {
         const val lb = 1e-3
-        const val ub = 100.0
+        const val ub = 1e3
         const val generationSize = 100
         const val shareSurvivors = 0.4
         const val nEliteOffspring = 5

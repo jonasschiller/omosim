@@ -11,7 +11,7 @@ object GradientDescent {
     object Defaults {
         const val lr0 = 1.0e-8
         const val lb = 1e-3
-        const val ub = 100.0
+        const val ub = 1e3
         val lrStrategy = LearningRateUpdateStrategy.STATIC
     }
 

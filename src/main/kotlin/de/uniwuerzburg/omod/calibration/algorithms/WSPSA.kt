@@ -1,6 +1,5 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
-import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelMultiOut
 import java.io.BufferedWriter
 import java.io.File
@@ -13,7 +12,7 @@ import kotlin.time.measureTime
 object WSPSA {
     object Defaults {
         const val lb = 1e-3
-        const val ub = 100.0
+        const val ub = 1e3
         const val a0 = 1e-8
         const val c0 = 1.0
         const val A = 50.0
@@ -26,7 +25,6 @@ object WSPSA {
         objective: (DoubleArray) -> Double,
         measurements: List<Double>,
         model: DifferentiableModelMultiOut,
-        modelTst: DifferentiableModel,
         rng: Random,
         iterations: Int = 10000,
         out: File? = null,

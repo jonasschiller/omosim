@@ -19,7 +19,7 @@ object Adam {
         const val b2 = 0.999
         const val eps = 1.0e-8
         const val lb = 1e-3
-        const val ub = 100.0
+        const val ub = 1e3
     }
 
     fun run(
