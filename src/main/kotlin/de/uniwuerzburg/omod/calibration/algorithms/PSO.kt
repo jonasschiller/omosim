@@ -1,15 +1,8 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
-import de.uniwuerzburg.omod.calibration.algorithms.GradientDescent.LearningRateUpdateStrategy
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
-import java.nio.file.Path
-import java.nio.file.Paths
 import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -17,20 +10,15 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.time.measureTime
 
-// Based on: https://ieeexplore.ieee.org/abstract/document/488968
-// Hyper-parameter: https://ieeexplore.ieee.org/abstract/document/6163405
-// Velocity clamping: https://ieeexplore.ieee.org/abstract/document/9680690
-// Bound handling: https://ieeexplore.ieee.org/abstract/document/6163405
-
 object PSO {
     object Defaults {
         const val lb = 1e-3
         const val ub = 1e3
         const val nParticles = 20
-        const val w = 0.8
-        const val phiP = 1.6
-        const val phiG = 1.6
-        const val vClamp = 1.0
+        const val w = 1.0
+        const val phiP = 2.05
+        const val phiG = 2.05
+        const val vClamp = 0.1
         val boundStrategy = BoundStrategy.REFLECT_Z
     }
 

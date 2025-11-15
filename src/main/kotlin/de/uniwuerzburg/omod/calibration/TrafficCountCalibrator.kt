@@ -12,7 +12,7 @@ import kotlin.math.floor
 import kotlin.math.pow
 
 enum class CalibrationOption {
-    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_WSPSA, MM_ADAM, SPSA_OS, MM_GA, MM_MINBC
+    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_WSPSA, MM_ADAM, SPSA_OS, MM_GA, MM_MINBC // TODO MM_GG -> MM_GD
 }
 
 class TrafficCountCalibrator(

@@ -11,9 +11,9 @@ object SPSA {
     object Defaults {
         const val lb = 1e-3
         const val ub = 1e3
-        const val a0 = 1.0
-        const val c0 = 1.0
-        const val A = 50.0
+        const val a0 = 300.0
+        const val c0 = 100.0
+        const val A = 0.0
         const val gamma = 0.1
         const val alpha = 0.6
     }
