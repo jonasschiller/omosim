@@ -135,18 +135,16 @@ class MetaModel private constructor(
         return parameters.toList()
     }
 
-    /*fun calibrateMatrix(
+    fun calibrateMatrix(
             activityType: ActivityType,
             sensors: List<TrafficSensor>,
             affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ) : D2Array<Double>? {
         println("GENERAL META MODEL OPTIMIZE")
         val m3rep = generateMatrixRep(activityType)
-        val exp = getExpectedCountPerAgent(m3rep)
 
-        eval(exp, sensors, affectedSensors)
         return optimizeTMatrix(m3rep, affectedSensors, sensors)
-    }*/
+    }
 
     private fun generateMatrixRep(activityType: ActivityType) : MetaModelMatrixRep {
         require(activityType != ActivityType.HOME) { "Meta model dependent on home coefficients not implemented!" }
@@ -643,7 +641,7 @@ class MetaModel private constructor(
         return diffModel to simCount
     }
 
-    /*private fun optimizeTMatrix(
+    private fun optimizeTMatrix(
         m3rep: MetaModelMatrixRep,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>,
@@ -661,20 +659,22 @@ class MetaModel private constructor(
             val model = GRBModel(env)
 
             // Create demand matrix dependent on the variable transition matrix: demand(o, d | M)
-            val demand = List(n) {
+            val demand = ActivityType.entries.associateWith {
                 List(n) {
-                    GRBLinExpr()
+                    List(n) {
+                        GRBLinExpr()
+                    }
                 }
             }
 
             // Transition matrix
-            val varTransitionMatrix = List<List<GRBVar>> (n) { o ->
+            val varTransitionMatrix = List<List<GRBVar>>(n) { o ->
                 model.addVars(
                     DoubleArray(n) { 0.0 },
                     DoubleArray(n) { 1.0 },
                     DoubleArray(n) { 0.0 },
-                    CharArray(n) {GRB.CONTINUOUS},
-                    Array(n) { d -> "W_${o}_$d"}
+                    CharArray(n) { GRB.CONTINUOUS },
+                    Array(n) { d -> "W_${o}_$d" }
                 ).toList()
             }
 
@@ -688,18 +688,51 @@ class MetaModel private constructor(
             }
 
             // Demand with flexible destination
-            addFlexDemand(GRBDemandBuilder, n, m3rep, demand, varTransitionMatrix, relevantODs, irrelevantFactorThreshold)
+            for (activity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
+                addFlexDemand(
+                    GRBDemandBuilder,
+                    n,
+                    m3rep,
+                    demand[activity]!!,
+                    varTransitionMatrix,
+                    relevantODs,
+                    irrelevantFactorThreshold,
+                    activity
+                )
+            }
 
             // Demand for home
-            addHomeDemand(GRBDemandBuilder, n, m3rep, demand, varTransitionMatrix, relevantODs, irrelevantFactorThreshold)
+            addHomeDemand(
+                GRBDemandBuilder,
+                n,
+                m3rep,
+                demand[ActivityType.HOME]!!,
+                varTransitionMatrix,
+                relevantODs,
+                irrelevantFactorThreshold
+            )
 
             // School and Work
-            addFixDemand(GRBDemandBuilder, n, m3rep, demand, varTransitionMatrix, relevantODs, irrelevantFactorThreshold)
+            for (activity in listOf(ActivityType.SCHOOL, ActivityType.WORK)) {
+                addFixDemand(
+                    GRBDemandBuilder,
+                    n,
+                    m3rep,
+                    demand[activity]!!,
+                    varTransitionMatrix,
+                    relevantODs,
+                    irrelevantFactorThreshold,
+                    activity
+                )
+            }
+
+            // Temporal trip distribution
+            val tripStartDistr = monteCarloTripStartDistribution(mcSamples)
 
             // Simulated Traffic Counts
-            val sensorCountExpr = mutableMapOf<TrafficSensor, GRBLinExpr>()
+            val sensorCountExpr = mutableMapOf<TrafficSensor, List<GRBLinExpr>>()
             for (sensor in sensors) {
-                sensorCountExpr[sensor] = GRBLinExpr()
+                sensorCountExpr[sensor] = List(T) { GRBLinExpr() }
             }
             for ((o, origin) in omod.grid.withIndex()) {
                 for ((d, destination) in omod.grid.withIndex()) {
@@ -708,30 +741,46 @@ class MetaModel private constructor(
                         val affected = affectedSensors[od]!!
 
                         for (sensor in affected) {
-                            sensorCountExpr[sensor]!!.multAdd(totalPop, demand[o][d])
+                            for (t in 0 until T) {
+                                for (activity in ActivityType.entries) {
+                                    sensorCountExpr[sensor]!![t]
+                                        .multAdd(totalPop * tripStartDistr[activity]!![t], demand[activity]!![o][d])
+                                }
+                            }
                         }
                     }
                 }
             }
-            val sensorSimCount = model.addVars(
-                DoubleArray(sensors.size) {0.0},
-                null,
-                DoubleArray(sensors.size) {0.0},
-                CharArray(sensors.size) { GRB.CONTINUOUS},
-                Array(sensors.size) {""}
-            )
+            val sensorSimCount = List(T) {
+                model.addVars(
+                    DoubleArray(sensors.size) { 0.0 },
+                    null,
+                    DoubleArray(sensors.size) { 0.0 },
+                    CharArray(sensors.size) { GRB.CONTINUOUS },
+                    Array(sensors.size) { "" }
+                )
+            }
+
             for ((i, sensor) in sensors.withIndex()) {
-                val sensorSum = sensorCountExpr[sensor]!!
-                model.addConstr(sensorSum, GRB.EQUAL, sensorSimCount[i], "cnteq")
+                for (t in 0 until T) {
+                    model.addConstr(
+                        sensorCountExpr[sensor]!![t],
+                        GRB.EQUAL,
+                        sensorSimCount[t][i]!!,
+                        "cnteq"
+                    )
+                }
             }
 
             // Objective
             val obj = GRBQuadExpr()
             for ((i, sensor) in sensors.withIndex()) {
-                // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
-                obj.addConstant(sensor.measuredFlow * sensor.measuredFlow)
-                obj.addTerm(-2 * sensor.measuredFlow, sensorSimCount[i])
-                obj.addTerm(1.0, sensorSimCount[i], sensorSimCount[i])
+                for (t in 0 until T) {
+                    // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
+                    obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
+                    obj.addTerm(-2 * sensor.measuredFlow[t], sensorSimCount[t][i])
+                    obj.addTerm(1.0, sensorSimCount[t][i], sensorSimCount[t][i])
+                }
             }
             model.setObjective(obj, GRB.MINIMIZE)
 
@@ -749,24 +798,6 @@ class MetaModel private constructor(
                 // Print result
                 val oval = model[GRB.DoubleAttr.ObjVal]
                 println("Optimal objective: $oval")
-                println("_".repeat(20*4 + 5*3))
-                println("MSE: ${oval /sensors.size}")
-                println("_".repeat(20*4 + 5*3))
-                println("${"Sensor".padEnd(20)} | \t" +
-                        "${"Flow AltOpt".padEnd(20)} | \t" +
-                        "Flow Measured".padEnd(20)
-                )
-                println("_".repeat(20) +
-                        " | \t" + "_".repeat(20)  +
-                        " | \t" + "_".repeat(20))
-                for (i in sensors.indices) {
-                    val optVal = sensorSimCount[i].get(GRB.DoubleAttr.X)
-                    println(
-                        "${sensors[i].name.padEnd(20)} | \t" +
-                                "${optVal.toString().padEnd(20)} | \t" +
-                                sensors[i].measuredFlow.toString().padEnd(20)
-                    )
-                }
             } else if (status == GRB.Status.INFEASIBLE) {
                 println("Model is infeasible")
             } else if (status == GRB.Status.UNBOUNDED) {
@@ -795,7 +826,7 @@ class MetaModel private constructor(
             )
         }
         return null
-    }*/
+    }
 
     private fun <T, K> fromMatrixSandwichT(
         demandBuilder: DemandBuilder<T, K>,
@@ -861,11 +892,18 @@ class MetaModel private constructor(
             if (activityType == ActivityType.HOME) { continue }
 
             val activityProbs = mk.zeros<Double>(omod.grid.size, omod.grid.size)
-            for (o in omod.grid.indices) {
-                val activityWeights = finder.getWeights(omod.grid[o], omod.grid, activityType = activityType)
-                activityProbs[o] = mk.ndarray( activityWeights.map { it / activityWeights.sum() } )
+            if (finder.forcedTransitionMatrix.containsKey(activityType)) { // If matrix is forced
+                val fMatrix = finder.forcedTransitionMatrix[activityType]!!
+                for ((o, cell) in omod.grid.withIndex()) {
+                    val activityWeights = fMatrix[cell]!!
+                    activityProbs[o] = mk.ndarray( activityWeights.map { it / activityWeights.sum() } )
+                }
+            } else { // Normal case
+                for (o in omod.grid.indices) {
+                    val activityWeights = finder.getWeights(omod.grid[o], omod.grid, activityType = activityType)
+                    activityProbs[o] = mk.ndarray( activityWeights.map { it / activityWeights.sum() } )
+                }
             }
-
             transitionProbs[activityType] = activityProbs
         }
         return FinderMatrices(homeProbs, transitionProbs)

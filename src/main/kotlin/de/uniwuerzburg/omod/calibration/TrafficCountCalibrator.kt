@@ -6,13 +6,14 @@ import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
+import org.jetbrains.kotlinx.multik.ndarray.operations.toArray
 import java.io.File
 import java.util.*
 import kotlin.math.floor
 import kotlin.math.pow
 
 enum class CalibrationOption {
-    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_WSPSA, MM_ADAM, SPSA_OS, MM_GA, MM_MINBC // TODO MM_GG -> MM_GD
+    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_WSPSA, MM_ADAM, SPSA_OS, MM_GA, MM_MINBC, MM_MATRIX // TODO MM_GG -> MM_GD
 }
 
 class TrafficCountCalibrator(
@@ -37,20 +38,6 @@ class TrafficCountCalibrator(
         affectedSensors = TrafficSensor.affectedSensors(sensors, omod)
     }
 
-    /*fun matrixTestRun() {
-        val model = MetaModel.build(omod)
-        val wm = model!!.calibrateMatrix(ActivityType.OTHER, sensors, affectedSensors)
-
-        val finder = omod.destinationFinder as DestinationFinderDefault
-        val force = mutableMapOf<Cell, DoubleArray>()
-        for ((i, cell) in omod.grid.withIndex()) {
-            force[cell] = wm!!.toArray()[i]
-        }
-        finder.forcedTransitionMatrix[ActivityType.OTHER] = force
-
-        evaluate(DoubleArray(omod.grid.size) {1.0})
-    }*/
-
     fun calibrate(
         file: File, option: CalibrationOption, activities: List<ActivityType>,
         iterations: Int = 100, lossLog: File? = null, parameters: Map<String, String>? = null
@@ -68,6 +55,7 @@ class TrafficCountCalibrator(
             CalibrationOption.MM_SPSA   -> calibrateSPSAMM(lossLog, activities, iterations, parameters)
             CalibrationOption.MM_WSPSA  -> calibrateWSPSAMM(lossLog, activities, iterations, parameters)
             CalibrationOption.MM_MINBC  -> calibrateMinBcMM(lossLog, activities, iterations, parameters)
+            CalibrationOption.MM_MATRIX -> calibrateMatrix(activities)
         }
 
         val finder = omod.destinationFinder as DestinationFinderDefault
@@ -79,14 +67,17 @@ class TrafficCountCalibrator(
         val finder = omod.destinationFinder as DestinationFinderDefault
         val flowCal = runBatch(sharePop)
 
+        // Clear calibration
         for (activity in ActivityType.entries) {
             val dcFunction = finder.locChoiceWeightFuns[activity]!!
             for (cell in omod.grid) {
                 cell.updateAttractionScaler(dcFunction, 1.0)
             }
         }
-        val flowBase = runBatch(sharePop)
+        finder.forcedTransitionMatrix.clear()
 
+        // Run uncalibrated
+        val flowBase = runBatch(sharePop)
 
         var mseSim = 0.0
         var mseSimBase = 0.0
@@ -309,6 +300,20 @@ class TrafficCountCalibrator(
             val x0 = DoubleArray(omod.grid.size ) { 1.0 }
             val d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLogA, parameters = parameters)
             updateCalibration(d, activity)
+        }
+    }
+
+    fun calibrateMatrix(activities: List<ActivityType>) {
+        for (activity in activities) {
+            val model = MetaModel.build(omod)
+            val wm = model!!.calibrateMatrix(activity, sensors, affectedSensors)
+
+            val finder = omod.destinationFinder as DestinationFinderDefault
+            val force = mutableMapOf<Cell, DoubleArray>()
+            for ((i, cell) in omod.grid.withIndex()) {
+                force[cell] = wm!!.toArray()[i]
+            }
+            finder.forcedTransitionMatrix[activity] = force
         }
     }
 
