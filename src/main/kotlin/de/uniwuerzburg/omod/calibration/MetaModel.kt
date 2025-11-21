@@ -9,8 +9,6 @@ import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
-import de.uniwuerzburg.omod.utils.sampleCumDist
-import de.uniwuerzburg.omod.utils.sampleNDGaussian
 import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
@@ -18,11 +16,9 @@ import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
 import org.jetbrains.kotlinx.multik.ndarray.data.set
 import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
-import org.jetbrains.kotlinx.multik.ndarray.operations.plus
 import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
-import java.util.*
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.pow
@@ -736,15 +732,22 @@ class MetaModel private constructor(
             }
             for ((o, origin) in omod.grid.withIndex()) {
                 for ((d, destination) in omod.grid.withIndex()) {
+                    // Temporary variables to avoid GRBLinExpr().multAdd(). multAdd() leads to explosion in memory usage.
+                    val demandVars = mutableMapOf<ActivityType, GRBVar> ()
+                    for (activity in ActivityType.entries) {
+                        val v = model.addVar( 0.0, GRB.INFINITY, 0.0, GRB.CONTINUOUS, "demand")
+                        model.addConstr( demand[activity]!![o][d], GRB.EQUAL, v,"demandEq")
+                        demandVars[activity] = v
+                    }
+
                     val od = Pair(origin, destination)
                     if (od in affectedSensors) {
                         val affected = affectedSensors[od]!!
-
                         for (sensor in affected) {
                             for (t in 0 until T) {
                                 for (activity in ActivityType.entries) {
                                     sensorCountExpr[sensor]!![t]
-                                        .multAdd(totalPop * tripStartDistr[activity]!![t], demand[activity]!![o][d])
+                                        .addTerm(totalPop * tripStartDistr[activity]!![t], demandVars[activity]!!)
                                 }
                             }
                         }
