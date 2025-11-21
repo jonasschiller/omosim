@@ -6,11 +6,14 @@ import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelM
 import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
+import de.uniwuerzburg.omod.core.ModeChoiceFast
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
+import de.uniwuerzburg.omod.io.json.writeJson
 import org.jetbrains.kotlinx.multik.ndarray.operations.toArray
 import java.io.File
 import java.util.*
+import javax.swing.text.StyledEditorKit.BoldAction
 import kotlin.math.floor
 import kotlin.math.pow
 
@@ -41,29 +44,55 @@ class TrafficCountCalibrator(
     }
 
     fun calibrate(
-        file: File, option: CalibrationOption, activities: List<ActivityType>,
-        iterations: Int = 100, lossLog: File? = null, parameters: Map<String, String>? = null
+        gravityFile: File, modeChoiceCalFile: File, option: CalibrationOption, activities: List<ActivityType>,
+        iterations: Int = 100, lossLog: File? = null, parameters: Map<String, String>? = null,
+        gravity: Boolean = false, modeChoice: Boolean = true
     ) {
-        when (option) {
-            CalibrationOption.PSO       -> calibratePSO(lossLog, activities, iterations, parameters)
-            CalibrationOption.PSO_OS    -> calibratePSOAllAtOnce(lossLog, activities, iterations, parameters)
-            CalibrationOption.MM_PSO    -> calibratePSOMM(lossLog, activities, iterations, parameters)
-            CalibrationOption.MM_GA     -> calibrateGAMM(lossLog, activities, iterations, parameters)
-            CalibrationOption.MM_GG     -> calibrateGGMM(lossLog, activities, iterations, parameters)
-            CalibrationOption.MM_ADAM   -> calibrateAdamMM(lossLog, activities, iterations, parameters)
-            CalibrationOption.MM_LBFGS  -> calibrateLBFGSMM(lossLog, activities, iterations, parameters)
-            CalibrationOption.SPSA      -> calibrateSPSA(lossLog, activities, iterations, parameters)
-            CalibrationOption.SPSA_OS   -> calibrateSPSAAllAtOnce(lossLog, activities, iterations, parameters)
-            CalibrationOption.MM_SPSA   -> calibrateSPSAMM(lossLog, activities, iterations, parameters)
-            CalibrationOption.MM_WSPSA  -> calibrateWSPSAMM(lossLog, activities, iterations, parameters)
-            CalibrationOption.WSPSA     -> calibrateWSPSA(lossLog, activities, iterations, parameters)
-            CalibrationOption.MM_MINBC  -> calibrateMinBcMM(lossLog, activities, iterations, parameters)
-            CalibrationOption.MM_MATRIX -> calibrateMatrix(activities)
+        if (gravity) {
+            when (option) {
+                CalibrationOption.PSO       -> calibratePSO(lossLog, activities, iterations, parameters)
+                CalibrationOption.PSO_OS    -> calibratePSOAllAtOnce(lossLog, activities, iterations, parameters)
+                CalibrationOption.MM_PSO    -> calibratePSOMM(lossLog, activities, iterations, parameters)
+                CalibrationOption.MM_GA     -> calibrateGAMM(lossLog, activities, iterations, parameters)
+                CalibrationOption.MM_GG     -> calibrateGGMM(lossLog, activities, iterations, parameters)
+                CalibrationOption.MM_ADAM   -> calibrateAdamMM(lossLog, activities, iterations, parameters)
+                CalibrationOption.MM_LBFGS  -> calibrateLBFGSMM(lossLog, activities, iterations, parameters)
+                CalibrationOption.SPSA      -> calibrateSPSA(lossLog, activities, iterations, parameters)
+                CalibrationOption.SPSA_OS   -> calibrateSPSAAllAtOnce(lossLog, activities, iterations, parameters)
+                CalibrationOption.MM_SPSA   -> calibrateSPSAMM(lossLog, activities, iterations, parameters)
+                CalibrationOption.MM_WSPSA  -> calibrateWSPSAMM(lossLog, activities, iterations, parameters)
+                CalibrationOption.WSPSA     -> calibrateWSPSA(lossLog, activities, iterations, parameters)
+                CalibrationOption.MM_MINBC  -> calibrateMinBcMM(lossLog, activities, iterations, parameters)
+                CalibrationOption.MM_MATRIX -> calibrateMatrix(activities)
+            }
+
+            val finder = omod.destinationFinder as DestinationFinderDefault
+            CalibrationInfo.write(gravityFile, omod.buildings, finder.locChoiceWeightFuns)
         }
 
-        val finder = omod.destinationFinder as DestinationFinderDefault
-        CalibrationInfo.write(file, omod.buildings, finder.locChoiceWeightFuns)
+        if (modeChoice) {
+            modeChoiceCal(modeChoiceCalFile)
+            omod.tourModeUtilityFn = modeChoiceCalFile
+        }
+
         evaluate(0.1)
+    }
+
+    private fun modeChoiceCal(calFile: File) {
+        omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
+
+        // Run Simulation
+        val agents = omod.run(0.1, verbose = false)
+        omod.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
+
+        // Mode Choice
+        val x = calibrate(agents, omod.mainRng, omod, sensors, affectedSensors)
+
+        // Store calibration
+        val mc = ModeChoiceFast(omod.routingCache)
+        val carUtil = mc.tourModeOptions.find { it.mode == Mode.CAR_DRIVER }
+        carUtil!!.intercept = x[0]
+        writeJson(mc.tourModeOptions, calFile)
     }
 
     fun evaluate(sharePop: Double) {
@@ -78,6 +107,7 @@ class TrafficCountCalibrator(
             }
         }
         finder.forcedTransitionMatrix.clear()
+        omod.tourModeUtilityFn = null
 
         // Run uncalibrated
         val flowBase = runBatch(sharePop)
@@ -347,17 +377,6 @@ class TrafficCountCalibrator(
         return calibrateK1(agents, omod, sensors, affectedSensors)
     }*/
 
-
-    /*private fun modeChoiceCal() {
-        omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
-
-        // Run Simulation
-        val agents = omod.run(0.1, verbose = false)
-        omod.doModeChoice(agents, ModeChoiceOption.FAST, false)
-
-        // Mode Choice
-        calibrate(agents, omod.mainRng, omod, sensors, affectedSensors)
-    }*/
     private fun activityLogFile(activity: ActivityType, lossLog: File?) : File? {
         return if(lossLog != null) {
             File(
@@ -458,7 +477,7 @@ class TrafficCountCalibrator(
     }
 
    @Suppress("SameParameterValue")
-   private fun runBatch(sharePop: Double) : Map<TrafficSensor, DoubleArray> {
+   private fun runBatch(sharePop: Double, debugMCUpdate: DoubleArray? = null) : Map<TrafficSensor, DoubleArray> {
        val fullPopulation = omod.buildings.sumOf { it.population }
 
        // Ensure results are deterministic

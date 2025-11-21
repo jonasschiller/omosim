@@ -95,6 +95,8 @@ class Omod(
     private val fullArea: Geometry
     val popStrata: List<PopStratum>
     val carOwnership: CarOwnership
+    var tourModeUtilityFn: File? = null
+    var tripModeUtilityFn: File? = null
     //var altPercentages: Map<Pair<RealLocation, RealLocation>, List<Double>>
 
     init {
@@ -591,7 +593,7 @@ class Omod(
                 }
             }
             ModeChoiceOption.FAST -> {
-                val modeChoice = ModeChoiceFast(routingCache)
+                val modeChoice = ModeChoiceFast(routingCache, tourModeUtilityFn, tripModeUtilityFn)
                 modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
                 // TODO test code
                 /*

@@ -1,6 +1,7 @@
 package de.uniwuerzburg.omod.core
 
 import de.uniwuerzburg.omod.core.models.*
+import de.uniwuerzburg.omod.io.json.readJson
 import de.uniwuerzburg.omod.io.json.readJsonFromResource
 import de.uniwuerzburg.omod.routing.*
 import de.uniwuerzburg.omod.utils.ProgressBar
@@ -9,6 +10,7 @@ import de.uniwuerzburg.omod.utils.sampleCumDist
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import java.io.File
 import java.time.LocalTime
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
@@ -25,10 +27,20 @@ import kotlin.time.TimeSource
  * @param routingCache GraphHopper for routing
  */
 class ModeChoiceFast(
-    private val routingCache: RoutingCache
+    private val routingCache: RoutingCache,
+    tourModeUtilityFn: File? = null,
+    tripModeUtilityFn: File? = null
 ) : ModeChoice {
-    val tourModeOptions: Array<ModeUtility> = readJsonFromResource("tourModeUtilities.json")
-    val tripModeOptions: Array<ModeUtility> = readJsonFromResource("tripModeUtilities.json")
+    val tourModeOptions: Array<ModeUtility> = if (tourModeUtilityFn != null) {
+        readJson(tourModeUtilityFn)
+    } else {
+        readJsonFromResource("tourModeUtilities.json")
+    }
+    val tripModeOptions: Array<ModeUtility> = if (tripModeUtilityFn != null) {
+        readJson(tripModeUtilityFn)
+    } else {
+        readJsonFromResource("tripModeUtilities.json")
+    }
 
     /**
      * Determine the mode of each trip and calculate the distance and time.
@@ -111,7 +123,8 @@ class ModeChoiceFast(
                 carDistance,
                 originActivity,
                 destinationActivity,
-                wd
+                wd,
+                departureTime
             )
             currentTour.add(tripFeatures)
 
@@ -227,7 +240,8 @@ class ModeChoiceFast(
         val carDistance: Double,
         val fromActivity: Activity,
         val toActivity: Activity,
-        val weekday: Weekday
+        val weekday: Weekday,
+        val departureTime: LocalTime,
     ) {
         var mode: Mode? = null
     }

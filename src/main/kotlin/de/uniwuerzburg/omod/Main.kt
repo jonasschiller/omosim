@@ -209,9 +209,15 @@ class Run : CliktCommand() {
                         calOutFile.name.replace(".json", "") +
                         ".losslog"
             )
+            val modeChoiceCalibrationFile = File(
+                calOutFile.parent + "/" +
+                        calOutFile.name.replace(".json", "") +
+                        "_modeChoice.json"
+            )
 
             calibrator.calibrate(
                 calibrationParameter!!.cal_out,
+                modeChoiceCalibrationFile,
                 calibrationParameter!!.cal_method,
                 calibrationParameter!!.cal_activity,
                 calibrationParameter!!.cal_iterations,
