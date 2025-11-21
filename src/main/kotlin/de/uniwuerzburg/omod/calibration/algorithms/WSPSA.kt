@@ -1,5 +1,6 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
+import de.uniwuerzburg.omod.calibration.TrafficSensor
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelMultiOut
 import java.io.BufferedWriter
 import java.io.File
@@ -22,7 +23,7 @@ object WSPSA {
 
     fun run(
         x0: DoubleArray,
-        objective: (DoubleArray) -> Double,
+        objective:  (DoubleArray) -> Pair<Double, DoubleArray>,
         measurements: List<Double>,
         model: DifferentiableModelMultiOut,
         rng: Random,
@@ -50,7 +51,7 @@ object WSPSA {
 
     fun run(
         x0: DoubleArray,
-        objective: (DoubleArray) -> Double,
+        objective: (DoubleArray) -> Pair<Double, DoubleArray>,
         measurements: List<Double>,
         model: DifferentiableModelMultiOut,
         rng: Random,
@@ -84,7 +85,7 @@ object WSPSA {
 
         val x = x0.copyOf()
         var bestX = x0.copyOf()
-        var bestLoss = objective(x0)
+        var (bestLoss, _) = objective(x0)
 
         for (i in 0 until iterations) {
             val time = measureTime {
@@ -103,7 +104,7 @@ object WSPSA {
                         xPlus[j] = ub
                     }
                 }
-                val jPlus = squareErrors(xPlus, model, m)
+                val jPlus = squareErrors(xPlus, objective, m)
 
                 // Minus
                 val xMinus = DoubleArray(x0.size) { j -> x[j] - c * perturbation[j] }
@@ -115,7 +116,7 @@ object WSPSA {
                         xMinus[j] = ub
                     }
                 }
-                val jMinus = squareErrors(xMinus, model, m)
+                val jMinus = squareErrors(xMinus, objective, m)
 
                 // Jacobian
                 val jac = model.jacobian(x)
@@ -145,7 +146,7 @@ object WSPSA {
                     }
                 }
             }
-            val loss = objective(x)
+            val (loss, _) = objective(x)
 
             if (loss < bestLoss) {
                 bestX = x.copyOf()
@@ -165,8 +166,10 @@ object WSPSA {
         return bestX
     }
 
-    private fun squareErrors(x: DoubleArray, model: DifferentiableModelMultiOut, m: DoubleArray) : DoubleArray {
-        val s = model.evaluate(x)
+    private fun squareErrors(
+        x: DoubleArray, objective: (DoubleArray) -> Pair<Double, DoubleArray>, m: DoubleArray
+    ) : DoubleArray {
+        val (_, s) = objective(x)
         val se = DoubleArray(s.size) { 0.0 }
         for (i in s.indices) {
             se[i] = (m[i] - s[i]).pow(2)

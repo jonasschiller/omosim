@@ -2,6 +2,8 @@ package de.uniwuerzburg.omod.calibration
 
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.algorithms.*
+import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelMultiOut
+import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
@@ -13,7 +15,7 @@ import kotlin.math.floor
 import kotlin.math.pow
 
 enum class CalibrationOption {
-    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_WSPSA, MM_ADAM, SPSA_OS, MM_GA, MM_MINBC, MM_MATRIX // TODO MM_GG -> MM_GD
+    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_WSPSA, WSPSA, MM_ADAM, SPSA_OS, MM_GA, MM_MINBC, MM_MATRIX // TODO MM_GG -> MM_GD
 }
 
 class TrafficCountCalibrator(
@@ -54,6 +56,7 @@ class TrafficCountCalibrator(
             CalibrationOption.SPSA_OS   -> calibrateSPSAAllAtOnce(lossLog, activities, iterations, parameters)
             CalibrationOption.MM_SPSA   -> calibrateSPSAMM(lossLog, activities, iterations, parameters)
             CalibrationOption.MM_WSPSA  -> calibrateWSPSAMM(lossLog, activities, iterations, parameters)
+            CalibrationOption.WSPSA     -> calibrateWSPSA(lossLog, activities, iterations, parameters)
             CalibrationOption.MM_MINBC  -> calibrateMinBcMM(lossLog, activities, iterations, parameters)
             CalibrationOption.MM_MATRIX -> calibrateMatrix(activities)
         }
@@ -263,6 +266,25 @@ class TrafficCountCalibrator(
         }
     }
 
+    fun calibrateWSPSA(
+        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
+    ) {
+        val measurements = sensors.map { it.measuredFlow }.flatMap { it.toList() }
+
+        for (activity in activities) {
+            val lossLogA = activityLogFile(activity, lossLog)
+            val objective = batchObjSimCounts(activity)
+            val model = MetaModel.build(omod)!!.getDiffModelSimCounts(activity, sensors, affectedSensors)
+            val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
+            var d = WSPSA.run(
+                x0, objective, measurements, model, Random(),
+                iterations = iterations, out = lossLogA, parameters = parameters
+            )
+            d = (d.toList() + listOf(1.0)).toDoubleArray()
+            updateCalibration(d, activity)
+        }
+    }
+
     fun calibrateWSPSAMM(
         lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
     ) {
@@ -270,8 +292,8 @@ class TrafficCountCalibrator(
 
         for (activity in activities) {
             val lossLogA = activityLogFile(activity, lossLog)
-            val objective = metaModelObj(activity)
             val model = MetaModel.build(omod)!!.getDiffModelSimCounts(activity, sensors, affectedSensors)
+            val objective = metaModelObjSimCounts(model, sensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = WSPSA.run(
                 x0, objective, measurements, model, Random(),
@@ -354,6 +376,27 @@ class TrafficCountCalibrator(
         }
     }
 
+    private fun metaModelObjSimCounts(model: DifferentiableModelMultiOut, sensors: List<TrafficSensor>): (DoubleArray) ->
+        Pair<Double, DoubleArray> {
+        return { x: DoubleArray ->
+            val simCounts = model.evaluate(x)
+
+            val flows = mutableMapOf<TrafficSensor, DoubleArray>()
+            var i =0
+            for (sensor in sensors) {
+                val sensorCounts = DoubleArray(T) {0.0}
+                for (t in 0 until T) {
+                    sensorCounts[t] = simCounts[i]
+                    i += 1
+                }
+                flows[sensor] = sensorCounts
+            }
+            flowMSE(flows)
+
+            Pair(flowMSE(flows), simCounts)
+        }
+    }
+
     private fun batchObj(activities: List<ActivityType>): (DoubleArray) -> Double {
         return { x: DoubleArray ->
             for ((ai, activity) in activities.withIndex()) {
@@ -375,6 +418,26 @@ class TrafficCountCalibrator(
             }
             val flows = runBatch(0.1)
             flowMSE(flows)
+        }
+    }
+
+    private fun batchObjSimCounts(activity: ActivityType): (DoubleArray) -> Pair<Double, DoubleArray> {
+        return { x: DoubleArray ->
+            val dcFunction = finder.locChoiceWeightFuns[activity]!!
+            for ((i, cell) in omod.grid.withIndex()) {
+                cell.updateAttractionScaler(dcFunction, x[i])
+            }
+            val flows = runBatch(0.1)
+            flowMSE(flows)
+
+            val countsFlat = mutableListOf<Double>()
+            for (sensor in sensors) {
+                for (t in 0 until T) {
+                    countsFlat.add( flows[sensor]!![t] )
+                }
+            }
+
+            Pair(flowMSE(flows), countsFlat.toDoubleArray())
         }
     }
 
@@ -445,7 +508,7 @@ class TrafficCountCalibrator(
                 mse += (flowCal[sensor]!![t] - sensor.measuredFlow[t]).pow(2)
             }
         }
-        return mse / sensors.size
+        return mse
     }
 }
 
