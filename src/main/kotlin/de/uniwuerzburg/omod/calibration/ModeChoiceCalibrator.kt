@@ -14,14 +14,19 @@ import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.time.measureTime
 
+enum class ModeChoiceCalibrationObjective {
+    FitTotalCarTrips, FitIndividualMeasurements
+}
+
 fun calibrate(
     agents: List<MobiAgent>, rng: Random, omod: Omod,
     sensors: List<TrafficSensor>,
-    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
+    objectiveType: ModeChoiceCalibrationObjective
 ): DoubleArray {
     // Create mode choice model
     val mc = ModeChoiceFast(omod.routingCache)
-    val model = buildModel(agents, mc, rng, omod, sensors, affectedSensors)
+    val model = buildModel(agents, mc, rng, omod, sensors, affectedSensors, objectiveType)
 
     // Get X0
     val carUtil = mc.tourModeOptions.find { it.mode == Mode.CAR_DRIVER }
@@ -36,7 +41,8 @@ fun calibrate(
 fun buildModel(
     agents: List<MobiAgent>, mc: ModeChoiceFast, rng: Random, omod: Omod,
     sensors: List<TrafficSensor>,
-    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
+    objectiveType: ModeChoiceCalibrationObjective
 ) : DifferentiableModel {
     val totalPop = omod.buildings.sumOf { it.population }
     val model = DifferentiableModel(1)
@@ -109,24 +115,50 @@ fun buildModel(
         }
     }
 
-    // Objective // TODO Maybe better to minimze the distance in total car trips?
-    val obj = LinearTerm(model.nVars)
-    for (sensor in sensors) {
-        for (t in 0 until T) {
-            // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
-            val simCountTerm = simCount[sensor]!![t]
-            obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
-            obj.addTerm(simCountTerm, -2 * sensor.measuredFlow[t])
+    // Objective
+    val objective = when(objectiveType) {
+        ModeChoiceCalibrationObjective.FitIndividualMeasurements -> {
+            val obj = LinearTerm(model.nVars)
+            for (sensor in sensors) {
+                for (t in 0 until T) {
+                    // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
+                    val simCountTerm = simCount[sensor]!![t]
+                    obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
+                    obj.addTerm(simCountTerm, -2 * sensor.measuredFlow[t])
+                    val qTerm = QuadraticTerm(
+                        model.nVars,
+                        simCountTerm,
+                        simCountTerm,
+                        1.0
+                    )
+                    obj.addTerm(qTerm, 1.0)
+                }
+            }
+            obj
+        }
+        ModeChoiceCalibrationObjective.FitTotalCarTrips -> {
+            var totalMeasured = 0.0
+            val totalSim = LinearTerm(model.nVars)
+            for (sensor in sensors) {
+                for (t in 0 until T) {
+                    totalSim.addTerm(simCount[sensor]!![t], 1.0)
+                    totalMeasured += sensor.measuredFlow[t]
+                }
+            }
+            val obj = LinearTerm(model.nVars)
+            obj.addConstant(totalMeasured * totalMeasured)
+            obj.addTerm(totalSim, -2 * totalMeasured)
             val qTerm = QuadraticTerm(
                 model.nVars,
-                simCountTerm,
-                simCountTerm,
+                totalSim,
+                totalSim,
                 1.0
             )
             obj.addTerm(qTerm, 1.0)
+            obj
         }
     }
 
-    model.setRootTerm(obj)
+    model.setRootTerm(objective)
     return model
 }

@@ -48,6 +48,11 @@ class TrafficCountCalibrator(
         iterations: Int = 100, lossLog: File? = null, parameters: Map<String, String>? = null,
         gravity: Boolean = false, modeChoice: Boolean = true
     ) {
+        if (modeChoice) {
+            modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitTotalCarTrips)
+            omod.tourModeUtilityFn = modeChoiceCalFile
+        }
+
         if (gravity) {
             when (option) {
                 CalibrationOption.PSO       -> calibratePSO(lossLog, activities, iterations, parameters)
@@ -71,14 +76,14 @@ class TrafficCountCalibrator(
         }
 
         if (modeChoice) {
-            modeChoiceCal(modeChoiceCalFile)
+            modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitIndividualMeasurements)
             omod.tourModeUtilityFn = modeChoiceCalFile
         }
 
         evaluate(0.1)
     }
 
-    private fun modeChoiceCal(calFile: File) {
+    private fun modeChoiceCal(calFile: File, objectiveType: ModeChoiceCalibrationObjective) {
         omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
 
         // Run Simulation
@@ -86,7 +91,7 @@ class TrafficCountCalibrator(
         omod.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
 
         // Mode Choice
-        val x = calibrate(agents, omod.mainRng, omod, sensors, affectedSensors)
+        val x = calibrate(agents, omod.mainRng, omod, sensors, affectedSensors, objectiveType)
 
         // Store calibration
         val mc = ModeChoiceFast(omod.routingCache)
