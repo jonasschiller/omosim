@@ -21,6 +21,10 @@ enum class CalibrationOption {
     PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_WSPSA, WSPSA, MM_ADAM, SPSA_OS, MM_GA, MM_MINBC, MM_MATRIX // TODO MM_GG -> MM_GD
 }
 
+enum class CalibrationStep {
+    GRAVITY, MODE_CHOICE, EVALUATE
+}
+
 class TrafficCountCalibrator(
     linkDataFile: File,
     val omod: Omod,
@@ -46,41 +50,43 @@ class TrafficCountCalibrator(
     fun calibrate(
         gravityFile: File, modeChoiceCalFile: File, option: CalibrationOption, activities: List<ActivityType>,
         iterations: Int = 100, lossLog: File? = null, parameters: Map<String, String>? = null,
-        gravity: Boolean = false, modeChoice: Boolean = true
+        steps: List<CalibrationStep> = listOf(CalibrationStep.GRAVITY, CalibrationStep.EVALUATE)
     ) {
-        if (modeChoice) {
+        /*if (modeChoice) {
             modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitTotalCarTrips)
             omod.tourModeUtilityFn = modeChoiceCalFile
-        }
-
-        if (gravity) {
-            when (option) {
-                CalibrationOption.PSO       -> calibratePSO(lossLog, activities, iterations, parameters)
-                CalibrationOption.PSO_OS    -> calibratePSOAllAtOnce(lossLog, activities, iterations, parameters)
-                CalibrationOption.MM_PSO    -> calibratePSOMM(lossLog, activities, iterations, parameters)
-                CalibrationOption.MM_GA     -> calibrateGAMM(lossLog, activities, iterations, parameters)
-                CalibrationOption.MM_GG     -> calibrateGGMM(lossLog, activities, iterations, parameters)
-                CalibrationOption.MM_ADAM   -> calibrateAdamMM(lossLog, activities, iterations, parameters)
-                CalibrationOption.MM_LBFGS  -> calibrateLBFGSMM(lossLog, activities, iterations, parameters)
-                CalibrationOption.SPSA      -> calibrateSPSA(lossLog, activities, iterations, parameters)
-                CalibrationOption.SPSA_OS   -> calibrateSPSAAllAtOnce(lossLog, activities, iterations, parameters)
-                CalibrationOption.MM_SPSA   -> calibrateSPSAMM(lossLog, activities, iterations, parameters)
-                CalibrationOption.MM_WSPSA  -> calibrateWSPSAMM(lossLog, activities, iterations, parameters)
-                CalibrationOption.WSPSA     -> calibrateWSPSA(lossLog, activities, iterations, parameters)
-                CalibrationOption.MM_MINBC  -> calibrateMinBcMM(lossLog, activities, iterations, parameters)
-                CalibrationOption.MM_MATRIX -> calibrateMatrix(activities)
+        }*/
+        for (step in steps) {
+            when(step) {
+                CalibrationStep.GRAVITY -> {
+                    when (option) {
+                        CalibrationOption.PSO       -> calibratePSO(lossLog, activities, iterations, parameters)
+                        CalibrationOption.PSO_OS    -> calibratePSOAllAtOnce(lossLog, activities, iterations, parameters)
+                        CalibrationOption.MM_PSO    -> calibratePSOMM(lossLog, activities, iterations, parameters)
+                        CalibrationOption.MM_GA     -> calibrateGAMM(lossLog, activities, iterations, parameters)
+                        CalibrationOption.MM_GG     -> calibrateGGMM(lossLog, activities, iterations, parameters)
+                        CalibrationOption.MM_ADAM   -> calibrateAdamMM(lossLog, activities, iterations, parameters)
+                        CalibrationOption.MM_LBFGS  -> calibrateLBFGSMM(lossLog, activities, iterations, parameters)
+                        CalibrationOption.SPSA      -> calibrateSPSA(lossLog, activities, iterations, parameters)
+                        CalibrationOption.SPSA_OS   -> calibrateSPSAAllAtOnce(lossLog, activities, iterations, parameters)
+                        CalibrationOption.MM_SPSA   -> calibrateSPSAMM(lossLog, activities, iterations, parameters)
+                        CalibrationOption.MM_WSPSA  -> calibrateWSPSAMM(lossLog, activities, iterations, parameters)
+                        CalibrationOption.WSPSA     -> calibrateWSPSA(lossLog, activities, iterations, parameters)
+                        CalibrationOption.MM_MINBC  -> calibrateMinBcMM(lossLog, activities, iterations, parameters)
+                        CalibrationOption.MM_MATRIX -> calibrateMatrix(activities)
+                    }
+                    val finder = omod.destinationFinder as DestinationFinderDefault
+                    CalibrationInfo.write(gravityFile, omod.buildings, finder.locChoiceWeightFuns)
+                }
+                CalibrationStep.MODE_CHOICE -> {
+                    modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitIndividualMeasurements)
+                    omod.tourModeUtilityFn = modeChoiceCalFile
+                }
+                CalibrationStep.EVALUATE -> {
+                    evaluate(0.1)
+                }
             }
-
-            val finder = omod.destinationFinder as DestinationFinderDefault
-            CalibrationInfo.write(gravityFile, omod.buildings, finder.locChoiceWeightFuns)
         }
-
-        if (modeChoice) {
-            modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitIndividualMeasurements)
-            omod.tourModeUtilityFn = modeChoiceCalFile
-        }
-
-        evaluate(0.1)
     }
 
     private fun modeChoiceCal(calFile: File, objectiveType: ModeChoiceCalibrationObjective) {

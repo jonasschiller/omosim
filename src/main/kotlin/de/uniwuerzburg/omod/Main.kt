@@ -9,6 +9,7 @@ import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.clikt.parameters.types.*
 import de.uniwuerzburg.omod.calibration.CalibrationInfo
 import de.uniwuerzburg.omod.calibration.CalibrationOption
+import de.uniwuerzburg.omod.calibration.CalibrationStep
 import de.uniwuerzburg.omod.calibration.TrafficCountCalibrator
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
@@ -42,6 +43,9 @@ class CalibrationOptions : OptionGroup (
     val cal_traffic_count_file by option(
         help = "Traffic count data that serves as ground truth."
     ).file(mustExist = true, mustBeReadable = true).required()
+    val cal_steps by option(
+        help = ""
+    ).enum<CalibrationStep>().multiple(default = listOf(CalibrationStep.GRAVITY, CalibrationStep.EVALUATE))
     val cal_method by option(
         help = "Calibration algorithm to use."
     ).enum<CalibrationOption>().default(CalibrationOption.PSO)
@@ -163,6 +167,9 @@ class Run : CliktCommand() {
         help = "Calibration input file to use for regular run." +
                 "Not to be confused with --cal_out which defines the output of a calibration run."
     ).file(mustExist = true, mustBeReadable = true)
+    private val calibration_file_mode_choice by option(
+        help = ""
+    ).file(mustExist = true, mustBeReadable = true)
 
     @OptIn(ExperimentalSerializationApi::class)
     override fun run() {
@@ -190,6 +197,15 @@ class Run : CliktCommand() {
             nWorker = n_worker,
             gtfsFile = gtfs_file
         )
+
+        // Apply Calibration
+        if (calibration_file != null) {
+            val finder = omod.destinationFinder as DestinationFinderDefault
+            CalibrationInfo.read(calibration_file!!, omod.grid, omod.buildings, finder.locChoiceWeightFuns)
+        }
+        if (calibration_file_mode_choice != null) {
+            omod.tourModeUtilityFn = calibration_file_mode_choice
+        }
 
         // Calibrate
         calibrationParameter?.let {
@@ -222,14 +238,10 @@ class Run : CliktCommand() {
                 calibrationParameter!!.cal_activity,
                 calibrationParameter!!.cal_iterations,
                 lossLogFile,
-                calibrationParameter!!.cal_parameter
+                calibrationParameter!!.cal_parameter,
+                calibrationParameter!!.cal_steps
             )
             return
-        }
-
-        if (calibration_file != null) {
-            val finder = omod.destinationFinder as DestinationFinderDefault
-            CalibrationInfo.read(calibration_file!!, omod.grid, omod.buildings, finder.locChoiceWeightFuns)
         }
 
         // Mobility demand
