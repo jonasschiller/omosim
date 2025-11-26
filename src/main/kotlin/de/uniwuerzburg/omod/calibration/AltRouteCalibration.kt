@@ -1,9 +1,136 @@
 package de.uniwuerzburg.omod.calibration
 
 import com.gurobi.gurobi.*
-import de.uniwuerzburg.omod.core.models.Cell
-import de.uniwuerzburg.omod.core.models.RealLocation
+import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
+import de.uniwuerzburg.omod.calibration.algorithms.BFGS
+import de.uniwuerzburg.omod.calibration.differentiablemodel.*
+import de.uniwuerzburg.omod.core.ModeChoiceFast
+import de.uniwuerzburg.omod.core.Omod
+import de.uniwuerzburg.omod.core.models.*
+import java.time.LocalTime
+import java.util.*
+import kotlin.math.exp
+import kotlin.math.floor
+import kotlin.math.ln
 
+/*
+
+fun calibrateAltRoute(
+    agents: List<MobiAgent>, rng: Random, omod: Omod,
+    sensors: List<TrafficSensor>,
+    affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>>,
+    objectiveType: ModeChoiceCalibrationObjective
+): DoubleArray {
+    // Create mode choice model
+    val mc = ModeChoiceFast(omod.routingCache)
+    val model = buildModel(agents, mc, rng, omod, sensors, affectedAltSensors, objectiveType)
+
+    // Get X0
+    val carUtil = mc.tourModeOptions.find { it.mode == Mode.CAR_DRIVER }
+    val x0 = doubleArrayOf(carUtil!!.intercept)
+
+    // Optimize
+    val x = BFGS.run(model, x0, lb=-50.0, ub=50.0, iterations=50)
+
+    return x
+}
+
+fun buildModelAltRoute(
+    agents: List<MobiAgent>, mc: ModeChoiceFast, rng: Random, omod: Omod,
+    sensors: List<TrafficSensor>,
+    affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>>,
+    objectiveType: ModeChoiceCalibrationObjective
+) : DifferentiableModel {
+    val totalPop = omod.buildings.sumOf { it.population }
+    val model = DifferentiableModel(1) // TODO get nVars
+
+    // Simulated traffic counts
+    val simCount = mutableMapOf<TrafficSensor, List<LinearTerm>>()
+    for (sensor in sensors) {
+        simCount[sensor] = List(T) { LinearTerm(model.nVars) }
+    }
+
+    // Driver utility model
+    val driverUtilityModel = mc.tourModeOptions.first { it.mode == Mode.CAR_DRIVER }
+
+    // Get var coefficients
+    var altCoefs = mutableMapOf<Triple<LocationOption, LocationOption, Int>, Double>()
+
+    for (agent in agents) {
+        val demand = agent.mobilityDemand.first()
+
+        // Get Start times
+        val startTimes = mutableListOf<LocalTime>()
+        val origins = mutableListOf<Activity>()
+        val destinations = mutableListOf<Activity>()
+        val visitor: TripVisitor = { _: Trip, origin: Activity, destination: Activity,
+                                     departureTime: LocalTime, _: Weekday, _: Boolean ->
+            startTimes.add(departureTime)
+            origins.add(origin)
+            destinations.add(destination)
+        }
+        demand.visitTrips(visitor)
+
+        for (i in 0 until demand.trips.size) {
+            val trip = demand.trips[i]
+            val startTime = startTimes[i]
+            val origin = origins[i].location
+            val destination = destinations[i].location
+
+            // Get start time interval
+            if (trip.mode != Mode.CAR_DRIVER) {
+                continue
+            }
+            val mod = startTime.minute + startTime.hour * 60
+            val t = floor((mod % 1440.0) / 1440.0 * T).toInt()
+
+            val key = Triple(origin, destination, t)
+            val c = altCoefs[key] ?: 0.0
+            altCoefs[key] = c + totalPop / agents.size
+        }
+    }
+
+    // Create sim counts based on alternative choices
+    var iVar = 0
+    for ((od, alternatives) in affectedAltSensors.entries) {
+        for (t in 0 until T) {
+            val key = Triple(od.first, od.second, t)
+            if (key in altCoefs) {
+                val c = altCoefs[key]!!
+                for ((i, alternative) in alternatives.withIndex()) {
+                    val exTripsAlternative = LinearBaseTerm(model.nVars)
+                    exTripsAlternative.addTerm(iVar, c)
+                    iVar += 1
+                    for (sensor in alternative) {
+                        simCount[sensor]!![t].addTerm(exTripsAlternative, 1.0)
+                    }
+                }
+            }
+        }
+    }
+
+    // Objective
+    val obj = LinearTerm(model.nVars)
+    for (sensor in sensors) {
+        for (t in 0 until T) {
+            // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
+            val simCountTerm = simCount[sensor]!![t]
+            obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
+            obj.addTerm(simCountTerm, -2 * sensor.measuredFlow[t])
+            val qTerm = QuadraticTerm(
+                model.nVars,
+                simCountTerm,
+                simCountTerm,
+                1.0
+            )
+            obj.addTerm(qTerm, 1.0)
+        }
+    }
+
+    model.setRootTerm(obj)
+    return model
+}
+*/
 /*
 fun optimize(
     grid: List<Cell>,
