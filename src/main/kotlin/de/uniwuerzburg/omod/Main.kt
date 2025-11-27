@@ -243,7 +243,7 @@ class Run : CliktCommand() {
                 calibrationParameter!!.cal_parameter,
                 calibrationParameter!!.cal_steps
             )
-            return
+            //return // TODO
         }
 
         // Mobility demand

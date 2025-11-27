@@ -3,6 +3,7 @@ package de.uniwuerzburg.omod.core
 import com.graphhopper.GraphHopper
 import com.graphhopper.gtfs.GraphHopperGtfs
 import com.graphhopper.gtfs.PtRouter
+import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.io.geojson.*
 import de.uniwuerzburg.omod.io.gtfs.clipGTFSFile
@@ -10,13 +11,8 @@ import de.uniwuerzburg.omod.io.gtfs.getPublicTransitSimDays
 import de.uniwuerzburg.omod.io.json.*
 import de.uniwuerzburg.omod.io.osm.readOSM
 import de.uniwuerzburg.omod.io.readCensus
-import de.uniwuerzburg.omod.routing.RoutingCache
-import de.uniwuerzburg.omod.routing.RoutingMode
-import de.uniwuerzburg.omod.routing.createGraphHopper
-import de.uniwuerzburg.omod.routing.createGraphHopperGTFS
-import de.uniwuerzburg.omod.utils.CRSTransformer
-import de.uniwuerzburg.omod.utils.ProgressBar
-import de.uniwuerzburg.omod.utils.fastCovers
+import de.uniwuerzburg.omod.routing.*
+import de.uniwuerzburg.omod.utils.*
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -34,6 +30,7 @@ import java.time.LocalDate
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.exists
+import kotlin.math.floor
 import kotlin.time.TimeSource
 
 /**
@@ -570,12 +567,11 @@ class Omod(
         logger.on = verbose
 
         when (modeChoiceOption) {
-            ModeChoiceOption.NONE -> { return agents } // Do nothing
+            ModeChoiceOption.NONE -> { } // Do nothing
             ModeChoiceOption.CAR_ONLY -> {
                 setupHopper()
                 val modeChoice = ModeChoiceCarOnly(hopper!!, withPath)
                 modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
-                return agents
             }
             ModeChoiceOption.GTFS -> {
                 setupHopper()
@@ -587,7 +583,6 @@ class Omod(
                         withPath, tourModeUtilityFn, tripModeUtilityFn
                     )
                     modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
-                    return agents
                 } finally {
                     gtfsComponents!!.gtfsHopper.close()
                 }
@@ -595,96 +590,56 @@ class Omod(
             ModeChoiceOption.FAST -> {
                 val modeChoice = ModeChoiceFast(routingCache, tourModeUtilityFn, tripModeUtilityFn)
                 modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
-                // TODO test code
-                /*
-                val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, departureWD, finished ->
-                    val od = Pair(
-                        originActivity.location.getAggLoc()!! as RealLocation,
-                        destinationActivity.location.getAggLoc()!! as RealLocation
-                    )
-                    if ((trip.mode == Mode.CAR_DRIVER) && (od in altPercentages)){
-                        val response = routeAltCar(
-                            originActivity.location.getAggLoc()!! as RealLocation,
-                            destinationActivity.location.getAggLoc()!! as RealLocation,
-                            hopper!!
-                        )
-                        if (!response.hasErrors()) {
-                            val probs = altPercentages[od]!!
-                            val distr = createCumDist(probs.toDoubleArray())
-                            val path = response.all[sampleCumDist(distr, this.mainRng)]
 
-                            val (lats, lons) = Pair(
-                                path.points.map { it.lat },
-                                path.points.map { it.lon }
-                            )
-
-                            trip.lats = lats
-                            trip.lons = lons
-                        }
-                    } else if (trip.mode == Mode.CAR_DRIVER){
-                        val response = routeWith(
-                            "car",
-                            originActivity.location.getAggLoc()!! as RealLocation,
-                            destinationActivity.location.getAggLoc()!! as RealLocation,
-                            hopper!!
-                        )
-                        if (!response.hasErrors()) {
-                            val (lats, lons) = Pair(
-                                response.best.points.map { it.lat },
-                                response.best.points.map { it.lon }
-                            )
-
-                            trip.lats = lats
-                            trip.lons = lons
-                        }
-                    }
-                }
-
-                // Alt trip selection
-                if (altPercentages != null) {
-                    for (agent in agents) {
-                        for (diary in agent.mobilityDemand) {
-                            diary.visitTrips(visitor)
-                        }
-                    }
-                }
-                */
-
-                /*
-                val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, departureWD, finished ->
-                    if ((trip.mode == Mode.CAR_DRIVER)){
-                        val response = routeWith(
-                            "car",
-                            originActivity.location.getAggLoc()!! as RealLocation,
-                            destinationActivity.location.getAggLoc()!! as RealLocation,
-                            hopper!!
-                        )
-                        if (!response.hasErrors()) {
-                            val (lats, lons) = Pair(
-                                response.best.points.map { it.lat },
-                                response.best.points.map { it.lon }
-                            )
-
-                            trip.lats = lats
-                            trip.lons = lons
-                        }
-                    }
-                }
-
-                // Alt trip selection
-                if (altPercentages != null) {
-                    for (agent in agents) {
-                        for (diary in agent.mobilityDemand) {
-                            diary.visitTrips(visitor)
-                        }
-                    }
-                }
-                */
-                // TODO end test code
-
-                return agents
             }
         }
+
+        // Alternative route selection
+        if (withPath and altPercentages.isNotEmpty()) {
+            altRouteSelection(agents)
+        }
+        return  agents
+    }
+
+    fun altRouteSelection(agents: List<MobiAgent>) : List<MobiAgent> {
+        val calT = altPercentages.maxOf { (k, v) -> k.third } + 1
+        val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, _, _ ->
+            val mod = departureTime.minute + departureTime.hour * 60
+            val t = floor((mod % 1440.0) / 1440.0 * calT).toInt()
+            val od = Pair(
+                originActivity.location.getAggLoc()!! as RealLocation,
+                destinationActivity.location.getAggLoc()!! as RealLocation
+            )
+            val key = Triple(od.first, od.second, t)
+            if ((trip.mode == Mode.CAR_DRIVER) && (key in altPercentages)){
+                val response = routeAltCar(
+                    originActivity.location.getAggLoc()!! as RealLocation,
+                    destinationActivity.location.getAggLoc()!! as RealLocation,
+                    hopper!!
+                )
+                if (!response.hasErrors()) {
+                    val probs = altPercentages[key]!!
+                    val distr = createCumDist(probs.toDoubleArray())
+                    val path = response.all[sampleCumDist(distr, this.mainRng)]
+
+                    val (lats, lons) = Pair(
+                        path.points.map { it.lat },
+                        path.points.map { it.lon }
+                    )
+
+                    trip.lats = lats
+                    trip.lons = lons
+                }
+            }
+        }
+
+        // Alt trip selection
+        for (agent in agents) {
+           for (diary in agent.mobilityDemand) {
+                diary.visitTrips(visitor)
+            }
+        }
+        return agents
     }
 
     /**
