@@ -584,7 +584,7 @@ class Omod(
                     val modeChoice = ModeChoiceGTFS(
                         hopper!!, gtfsComponents!!.ptRouter,
                         gtfsComponents!!.ptSimDays, gtfsComponents!!.timeZone,
-                        withPath
+                        withPath, tourModeUtilityFn, tripModeUtilityFn
                     )
                     modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
                     return agents

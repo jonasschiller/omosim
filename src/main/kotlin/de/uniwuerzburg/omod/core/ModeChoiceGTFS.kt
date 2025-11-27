@@ -3,6 +3,7 @@ package de.uniwuerzburg.omod.core
 import com.graphhopper.GraphHopper
 import com.graphhopper.gtfs.PtRouter
 import de.uniwuerzburg.omod.core.models.*
+import de.uniwuerzburg.omod.io.json.readJson
 import de.uniwuerzburg.omod.io.json.readJsonFromResource
 import de.uniwuerzburg.omod.routing.*
 import de.uniwuerzburg.omod.utils.ProgressBar
@@ -11,6 +12,7 @@ import de.uniwuerzburg.omod.utils.sampleCumDist
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 import java.util.*
@@ -34,10 +36,20 @@ class ModeChoiceGTFS(
     private val ptRouter: PtRouter,
     private val ptSimDays: Map<Weekday, LocalDate>,
     private val timeZone: TimeZone,
-    private val withPath: Boolean
+    private val withPath: Boolean,
+    tourModeUtilityFn: File? = null,
+    tripModeUtilityFn: File? = null
 ) : ModeChoice {
-    private val tourModeOptions: Array<ModeUtility> = readJsonFromResource("tourModeUtilities.json")
-    private val tripModeOptions: Array<ModeUtility> = readJsonFromResource("tripModeUtilities.json")
+    val tourModeOptions: Array<ModeUtility> = if (tourModeUtilityFn != null) {
+        readJson(tourModeUtilityFn)
+    } else {
+        readJsonFromResource("tourModeUtilities.json")
+    }
+    val tripModeOptions: Array<ModeUtility> = if (tripModeUtilityFn != null) {
+        readJson(tripModeUtilityFn)
+    } else {
+        readJsonFromResource("tripModeUtilities.json")
+    }
 
     /**
      * Determine the mode of each trip and calculate the distance and time.
