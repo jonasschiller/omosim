@@ -37,6 +37,8 @@ class ShareOfPop (
     val value: Double
 ) : AgentNumberDefinition
 
+// TODO: Step interface: --cal_step TYPE:ALG:ITERATIONS:ACTIVITY?:PARAMS
+
 class CalibrationOptions : OptionGroup (
     help = "Calibration parameters."
 ) {

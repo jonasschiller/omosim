@@ -22,7 +22,7 @@ enum class CalibrationOption {
 }
 
 enum class CalibrationStep {
-    GRAVITY, MODE_CHOICE, EVALUATE
+    GRAVITY, MODE_CHOICE, EVALUATE, ALTROUTE
 }
 
 class TrafficCountCalibrator(
@@ -31,8 +31,9 @@ class TrafficCountCalibrator(
     val carOwnership: CarOwnership
 ) {
     private val sensors: List<TrafficSensor>
-    private val affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     private val finder = omod.destinationFinder as DestinationFinderDefault
+    private val affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    private var affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>> = mapOf()
 
     init {
         sensors = TrafficSensor.readSensorData(linkDataFile, omod)
@@ -82,6 +83,9 @@ class TrafficCountCalibrator(
                     modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitIndividualMeasurements)
                     omod.tourModeUtilityFn = modeChoiceCalFile
                 }
+                CalibrationStep.ALTROUTE -> {
+                    altRouteCal()
+                }
                 CalibrationStep.EVALUATE -> {
                     evaluate(0.1)
                 }
@@ -106,6 +110,19 @@ class TrafficCountCalibrator(
         writeJson(mc.tourModeOptions, calFile)
     }
 
+    private fun altRouteCal() {
+        omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
+
+        // Run Simulation
+        val agents = omod.run(0.1, verbose = false)
+        omod.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
+
+        affectedAltSensors = TrafficSensor.altAffectedSensors(sensors, omod)
+
+        // Mode Choice
+        omod.altPercentages = calibrateAltRoute(agents, omod, sensors, affectedAltSensors)
+    }
+
     fun evaluate(sharePop: Double) {
         val finder = omod.destinationFinder as DestinationFinderDefault
         val flowCal = runBatch(sharePop)
@@ -119,6 +136,7 @@ class TrafficCountCalibrator(
         }
         finder.forcedTransitionMatrix.clear()
         omod.tourModeUtilityFn = null
+        omod.altPercentages = mapOf()
 
         // Run uncalibrated
         val flowBase = runBatch(sharePop)
@@ -380,14 +398,6 @@ class TrafficCountCalibrator(
         }
     }
 
-    /*private fun fourStepCal() : List<Double> {
-        omod.mainRng.setSeed(0) // Seed impact low with 100% of agents
-
-        // Run Simulation
-        val agents = omod.run(0.1, verbose = false)
-        return calibrateK1(agents, omod, sensors, affectedSensors)
-    }*/
-
     private fun activityLogFile(activity: ActivityType, lossLog: File?) : File? {
         return if(lossLog != null) {
             File(
@@ -501,16 +511,30 @@ class TrafficCountCalibrator(
        // Determine counts at sensors
        val simCount = sensors.associateWith { Array(T) {0.0} }.toMutableMap()
        val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, _, _ ->
+           val mod = departureTime.minute + departureTime.hour * 60
+           val t = floor((mod % 1440.0) / 1440.0 * T).toInt()
+
            if (trip.mode == Mode.CAR_DRIVER) {
                if ((originActivity.location.getAggLoc() is Cell) and (destinationActivity.location.getAggLoc() is Cell)) {
                    val od = Pair(originActivity.location.getAggLoc() as Cell, destinationActivity.location.getAggLoc() as Cell)
+
                    if (od in affectedSensors) {
-                       val sensors = affectedSensors[od]!!
-                       for (sensor in sensors) {
-                           val arr = simCount[sensor]!!
-                           val mod = departureTime.minute + departureTime.hour * 60
-                           val i = floor((mod % 1440.0) / 1440.0 * T).toInt()
-                           arr[i] = arr[i] + 1
+                       val key = Triple(od.first, od.second, t)
+                       if (key in omod.altPercentages) {
+                           val p = omod.altPercentages[key]!!
+                           for ((i, alternative) in affectedAltSensors[od]!!.withIndex()) {
+                               for (sensor in alternative) {
+                                   val arr = simCount[sensor]!!
+                                   arr[t] = arr[t] + p[i]
+                               }
+                           }
+                       } else {
+                           val sensors = affectedSensors[od]!!
+                           for (sensor in sensors) {
+                               val arr = simCount[sensor]!!
+
+                               arr[t] = arr[t] + 1
+                           }
                        }
                    }
                }

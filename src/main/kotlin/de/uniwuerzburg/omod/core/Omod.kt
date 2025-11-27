@@ -97,7 +97,7 @@ class Omod(
     val carOwnership: CarOwnership
     var tourModeUtilityFn: File? = null
     var tripModeUtilityFn: File? = null
-    //var altPercentages: Map<Pair<RealLocation, RealLocation>, List<Double>>
+    var altPercentages: Map<Triple<LocationOption, LocationOption, Int>, List<Double>> = mapOf()
 
     init {
         val timeSource = TimeSource.Monotonic
