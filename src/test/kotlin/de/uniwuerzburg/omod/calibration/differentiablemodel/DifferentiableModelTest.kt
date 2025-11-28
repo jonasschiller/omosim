@@ -5,8 +5,7 @@ import kotlin.math.abs
 
 class DifferentiableModelTest {
 
-    fun buildLargeTestModel(nVars: Int) : DifferentiableModel {
-
+    private fun buildLargeTestModel(nVars: Int) : DifferentiableModel {
         val model = DifferentiableModel(nVars)
 
         val lTerm1 = LinearTerm(nVars)

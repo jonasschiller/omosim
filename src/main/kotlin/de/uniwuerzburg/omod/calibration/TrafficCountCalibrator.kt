@@ -18,7 +18,7 @@ import kotlin.math.floor
 import kotlin.math.pow
 
 enum class CalibrationOption {
-    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_WSPSA, WSPSA, MM_ADAM, SPSA_OS, MM_GA, MM_MINBC, MM_MATRIX // TODO MM_GG -> MM_GD
+    PSO, MM_LBFGS, SPSA, MM_PSO, PSO_OS, MM_GG, MM_SPSA, MM_WSPSA, WSPSA, SPSA_OS, MM_MINBC, MM_MATRIX // TODO MM_GG -> MM_GD
 }
 
 enum class CalibrationStep {
@@ -64,9 +64,7 @@ class TrafficCountCalibrator(
                         CalibrationOption.PSO       -> calibratePSO(lossLog, activities, iterations, parameters)
                         CalibrationOption.PSO_OS    -> calibratePSOAllAtOnce(lossLog, activities, iterations, parameters)
                         CalibrationOption.MM_PSO    -> calibratePSOMM(lossLog, activities, iterations, parameters)
-                        CalibrationOption.MM_GA     -> calibrateGAMM(lossLog, activities, iterations, parameters)
                         CalibrationOption.MM_GG     -> calibrateGGMM(lossLog, activities, iterations, parameters)
-                        CalibrationOption.MM_ADAM   -> calibrateAdamMM(lossLog, activities, iterations, parameters)
                         CalibrationOption.MM_LBFGS  -> calibrateLBFGSMM(lossLog, activities, iterations, parameters)
                         CalibrationOption.SPSA      -> calibrateSPSA(lossLog, activities, iterations, parameters)
                         CalibrationOption.SPSA_OS   -> calibrateSPSAAllAtOnce(lossLog, activities, iterations, parameters)
@@ -238,24 +236,6 @@ class TrafficCountCalibrator(
         }
     }
 
-    private fun calibrateGAMM(
-        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
-    ){
-        for (activity in activities) {
-            val lossLogA = activityLogFile(activity, lossLog)
-            val objective = metaModelObj(activity)
-
-            var d = GA.run(
-                omod.grid.size - 1, objective, Random(), out=lossLogA,
-                iterations = iterations, parameters = parameters
-            )
-
-            d = (d.toList() + listOf(1.0)).toDoubleArray()
-
-            updateCalibration(d, activity)
-        }
-    }
-
     private fun calibrateGGMM(
         lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
     ){
@@ -268,20 +248,6 @@ class TrafficCountCalibrator(
             d = (d.toList() + listOf(1.0)).toDoubleArray()
 
             updateCalibration(d, activity)
-        }
-    }
-
-    private fun calibrateAdamMM(
-        lossLog: File?, activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
-    ){
-         for (activity in activities) {
-             val lossLogA = activityLogFile(activity, lossLog)
-             val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
-             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-             var d = Adam.run(model, x0, iterations=iterations, out=lossLogA, parameters = parameters)
-
-             d = (d.toList() + listOf(1.0)).toDoubleArray()
-             updateCalibration(d, activity)
         }
     }
 
