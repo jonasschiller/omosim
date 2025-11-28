@@ -11,7 +11,6 @@ class GDTest {
         val (objective, model) = TestObjectives.diffModel()
         val x0 = DoubleArray(1) { 1.0 }
         val xOpt = GradientDescent.run(model, x0, parameters=mapOf("lr0" to "1e-2"))
-        println(objective(xOpt))
         assert(abs(0.0 - objective(xOpt)) <= tol)
     }
 
