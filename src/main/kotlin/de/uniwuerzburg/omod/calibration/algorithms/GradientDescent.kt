@@ -12,7 +12,6 @@ object GradientDescent {
         const val lr0 = 1.0e-8
         const val lb = 1e-3
         const val ub = 1e3
-        val lrStrategy = LearningRateUpdateStrategy.STATIC
     }
 
     fun run(
@@ -29,8 +28,7 @@ object GradientDescent {
             out = out,
             lr0 = parameters?.get("lr0")?.toDoubleOrNull() ?: Defaults.lr0,
             lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
-            ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
-            lrStrategy = parameters?.get("lrStrategy")?.toLearningRateUpdateStrategy() ?: Defaults.lrStrategy
+            ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub
         )
     }
 
@@ -41,8 +39,7 @@ object GradientDescent {
         out: File? = null,
         lr0: Double = Defaults.lr0,
         lb: Double = Defaults.lb,
-        ub: Double = Defaults.ub,
-        lrStrategy: LearningRateUpdateStrategy =  Defaults.lrStrategy,
+        ub: Double = Defaults.ub
     ) : DoubleArray {
         val writer = if (out != null) {
             BufferedWriter(FileWriter(out))
@@ -65,30 +62,12 @@ object GradientDescent {
         var bestX = x0.copyOf()
         var bestLoss = model.evaluate(x0)
 
-        // For Barzilai Borwein learning rate update
-        var xPrior = x0.copyOf()
-        var gPrior = DoubleArray(x0.size) { 0.0 }
-
+        // Descent
         for (i in 0 until iterations) {
             val g = DoubleArray(x0.size) { 0.0 }
             val time = measureTime {
                 // Compute Gradient
                 model.gradientReverse(x, g, 1.0)
-
-                // Update step length
-                lr = when(lrStrategy) {
-                    LearningRateUpdateStrategy.STATIC -> lr
-                    LearningRateUpdateStrategy.BARZILAI_BORWEIN -> {
-                        val newLr = if (i == 0) {
-                            lr
-                        } else {
-                            barBowUpdate(x, g, xPrior, gPrior)
-                        }
-                        xPrior = x.copyOf()
-                        gPrior = g.copyOf()
-                        newLr
-                    }
-                }
 
                 // Step
                 for (j in x.indices) {
@@ -127,30 +106,6 @@ object GradientDescent {
         writer?.flush()
         writer?.close()
         return bestX
-    }
-
-    enum class LearningRateUpdateStrategy {
-        STATIC, BARZILAI_BORWEIN
-    }
-
-    private fun String.toLearningRateUpdateStrategy() : LearningRateUpdateStrategy? {
-        for (entry in LearningRateUpdateStrategy.entries) {
-            if (this == entry.toString()) {
-                return entry
-            }
-        }
-        return null
-    }
-
-    fun barBowUpdate(x: DoubleArray, g: DoubleArray, xPrior: DoubleArray, gPrior: DoubleArray) : Double {
-        var top = 0.0
-        var bot = 0.0
-        for (i in x.indices) {
-            val dG = (g[i] - gPrior[i])
-            top += (x[i] - xPrior[i]) * dG
-            bot += dG * dG
-        }
-        return abs(top) / bot
     }
 }
 
