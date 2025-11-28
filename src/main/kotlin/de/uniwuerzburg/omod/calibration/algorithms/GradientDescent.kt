@@ -59,19 +59,11 @@ object GradientDescent {
                 }
 
                 // Bound Projection
-                for (j in x.indices) {
-                    if (x[j] < lb) {
-                        x[j] = lb
-                    }
-                    if (x[j] > ub) {
-                        x[j] = ub
-                    }
-                }
+                x.project(lb, ub)
             }
 
             // Evaluate
             val loss = model.evaluate(x)
-
             if (loss < bestLoss) {
                 bestX = x.copyOf()
                 bestLoss = loss
