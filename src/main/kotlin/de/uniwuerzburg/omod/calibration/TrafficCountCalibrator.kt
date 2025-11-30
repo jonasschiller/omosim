@@ -258,7 +258,7 @@ class TrafficCountCalibrator(
             val lossLogA = activityLogFile(activity, lossLog)
             val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-            var d =  BFGS.run(model, x0, iterations=iterations, out=lossLogA, parameters = parameters)
+            var d =  BFGS.run(model, x0, iterations=iterations, parameters = parameters)
             d = (d.toList() + listOf(1.0)).toDoubleArray()
             updateCalibration(d, activity)
         }
