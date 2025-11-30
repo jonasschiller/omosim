@@ -6,10 +6,10 @@ import smile.util.function.DifferentiableMultivariateFunction
  * Warning: Don't use within coroutines!! ThreadLocal cache will be unstable. Use an ExecutorService instead.
  */
 class DifferentiableModel (
-    override val nVars: Int
-) : Term, DifferentiableMultivariateFunction {
+    val nVars: Int
+) : DifferentiableMultivariateFunction {
     var root: Term = LinearBaseTerm(nVars)
-    override var visited = ThreadLocal<Boolean>()
+    var visited = ThreadLocal<Boolean>()
 
     fun setRootTerm(term: Term) {
         root = term
@@ -19,41 +19,41 @@ class DifferentiableModel (
         countReceivers()
     }
 
-    override fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
+    fun gradientReverse(vals: DoubleArray, partials: DoubleArray, seed: Double) {
         root.gradientReverse(vals, partials, seed)
         clearGradientCache()
         clearEvalCache()
     }
 
-    override fun gradientForward(variable: Int, vals: DoubleArray): Double {
+    fun gradientForward(variable: Int, vals: DoubleArray): Double {
         val result = root.gradientForward(variable, vals)
         clearGradientCache()
         clearEvalCache()
         return result
     }
 
-    override fun evaluate(vals: DoubleArray): Double {
+    fun evaluate(vals: DoubleArray): Double {
         val result = root.evaluate(vals)
         clearEvalCache() // Safer, but slows down reverse mode a bit.
         return result
     }
 
-    override fun clearEvalCache() {
+    fun clearEvalCache() {
         root.clearEvalCache()
         clearSearchMarkers()
     }
 
-    override fun clearGradientCache() {
+    fun clearGradientCache() {
         root.clearGradientCache()
         clearSearchMarkers()
     }
 
-    override fun countReceivers() {
+    fun countReceivers() {
         root.countReceivers()
         clearSearchMarkers()
     }
 
-    override fun clearReceivers() {
+    fun clearReceivers() {
         root.clearReceivers()
         clearSearchMarkers()
     }
@@ -69,7 +69,7 @@ class DifferentiableModel (
         return result
     }
 
-    override fun clearSearchMarkers() {
+    fun clearSearchMarkers() {
         visited.set(false)
         root.clearSearchMarkers()
     }

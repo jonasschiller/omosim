@@ -5,6 +5,7 @@ import kotlin.math.abs
 
 class DifferentiableModelTest {
 
+    @Suppress("SameParameterValue")
     private fun buildLargeTestModel(nVars: Int) : DifferentiableModel {
         val model = DifferentiableModel(nVars)
 
