@@ -73,39 +73,24 @@ object WSPSA {
             val time = measureTime {
                 val a = a0 / (A + i + 1).pow(alpha)
                 val c = c0 / (i + 1).toDouble().pow(gamma)
-
                 val perturbation = DoubleArray(x0.size) { (rng.nextInt(0, 2) * 2 - 1).toDouble() }
 
                 // Plus
                 val xPlus = DoubleArray(x0.size) { j -> x[j] + c * perturbation[j] }
-                for (j in xPlus.indices) {
-                    if (xPlus[j] < lb) {
-                        xPlus[j] = lb
-                    }
-                    if (xPlus[j] > ub) {
-                        xPlus[j] = ub
-                    }
-                }
+                xPlus.project(lb, ub)
                 val jPlus = squareErrors(xPlus, objective, m)
 
                 // Minus
                 val xMinus = DoubleArray(x0.size) { j -> x[j] - c * perturbation[j] }
-                for (j in xMinus.indices) {
-                    if (xMinus[j] < lb) {
-                        xMinus[j] = lb
-                    }
-                    if (xMinus[j] > ub) {
-                        xMinus[j] = ub
-                    }
-                }
+                xMinus.project(lb, ub)
                 val jMinus = squareErrors(xMinus, objective, m)
 
                 // Jacobian
                 val jac = model.jacobian(x)
 
                 // Normalize
-                for (j in 0 until measurements.size) {
-                    for (k in 0 until x0.size) {
+                for (j in measurements.indices) {
+                    for (k in x0.indices) {
                         jac[j][k] = abs( jac[j][k] )
                     }
                 }
@@ -119,14 +104,7 @@ object WSPSA {
                 }
 
                 // Bound Projection
-                for (j in x.indices) {
-                    if (x[j] < lb) {
-                        x[j] = lb
-                    }
-                    if (x[j] > ub) {
-                        x[j] = ub
-                    }
-                }
+                x.project(lb, ub)
             }
             val (loss, _) = objective(x)
 
