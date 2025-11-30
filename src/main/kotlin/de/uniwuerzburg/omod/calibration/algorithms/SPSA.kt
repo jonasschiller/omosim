@@ -1,6 +1,5 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
-import java.io.File
 import java.util.*
 import kotlin.math.pow
 import kotlin.time.measureTime
@@ -65,50 +64,27 @@ object SPSA {
             val time = measureTime {
                 val a = a0 / (A + i + 1).pow(alpha)
                 val c = c0 / (i + 1).toDouble().pow(gamma)
-
                 val perturbation = DoubleArray(x0.size) { (rng.nextInt(0, 2) * 2 - 1).toDouble() }
 
                 // Plus
                 val xPlus = DoubleArray(x0.size) { j -> x[j] + c * perturbation[j] }
-                for (j in xPlus.indices) {
-                    if (xPlus[j] < lb) {
-                        xPlus[j] = lb
-                    }
-                    if (xPlus[j] > ub) {
-                        xPlus[j] = ub
-                    }
-                }
+                xPlus.project(lb, ub)
                 val jPlus = objective(xPlus)
 
                 // Minus
                 val xMinus = DoubleArray(x0.size) { j -> x[j] - c * perturbation[j] }
-                for (j in xMinus.indices) {
-                    if (xMinus[j] < lb) {
-                        xMinus[j] = lb
-                    }
-                    if (xMinus[j] > ub) {
-                        xMinus[j] = ub
-                    }
-                }
+                xMinus.project(lb, ub)
                 val jMinus = objective(xMinus)
 
                 // Gradient estimate
-                val grad  = DoubleArray(x0.size) { j -> (jPlus - jMinus) / (2 * c * perturbation[j])}
+                val grad = DoubleArray(x0.size) { j -> (jPlus - jMinus) / (2 * c * perturbation[j])}
 
                 // Step
                 for (j in x.indices) {
                     x[j] -= a*grad[j]
                 }
 
-                // Bound Projection
-                for (j in x.indices) {
-                    if (x[j] < lb) {
-                        x[j] = lb
-                    }
-                    if (x[j] > ub) {
-                        x[j] = ub
-                    }
-                }
+                x.project(lb, ub) // Bound Projection
             }
             val loss = objective(x)
 
