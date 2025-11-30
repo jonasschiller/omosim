@@ -2,11 +2,10 @@ package de.uniwuerzburg.omod.calibration.algorithms
 
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
 import smile.math.BFGS
-import java.io.File
 import kotlin.time.measureTimedValue
 
 object BFGS {
-    const val NAME = "BFGS"
+    private const val NAME = "BFGS"
 
     object Defaults {
         const val m = 5

@@ -1,13 +1,13 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
-import java.io.BufferedWriter
 import java.io.File
-import java.io.FileWriter
 import java.util.*
 import kotlin.math.pow
 import kotlin.time.measureTime
 
 object SPSA {
+    private const val NAME = "SPSA"
+
     object Defaults {
         const val lb = 1e-3
         const val ub = 1e3
@@ -22,8 +22,7 @@ object SPSA {
         x0: DoubleArray,
         objective: (DoubleArray) -> Double,
         rng: Random,
-        iterations: Int = 10000,
-        out: File? = null,
+        iterations: Int = 2000,
         parameters: Map<String, String>? = null,
     ) : DoubleArray {
         return run(
@@ -31,7 +30,6 @@ object SPSA {
             objective = objective,
             rng = rng,
             iterations = iterations,
-            out = out,
             lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
             ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
             a0 = parameters?.get("a0")?.toDoubleOrNull() ?: Defaults.a0,
@@ -46,8 +44,7 @@ object SPSA {
         x0: DoubleArray,
         objective: (DoubleArray) -> Double,
         rng: Random,
-        iterations: Int = 10000,
-        out: File? = null,
+        iterations: Int = 2000,
         lb: Double = Defaults.lb,
         ub: Double = Defaults.ub,
         a0: Double = Defaults.a0,
@@ -56,29 +53,17 @@ object SPSA {
         gamma: Double = Defaults.gamma,
         alpha: Double = Defaults.alpha
     ) : DoubleArray {
-        // Store results
-        val writer = if (out != null) {
-            BufferedWriter(FileWriter(out))
-        } else {
-            null
-        }
-
-        val parameterLine = "Parameters:lb=$lb:ub$ub:ao=$a0:c0=$c0:A=$A:gamma=$gamma:alpha=$alpha"
-        val header = "Iteration,time,Objective Value,Best"
-        if (writer != null) {
-            writer.write(parameterLine)
-            writer.newLine()
-            writer.write(header)
-            writer.newLine()
-        }
+        ProgressLogger.logParameters(this.NAME, "lb=$lb:ub$ub:ao=$a0:c0=$c0:A=$A:gamma=$gamma:alpha=$alpha")
 
         val x = x0.copyOf()
         var bestX = x0.copyOf()
         var bestLoss = objective(x0)
+        ProgressLogger.logInitialLoss(this.NAME, bestLoss)
 
+        ProgressLogger.logProgressHeader()
         for (i in 0 until iterations) {
             val time = measureTime {
-                val a = a0 / (A + i + 1).toDouble().pow(alpha)
+                val a = a0 / (A + i + 1).pow(alpha)
                 val c = c0 / (i + 1).toDouble().pow(gamma)
 
                 val perturbation = DoubleArray(x0.size) { (rng.nextInt(0, 2) * 2 - 1).toDouble() }
@@ -132,15 +117,9 @@ object SPSA {
                 bestLoss = loss
             }
 
-            val line = "$i,$time,$loss,$bestLoss"
-            if (writer != null) {
-                writer.write(line)
-                writer.newLine()
-                writer.flush()
-            }
+            ProgressLogger.logProgress(this.NAME, i, time, bestLoss)
         }
-        writer?.flush()
-        writer?.close()
+        ProgressLogger.logFinalLoss(this.NAME, bestLoss)
         return bestX
     }
 }

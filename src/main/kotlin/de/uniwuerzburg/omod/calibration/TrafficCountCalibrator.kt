@@ -3,7 +3,6 @@ package de.uniwuerzburg.omod.calibration
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.algorithms.*
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelMultiOut
-import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.ModeChoiceFast
@@ -13,7 +12,6 @@ import de.uniwuerzburg.omod.io.json.writeJson
 import org.jetbrains.kotlinx.multik.ndarray.operations.toArray
 import java.io.File
 import java.util.*
-import javax.swing.text.StyledEditorKit.BoldAction
 import kotlin.math.floor
 import kotlin.math.pow
 
@@ -197,7 +195,7 @@ class TrafficCountCalibrator(
     ) {
         val objective = batchObj(activities)
         val d = PSO.run(
-            omod.grid.size * activities.size, objective, Random(), out=lossLog,
+            omod.grid.size * activities.size, objective, Random(),
             iterations = iterations, parameters = parameters
         )
         updateCalibration(d, activities)
@@ -211,7 +209,7 @@ class TrafficCountCalibrator(
 
             val objective = batchObj(activity)
             val d = PSO.run(
-                omod.grid.size, objective, Random(), out=lossLogA,
+                omod.grid.size, objective, Random(),
                 iterations = iterations, parameters = parameters
             )
             updateCalibration(d, activity)
@@ -226,7 +224,7 @@ class TrafficCountCalibrator(
             val objective = metaModelObj(activity)
 
             var d = PSO.run(
-                omod.grid.size - 1, objective, Random(), out=lossLogA,
+                omod.grid.size - 1, objective, Random(),
                 iterations = iterations, parameters = parameters
             )
 
@@ -284,7 +282,7 @@ class TrafficCountCalibrator(
             val lossLogA = activityLogFile(activity, lossLog)
             val objective = metaModelObj(activity)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
-            var d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLogA, parameters = parameters)
+            var d = SPSA.run(x0, objective, Random(), iterations = iterations, parameters = parameters)
 
             d = (d.toList() + listOf(1.0)).toDoubleArray()
             updateCalibration(d, activity)
@@ -334,7 +332,7 @@ class TrafficCountCalibrator(
     ) {
         val objective = batchObj(activities)
         val x0 = DoubleArray(omod.grid.size * activities.size) { 1.0 }
-        val d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLog, parameters = parameters)
+        val d = SPSA.run(x0, objective, Random(), iterations = iterations, parameters = parameters)
         updateCalibration(d, activities)
     }
 
@@ -345,7 +343,7 @@ class TrafficCountCalibrator(
             val lossLogA = activityLogFile(activity, lossLog)
             val objective = batchObj(activity)
             val x0 = DoubleArray(omod.grid.size ) { 1.0 }
-            val d = SPSA.run(x0, objective, Random(), iterations = iterations, out=lossLogA, parameters = parameters)
+            val d = SPSA.run(x0, objective, Random(), iterations = iterations, parameters = parameters)
             updateCalibration(d, activity)
         }
     }

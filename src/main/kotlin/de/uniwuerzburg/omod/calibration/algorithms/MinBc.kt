@@ -5,7 +5,7 @@ import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
 import kotlin.time.TimeSource
 
 object MinBc {
-    const val NAME = "MinBc"
+    private const val NAME = "MinBc"
 
     object Defaults {
         const val lb = 1e-3

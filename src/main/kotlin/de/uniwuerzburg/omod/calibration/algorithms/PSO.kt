@@ -1,8 +1,5 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
-import java.io.BufferedWriter
-import java.io.File
-import java.io.FileWriter
 import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -11,6 +8,8 @@ import kotlin.math.min
 import kotlin.time.measureTime
 
 object PSO {
+    private const val NAME = "PSO"
+
     object Defaults {
         const val lb = 1e-3
         const val ub = 1e3
@@ -28,7 +27,6 @@ object PSO {
         rng: Random,
         iterations: Int = 1000,
         nWorker: Int? = null,
-        out: File? = null,
         parameters: Map<String, String>? = null,
     ) : DoubleArray {
         return run(
@@ -37,7 +35,6 @@ object PSO {
             rng,
             iterations,
             nWorker,
-            out,
             lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
             ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
             nParticles = parameters?.get("nParticles")?.toIntOrNull() ?: Defaults.nParticles,
@@ -55,7 +52,6 @@ object PSO {
         rng: Random,
         iterations: Int = 1000,
         nWorker: Int? = null,
-        out: File? = null,
         lb: Double = Defaults.lb,
         ub: Double = Defaults.ub,
         nParticles: Int = Defaults.nParticles,
@@ -65,11 +61,10 @@ object PSO {
         vClamp: Double = Defaults.vClamp,
         boundStrategy: BoundStrategy = Defaults.boundStrategy,
     ) : DoubleArray {
-        val writer = if (out != null) {
-            BufferedWriter(FileWriter(out))
-        } else {
-            null
-        }
+        ProgressLogger.logParameters(
+            this.NAME,
+            "lb=$lb:ub$ub:nParticles$nParticles:w$w:phiP$phiP:phiG$phiG:vClamp$vClamp:boundStrategy$boundStrategy"
+        )
 
         //println("Initializing PSO...\r")
         val maxVelocity = vClamp * (ub - lb)
@@ -77,6 +72,7 @@ object PSO {
         // Initial mse
         var globalBestPosition = DoubleArray(nDimensions) { 1.0 }
         var globalBest = objective(globalBestPosition)
+        ProgressLogger.logInitialLoss(this.NAME, globalBest)
 
         // Initialize particles
         val particles = List(nParticles) {
@@ -90,16 +86,7 @@ object PSO {
             PSOParticle(v, x, x, oval)
         }
 
-        val parameterLine = "Parameters:b=$lb:ub$ub:nParticles$nParticles:w$w:phiP" +
-                "$phiP:phiG$phiG:vClamp$vClamp:boundStrategy$boundStrategy"
-        val header = "Iteration,time,Objective Value,Best"
-        if (writer != null) {
-            writer.write(parameterLine)
-            writer.newLine()
-            writer.write(header)
-            writer.newLine()
-        }
-
+        ProgressLogger.logProgressHeader()
         for(iteration in 0 until iterations ) {
             val time = measureTime {
                 val executor = if (nWorker == null)
@@ -158,18 +145,9 @@ object PSO {
                 }
             }
 
-            val line = "$iteration,$time,$globalBest,$globalBest"
-            if (writer != null) {
-                writer.write(line)
-                writer.newLine()
-
-                if (iteration % 10 == 0) {
-                    writer.flush()
-                }
-            }
+            ProgressLogger.logProgress(this.NAME, iteration, time, globalBest)
         }
-        writer?.flush()
-        writer?.close()
+        ProgressLogger.logFinalLoss(this.NAME, globalBest)
         return globalBestPosition
     }
 
