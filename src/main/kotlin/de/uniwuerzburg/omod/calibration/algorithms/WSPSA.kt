@@ -1,16 +1,14 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
-import de.uniwuerzburg.omod.calibration.TrafficSensor
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelMultiOut
-import java.io.BufferedWriter
-import java.io.File
-import java.io.FileWriter
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.time.measureTime
 
 object WSPSA {
+    private const val NAME = "WSPSA"
+
     object Defaults {
         const val lb = 1e-3
         const val ub = 1e3
@@ -28,7 +26,6 @@ object WSPSA {
         model: DifferentiableModelMultiOut,
         rng: Random,
         iterations: Int = 10000,
-        out: File? = null,
         parameters: Map<String, String>? = null,
     ) : DoubleArray {
         return run(
@@ -38,7 +35,6 @@ object WSPSA {
             model = model,
             rng = rng,
             iterations = iterations,
-            out = out,
             lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
             ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
             a0 = parameters?.get("a0")?.toDoubleOrNull() ?: Defaults.a0,
@@ -56,7 +52,6 @@ object WSPSA {
         model: DifferentiableModelMultiOut,
         rng: Random,
         iterations: Int = 1000,
-        out: File? = null,
         lb: Double = Defaults.lb,
         ub: Double = Defaults.ub,
         a0: Double = Defaults.a0,
@@ -65,28 +60,15 @@ object WSPSA {
         gamma: Double = Defaults.gamma,
         alpha: Double = Defaults.alpha
     ) : DoubleArray {
+        ProgressLogger.logParameters(this.NAME,"lb=$lb:ub$ub:ao=$a0:c0=$c0:A=$A:gamma=$gamma:alpha=$alpha")
+
         val m = measurements.toDoubleArray()
-
-        // Store results
-        val writer = if (out != null) {
-            BufferedWriter(FileWriter(out))
-        } else {
-            null
-        }
-
-        val parameterLine = "Parameters:lb=$lb:ub$ub:ao=$a0:c0=$c0:A=$A:gamma=$gamma:alpha=$alpha"
-        val header = "Iteration,time,Objective Value,Best"
-        if (writer != null) {
-            writer.write(parameterLine)
-            writer.newLine()
-            writer.write(header)
-            writer.newLine()
-        }
-
         val x = x0.copyOf()
         var bestX = x0.copyOf()
         var (bestLoss, _) = objective(x0)
+        ProgressLogger.logInitialLoss(this.NAME, bestLoss)
 
+        ProgressLogger.logProgressHeader()
         for (i in 0 until iterations) {
             val time = measureTime {
                 val a = a0 / (A + i + 1).pow(alpha)
@@ -153,16 +135,9 @@ object WSPSA {
                 bestLoss = loss
             }
 
-            val line = "$i,$time,$loss,$bestLoss"
-            println(line)
-            if (writer != null) {
-                writer.write(line)
-                writer.newLine()
-                writer.flush()
-            }
+            ProgressLogger.logProgress(this.NAME, i, time, loss)
         }
-        writer?.flush()
-        writer?.close()
+        ProgressLogger.logFinalLoss(this.NAME, bestLoss)
         return bestX
     }
 

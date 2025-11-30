@@ -301,7 +301,7 @@ class TrafficCountCalibrator(
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = WSPSA.run(
                 x0, objective, measurements, model, Random(),
-                iterations = iterations, out = lossLogA, parameters = parameters
+                iterations = iterations, parameters = parameters
             )
             d = (d.toList() + listOf(1.0)).toDoubleArray()
             updateCalibration(d, activity)
@@ -320,7 +320,7 @@ class TrafficCountCalibrator(
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = WSPSA.run(
                 x0, objective, measurements, model, Random(),
-                iterations = iterations, out = lossLogA, parameters = parameters
+                iterations = iterations, parameters = parameters
             )
             d = (d.toList() + listOf(1.0)).toDoubleArray()
             updateCalibration(d, activity)
