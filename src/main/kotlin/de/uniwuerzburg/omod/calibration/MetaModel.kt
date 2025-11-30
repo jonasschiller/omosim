@@ -2,7 +2,7 @@ package de.uniwuerzburg.omod.calibration
 
 import com.gurobi.gurobi.*
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
-import de.uniwuerzburg.omod.calibration.CalibrationConstants.mcSamples
+import de.uniwuerzburg.omod.calibration.CalibrationConstants.MC_SAMPLES
 import de.uniwuerzburg.omod.calibration.algorithms.BFGS
 import de.uniwuerzburg.omod.calibration.differentiablemodel.*
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
@@ -587,7 +587,7 @@ class MetaModel private constructor(
         }
 
         // Temporal trip distribution
-        val tripStartDistr = monteCarloTripStartDistribution( mcSamples )
+        val tripStartDistr = monteCarloTripStartDistribution( MC_SAMPLES )
 
         // Simulated Traffic Counts
         val simCount = mutableMapOf<TrafficSensor, List<LinearTerm>>()
@@ -723,7 +723,7 @@ class MetaModel private constructor(
             }
 
             // Temporal trip distribution
-            val tripStartDistr = monteCarloTripStartDistribution(mcSamples)
+            val tripStartDistr = monteCarloTripStartDistribution(MC_SAMPLES)
 
             // Simulated Traffic Counts
             val sensorCountExpr = mutableMapOf<TrafficSensor, List<GRBLinExpr>>()

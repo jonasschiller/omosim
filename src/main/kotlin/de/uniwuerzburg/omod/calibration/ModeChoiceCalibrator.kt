@@ -6,13 +6,10 @@ import de.uniwuerzburg.omod.calibration.differentiablemodel.*
 import de.uniwuerzburg.omod.core.ModeChoiceFast
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
-import de.uniwuerzburg.omod.io.json.writeJson
-import java.io.File
 import java.util.*
 import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.ln
-import kotlin.time.measureTime
 
 enum class ModeChoiceCalibrationObjective {
     FitTotalCarTrips, FitIndividualMeasurements
@@ -38,6 +35,7 @@ fun calibrate(
     return x
 }
 
+// TODO Rename to meta model
 fun buildModel(
     agents: List<MobiAgent>, mc: ModeChoiceFast, rng: Random, omod: Omod,
     sensors: List<TrafficSensor>,
