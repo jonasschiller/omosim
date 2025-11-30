@@ -1,14 +1,12 @@
 package de.uniwuerzburg.omod.calibration.algorithms
 
-import alglib.*
+import alglib.alglib
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModel
-import java.io.BufferedWriter
-import java.io.File
-import java.io.FileWriter
 import kotlin.time.TimeSource
-import kotlin.time.measureTime
 
 object MinBc {
+    const val NAME = "MinBc"
+
     object Defaults {
         const val lb = 1e-3
         const val ub = 1e3
@@ -18,14 +16,12 @@ object MinBc {
         model: DifferentiableModel,
         x0: DoubleArray,
         iterations: Int = 100,
-        out: File? = null,
         parameters: Map<String, String>? = null,
     ) : DoubleArray {
         return run(
             model,
             x0,
             iterations,
-            out,
             lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
             ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub
         )
@@ -35,30 +31,10 @@ object MinBc {
         model: DifferentiableModel,
         x0: DoubleArray,
         iterations: Int = 100,
-        out: File? = null,
         lb: Double = Defaults.lb,
         ub: Double = Defaults.ub
     ) : DoubleArray {
-        val writer = if (out != null) {
-            BufferedWriter(FileWriter(out))
-        } else {
-            null
-        }
-
-        val parameterLine = "Parameters:lb=$lb:ub$ub"
-        val header = "Iteration,time,Objective Value,Best"
-        if (writer != null) {
-            writer.write(parameterLine)
-            writer.newLine()
-            writer.write(header)
-            writer.newLine()
-        }
-
-        if (writer != null) {
-            writer.write("0,0,${model.evaluate(x0)},${model.evaluate(x0)}")
-            writer.newLine()
-            writer.flush()
-        }
+        ProgressLogger.logParameters(this.NAME,"Parameters:lb=$lb:ub$ub")
 
         // Create optimizer
         val state = alglib.minbccreate(x0)
@@ -83,30 +59,23 @@ object MinBc {
         val timer = TimeSource.Monotonic
         var i = 0
         var tLast = timer.markNow()
-        val reporter: ( DoubleArray?, Double, Any?) -> Unit  = { xi: DoubleArray?, fi: Double, _: Any? ->
+        val reporter: ( DoubleArray?, Double, Any?) -> Unit  = { _: DoubleArray?, fi: Double, _: Any? ->
             val now = timer.markNow()
             i += 1
-            writer?.write("${i},${now - tLast},${fi},${fi}")
-            writer?.newLine()
-            writer?.flush()
+            ProgressLogger.logProgress(this.NAME, i, now - tLast, fi)
             tLast = now
         }
 
+        ProgressLogger.logInitialLoss(this.NAME, model.evaluate(x0))
+        ProgressLogger.logProgressHeader()
+
         // Run
-        val time = measureTime {
-            alglib.minbcoptimize(state, grad, reporter, null)
-        }
+        alglib.minbcoptimize(state, grad, reporter, null)
 
         // Result
         val result = alglib.minbcresults(state)
         val solution = model.evaluate(result.x)
-        if (writer != null) {
-            writer.write("${iterations},$time,${solution},${solution}")
-            writer.newLine()
-        }
-
-        writer?.flush()
-        writer?.close()
+        ProgressLogger.logFinalLoss(this.NAME, solution)
         return result.x
     }
 }
