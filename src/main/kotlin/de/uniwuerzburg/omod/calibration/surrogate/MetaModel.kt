@@ -1,10 +1,13 @@
-package de.uniwuerzburg.omod.calibration
+package de.uniwuerzburg.omod.calibration.surrogate
 
 import com.gurobi.gurobi.*
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.MC_SAMPLES
+import de.uniwuerzburg.omod.calibration.ModeChoiceCalibration
+import de.uniwuerzburg.omod.calibration.TrafficSensor
 import de.uniwuerzburg.omod.calibration.algorithms.BFGS
 import de.uniwuerzburg.omod.calibration.differentiablemodel.*
+import de.uniwuerzburg.omod.calibration.logger
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
@@ -132,9 +135,9 @@ class MetaModel private constructor(
     }
 
     fun calibrateMatrix(
-            activityType: ActivityType,
-            sensors: List<TrafficSensor>,
-            affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+        activityType: ActivityType,
+        sensors: List<TrafficSensor>,
+        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ) : D2Array<Double>? {
         println("GENERAL META MODEL OPTIMIZE")
         val m3rep = generateMatrixRep(activityType)

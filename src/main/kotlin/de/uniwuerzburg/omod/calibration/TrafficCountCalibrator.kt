@@ -3,6 +3,10 @@ package de.uniwuerzburg.omod.calibration
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.algorithms.*
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelMultiOut
+import de.uniwuerzburg.omod.calibration.surrogate.MetaModel
+import de.uniwuerzburg.omod.calibration.surrogate.ModeChoiceCalibrationObjective
+import de.uniwuerzburg.omod.calibration.surrogate.SGModeChoice
+import de.uniwuerzburg.omod.calibration.surrogate.calibrateAltRoute
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.ModeChoiceFast
@@ -100,13 +104,19 @@ class TrafficCountCalibrator(
         val agents = omod.run(0.1, verbose = false)
         omod.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
 
-        // Mode Choice
-        val x = calibrate(agents, omod.mainRng, omod, sensors, affectedSensors, objectiveType)
+        // Create mode choice surrogate model
+        val mc = ModeChoiceFast(omod.routingCache)
+        val model = SGModeChoice.build(agents, mc, omod.mainRng, omod, sensors, affectedSensors, objectiveType)
+
+        // Get X0
+        val carUtil = mc.tourModeOptions.find { it.mode == Mode.CAR_DRIVER }
+        val x0 = doubleArrayOf(carUtil!!.intercept)
+
+        // Optimize
+        val x = BFGS.run(model, x0, lb=-50.0, ub=50.0, iterations=50)
 
         // Store calibration
-        val mc = ModeChoiceFast(omod.routingCache)
-        val carUtil = mc.tourModeOptions.find { it.mode == Mode.CAR_DRIVER }
-        carUtil!!.intercept = x[0]
+        carUtil.intercept = x[0]
         writeJson(mc.tourModeOptions, calFile)
     }
 

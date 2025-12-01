@@ -1,7 +1,8 @@
-package de.uniwuerzburg.omod.calibration
+package de.uniwuerzburg.omod.calibration.surrogate
 
 import com.gurobi.gurobi.*
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
+import de.uniwuerzburg.omod.calibration.TrafficSensor
 import de.uniwuerzburg.omod.calibration.differentiablemodel.*
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
@@ -272,22 +273,7 @@ fun buildModelAltRoute(
     }
 
     // Objective
-    val obj = LinearTerm(model.nVars)
-    for (sensor in sensors) {
-        for (t in 0 until T) {
-            // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
-            val simCountTerm = simCount[sensor]!![t]
-            obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
-            obj.addTerm(simCountTerm, -2 * sensor.measuredFlow[t])
-            val qTerm = QuadraticTerm(
-                model.nVars,
-                simCountTerm,
-                simCountTerm,
-                1.0
-            )
-            obj.addTerm(qTerm, 1.0)
-        }
-    }
+    val obj = mseObjective(model.nVars, sensors, simCount)
 
     model.setRootTerm(obj)
     return model
