@@ -211,7 +211,7 @@ class TrafficCountCalibrator(
         activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
     )  {
         for (activity in activities) {
-            val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
+            val model = SGGravity.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d =  BFGS.run(model, x0, iterations=iterations, parameters=parameters)
             d = (d.toList() + listOf(1.0)).toDoubleArray()
@@ -224,7 +224,7 @@ class TrafficCountCalibrator(
         activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
     )  {
         for (activity in activities) {
-            val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
+            val model = SGGravity.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d =  MinBc.run(model, x0, iterations=iterations, parameters=parameters)
             d = (d.toList() + listOf(1.0)).toDoubleArray()
@@ -237,7 +237,7 @@ class TrafficCountCalibrator(
         activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
     ){
         for (activity in activities) {
-            val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
+            val model = SGGravity.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = GradientDescent.run(model, x0, iterations=iterations, parameters=parameters)
             d = (d.toList() + listOf(1.0)).toDoubleArray()
@@ -321,7 +321,7 @@ class TrafficCountCalibrator(
         val measurements = sensors.map { it.measuredFlow }.flatMap { it.toList() }
 
         for (activity in activities) {
-            val model = MetaModel.build(omod)!!.getDiffModelSimCounts(activity, sensors, affectedSensors)
+            val model = SGGravity.build(omod)!!.getDiffModelSimCounts(activity, sensors, affectedSensors)
             val objective = metaModelObjSimCounts(model, sensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = WSPSA.run(
@@ -338,7 +338,7 @@ class TrafficCountCalibrator(
         val measurements = sensors.map { it.measuredFlow }.flatMap { it.toList() }
 
         for (activity in activities) {
-            val model = MetaModel.build(omod)!!.getDiffModelSimCounts(activity, sensors, affectedSensors)
+            val model = SGGravity.build(omod)!!.getDiffModelSimCounts(activity, sensors, affectedSensors)
             val objective = batchObjSimCounts(activity)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = WSPSA.run(
@@ -352,7 +352,7 @@ class TrafficCountCalibrator(
 
     private fun calibrateMatrix(activities: List<ActivityType>) {
         for (activity in activities) {
-            val model = MetaModel.build(omod)
+            val model = SGGravity.build(omod)
             val wm = model!!.calibrateMatrix(activity, sensors, affectedSensors)
 
             val finder = omod.destinationFinder as DestinationFinderDefault
@@ -366,7 +366,7 @@ class TrafficCountCalibrator(
 
     // Objectives
     private fun metaModelObj(activity: ActivityType): (DoubleArray) -> Double {
-        val model = MetaModel.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
+        val model = SGGravity.build(omod)!!.getDiffModel(activity, sensors, affectedSensors)
         return { x: DoubleArray ->
             model.evaluate(x)
         }

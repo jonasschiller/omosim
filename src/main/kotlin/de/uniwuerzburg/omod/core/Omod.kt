@@ -65,7 +65,7 @@ class Omod(
     seed: Long? = null,
     bufferRadius: Double = 0.0,
     censusFile: File? = null,
-    private val populateBufferArea: Boolean = true,
+    val populateBufferArea: Boolean = true,
     val distanceCacheSize: Long = 400e6.toLong(),
     populationFile: File? = null,
     nWorker: Int? = null,

@@ -26,14 +26,14 @@ import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.pow
 
-class MetaModel private constructor(
+class SGGravity private constructor(
     val omod: Omod
 ) {
     private val modeChoiceCalibration = ModeChoiceCalibration()
     private val fixActivities = setOf(ActivityType.WORK, ActivityType.SCHOOL)
 
     companion object {
-        fun build(omod: Omod): MetaModel? {
+        fun build(omod: Omod): SGGravity? {
             if (omod.destinationFinder !is DestinationFinderDefault) {
                 logger.warn(
                     "MetaModel is not valid for the destination finder: " +
@@ -48,7 +48,7 @@ class MetaModel private constructor(
                 )
                 return null
             }
-            return MetaModel(omod)
+            return SGGravity(omod)
         }
     }
 
@@ -843,7 +843,14 @@ class MetaModel private constructor(
         val finder = omod.destinationFinder as DestinationFinderDefault
 
         // HOME
-        val homeWeights = finder.getWeightsNoOrigin(omod.grid, activityType = ActivityType.HOME) // TODO what about buffer area
+        val homeWeights = finder.getWeightsNoOrigin(omod.grid, activityType=ActivityType.HOME).toMutableList()
+        if (!omod.populateBufferArea) { // Handle buffer area
+            for ((i, cell) in omod.grid.withIndex()) {
+                if (!cell.inFocusArea) {
+                    homeWeights[i] = 0.0
+                }
+            }
+        }
         val homeProbs   = mk.ndarray( homeWeights.map { it / homeWeights.sum() } )
             .expandDims(0).asDNArray().asD2Array()
 
