@@ -729,9 +729,9 @@ class MetaModel private constructor(
             val tripStartDistr = monteCarloTripStartDistribution(MC_SAMPLES)
 
             // Simulated Traffic Counts
-            val sensorCountExpr = mutableMapOf<TrafficSensor, List<GRBLinExpr>>()
+            val simCount = mutableMapOf<TrafficSensor, List<GRBLinExpr>>()
             for (sensor in sensors) {
-                sensorCountExpr[sensor] = List(T) { GRBLinExpr() }
+                simCount[sensor] = List(T) { GRBLinExpr() }
             }
             for ((o, origin) in omod.grid.withIndex()) {
                 for ((d, destination) in omod.grid.withIndex()) {
@@ -749,7 +749,7 @@ class MetaModel private constructor(
                         for (sensor in affected) {
                             for (t in 0 until T) {
                                 for (activity in ActivityType.entries) {
-                                    sensorCountExpr[sensor]!![t]
+                                    simCount[sensor]!![t]
                                         .addTerm(totalPop * tripStartDistr[activity]!![t], demandVars[activity]!!)
                                 }
                             }
@@ -757,37 +757,9 @@ class MetaModel private constructor(
                     }
                 }
             }
-            val sensorSimCount = List(T) {
-                model.addVars(
-                    DoubleArray(sensors.size) { 0.0 },
-                    null,
-                    DoubleArray(sensors.size) { 0.0 },
-                    CharArray(sensors.size) { GRB.CONTINUOUS },
-                    Array(sensors.size) { "" }
-                )
-            }
-
-            for ((i, sensor) in sensors.withIndex()) {
-                for (t in 0 until T) {
-                    model.addConstr(
-                        sensorCountExpr[sensor]!![t],
-                        GRB.EQUAL,
-                        sensorSimCount[t][i]!!,
-                        "cnteq"
-                    )
-                }
-            }
 
             // Objective
-            val obj = GRBQuadExpr()
-            for ((i, sensor) in sensors.withIndex()) {
-                for (t in 0 until T) {
-                    // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
-                    obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
-                    obj.addTerm(-2 * sensor.measuredFlow[t], sensorSimCount[t][i])
-                    obj.addTerm(1.0, sensorSimCount[t][i], sensorSimCount[t][i])
-                }
-            }
+            val obj = grbMseObjective(model, sensors, simCount)
             model.setObjective(obj, GRB.MINIMIZE)
 
             model.optimize()

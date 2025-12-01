@@ -54,37 +54,8 @@ object SGALtRoute {
                 }
             }
 
-            val sensorSimCount = List(T) {
-                model.addVars(
-                    DoubleArray(sensors.size) { 0.0 },
-                    null,
-                    DoubleArray(sensors.size) { 0.0 },
-                    CharArray(sensors.size) { GRB.CONTINUOUS },
-                    Array(sensors.size) { "" }
-                )
-            }
-
-            for ((i, sensor) in sensors.withIndex()) {
-                for (t in 0 until T) {
-                    model.addConstr(
-                        simCount[sensor]!![t],
-                        GRB.EQUAL,
-                        sensorSimCount[t][i]!!,
-                        "cnteq"
-                    )
-                }
-            }
-
             // Objective
-            val obj = GRBQuadExpr()
-            for ((i, sensor) in sensors.withIndex()) {
-                for (t in 0 until T) {
-                    // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
-                    obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
-                    obj.addTerm(-2 * sensor.measuredFlow[t], sensorSimCount[t][i])
-                    obj.addTerm(1.0, sensorSimCount[t][i], sensorSimCount[t][i])
-                }
-            }
+            val obj = grbMseObjective(model, sensors, simCount)
             model.setObjective(obj, GRB.MINIMIZE)
 
             model.optimize()
@@ -96,12 +67,10 @@ object SGALtRoute {
                 model.optimize()
                 status = model[GRB.IntAttr.Status]
             }
-
             if (status == GRB.Status.OPTIMAL) {
                 // Print result
                 val oval = model[GRB.DoubleAttr.ObjVal]
                 println("Optimal objective: $oval")
-
                 return result.mapValues { (k, v) -> v.map { it.get(GRB.DoubleAttr.X) } }
             } else if (status == GRB.Status.INFEASIBLE) {
                 println("Model is infeasible")
