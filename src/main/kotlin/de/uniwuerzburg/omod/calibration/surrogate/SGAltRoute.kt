@@ -4,6 +4,7 @@ import com.gurobi.gurobi.*
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.TrafficSensor
 import de.uniwuerzburg.omod.calibration.differentiablemodel.*
+import de.uniwuerzburg.omod.calibration.logger
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
 import java.time.LocalTime
@@ -35,7 +36,7 @@ object SGALtRoute {
                     if (key in altCoefs) {
                         val c = altCoefs[key]!!
                         val pSum = GRBLinExpr()
-                        for ((i, alternative) in alternatives.withIndex()) {
+                        for (alternative in alternatives) {
                             val v = model.addVar(0.0, 1.0, 0.0, GRB.CONTINUOUS, "P")
 
                             if (key in result) {
@@ -60,33 +61,19 @@ object SGALtRoute {
 
             model.optimize()
 
-            var status = model[GRB.IntAttr.Status]
-
-            if (status == GRB.Status.INF_OR_UNBD) {
-                model[GRB.IntParam.Presolve] = 0
-                model.optimize()
-                status = model[GRB.IntAttr.Status]
-            }
-            if (status == GRB.Status.OPTIMAL) {
-                // Print result
+            val success = handleGrbStatus(model)
+            if (success) {
                 val oval = model[GRB.DoubleAttr.ObjVal]
-                println("Optimal objective: $oval")
-                return result.mapValues { (k, v) -> v.map { it.get(GRB.DoubleAttr.X) } }
-            } else if (status == GRB.Status.INFEASIBLE) {
-                println("Model is infeasible")
-            } else if (status == GRB.Status.UNBOUNDED) {
-                println("Model is unbounded")
-            } else {
-                println(
-                    "Optimization was stopped with status = $status"
-                )
+                logger.info("Gurobi optimization finished with optimal objective: $oval")
+                val rVal = result.mapValues { (_, v) -> v.map { it.get(GRB.DoubleAttr.X) } }
+                model.dispose()
+                env.dispose()
+                return rVal
             }
-
-        }  catch (e: GRBException) {
-            println(
-                ("Error code: " + e.errorCode + ". " +
-                        e.message)
-            )
+            model.dispose()
+            env.dispose()
+        } catch (e: GRBException) {
+            logger.error("Gurobi Error! Error code: ${e.errorCode}. ${e.message}")
         }
         return mapOf()
     }

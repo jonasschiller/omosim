@@ -764,44 +764,27 @@ class MetaModel private constructor(
 
             model.optimize()
 
-            var status = model[GRB.IntAttr.Status]
-
-            if (status == GRB.Status.INF_OR_UNBD) {
-                model[GRB.IntParam.Presolve] = 0
-                model.optimize()
-                status = model[GRB.IntAttr.Status]
-            }
-
-            if (status == GRB.Status.OPTIMAL) {
-                // Print result
+            val success = handleGrbStatus(model)
+            if (success) {
                 val oval = model[GRB.DoubleAttr.ObjVal]
-                println("Optimal objective: $oval")
-            } else if (status == GRB.Status.INFEASIBLE) {
-                println("Model is infeasible")
-            } else if (status == GRB.Status.UNBOUNDED) {
-                println("Model is unbounded")
-            } else {
-                println(
-                    "Optimization was stopped with status = $status"
-                )
-            }
+                logger.info("Gurobi optimization finished with optimal objective: $oval")
 
-            // Ideal transition matrix
-            val result = mk.ones<Double>(omod.grid.size, omod.grid.size)
-            for(o in omod.grid.indices) {
-                for (d in omod.grid.indices) {
-                    result[o, d] = varTransitionMatrix[o][d].get(GRB.DoubleAttr.X)
+                // Ideal transition matrix
+                val result = mk.ones<Double>(omod.grid.size, omod.grid.size)
+                for(o in omod.grid.indices) {
+                    for (d in omod.grid.indices) {
+                        result[o, d] = varTransitionMatrix[o][d].get(GRB.DoubleAttr.X)
+                    }
                 }
+                model.dispose()
+                env.dispose()
+                return result
             }
 
-            // Dispose of model and environment
             model.dispose()
             env.dispose()
-            return result
-        } catch (e: GRBException) {
-            println(
-                ("Error code: " + e.errorCode + ". " + e.message)
-            )
+        }  catch (e: GRBException) {
+            logger.error("Gurobi Error! Error code: ${e.errorCode}. ${e.message}")
         }
         return null
     }
