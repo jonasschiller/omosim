@@ -3,10 +3,7 @@ package de.uniwuerzburg.omod.calibration
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.algorithms.*
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelMultiOut
-import de.uniwuerzburg.omod.calibration.surrogate.MetaModel
-import de.uniwuerzburg.omod.calibration.surrogate.ModeChoiceCalibrationObjective
-import de.uniwuerzburg.omod.calibration.surrogate.SGModeChoice
-import de.uniwuerzburg.omod.calibration.surrogate.calibrateAltRoute
+import de.uniwuerzburg.omod.calibration.surrogate.*
 import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.ModeChoiceFast
@@ -130,7 +127,7 @@ class TrafficCountCalibrator(
         affectedAltSensors = TrafficSensor.altAffectedSensors(sensors, omod)
 
         // Mode Choice
-        omod.altPercentages = calibrateAltRoute(agents, omod, sensors, affectedAltSensors)
+        omod.altPercentages = SGALtRoute.grb(agents, omod, sensors, affectedAltSensors)
     }
 
     fun evaluate(sharePop: Double) {
