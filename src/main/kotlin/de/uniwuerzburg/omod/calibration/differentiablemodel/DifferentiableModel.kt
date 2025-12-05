@@ -8,8 +8,8 @@ import smile.util.function.DifferentiableMultivariateFunction
 class DifferentiableModel (
     val nVars: Int
 ) : DifferentiableMultivariateFunction {
-    var root: Term = LinearBaseTerm(nVars)
-    var visited = ThreadLocal<Boolean>()
+    private var root: Term = LinearBaseTerm(nVars)
+    private var visited = ThreadLocal<Boolean>()
 
     fun setRootTerm(term: Term) {
         root = term

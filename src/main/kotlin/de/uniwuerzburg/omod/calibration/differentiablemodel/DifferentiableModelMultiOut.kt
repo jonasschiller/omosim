@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 class DifferentiableModelMultiOut (
     val nVars: Int
 ) {
-    var roots: List<Term> = listOf()
+    private var roots: List<Term> = listOf()
 
     fun setRootTerms(terms: List<Term>) {
         roots = terms

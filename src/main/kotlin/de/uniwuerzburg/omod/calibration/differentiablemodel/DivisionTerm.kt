@@ -4,8 +4,8 @@ import kotlin.math.pow
 
 class DivisionTerm(
     nVars: Int,
-    val dividend: Term,
-    val divisor: Term
+    private val dividend: Term,
+    private val divisor: Term
 ): BranchTerm(nVars) {
 
     init {

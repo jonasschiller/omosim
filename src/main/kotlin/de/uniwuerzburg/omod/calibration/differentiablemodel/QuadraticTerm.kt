@@ -2,9 +2,9 @@ package de.uniwuerzburg.omod.calibration.differentiablemodel
 
 class QuadraticTerm(
     nVars: Int,
-    val termA: Term,
-    val termB: Term,
-    val coefficient: Double,
+    private val termA: Term,
+    private val termB: Term,
+    private val coefficient: Double,
 ): BranchTerm(nVars) {
     init {
         children.add(termA)

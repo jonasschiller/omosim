@@ -4,9 +4,9 @@ abstract class BranchTerm(
     override val nVars: Int
 ) : Term {
     val children = mutableListOf<Term>()
-    var evalCache = ThreadLocal<Double>()
-    var gradientCache = ThreadLocal<Double>()
-    var nReceivers = ThreadLocal<Int>()
+    private var evalCache = ThreadLocal<Double>()
+    private var gradientCache = ThreadLocal<Double>()
+    private var nReceivers = ThreadLocal<Int>()
     private var received = ThreadLocal<Int>()
     private var adjoint = ThreadLocal<Double>()
     override var visited = ThreadLocal<Boolean>()
