@@ -68,4 +68,11 @@ class DifferentiableModelMultiOut (
             root.clearSearchMarkers()
         }
     }
+
+    fun visit(visitor: (term: Term) -> Unit) {
+        for (root in roots) {
+            root.visit(visitor)
+        }
+        clearSearchMarkers()
+    }
 }

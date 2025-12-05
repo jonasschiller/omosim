@@ -1,19 +1,20 @@
 package de.uniwuerzburg.omod.calibration.surrogate
 
-import com.gurobi.gurobi.*
-import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.MC_SAMPLES
+import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.ModeChoiceCalibration
 import de.uniwuerzburg.omod.calibration.TrafficSensor
-import de.uniwuerzburg.omod.calibration.algorithms.BFGS
 import de.uniwuerzburg.omod.calibration.differentiablemodel.*
 import de.uniwuerzburg.omod.calibration.logger
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
-import org.jetbrains.kotlinx.multik.api.*
+import org.jetbrains.kotlinx.multik.api.identity
 import org.jetbrains.kotlinx.multik.api.linalg.dot
+import org.jetbrains.kotlinx.multik.api.mk
+import org.jetbrains.kotlinx.multik.api.ndarray
+import org.jetbrains.kotlinx.multik.api.zeros
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
@@ -26,54 +27,47 @@ import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.pow
 
-class SGGravity private constructor(
+class SGGravity(
     val omod: Omod
 ) {
     private val modeChoiceCalibration = ModeChoiceCalibration()
     private val fixActivities = setOf(ActivityType.WORK, ActivityType.SCHOOL)
 
-    companion object {
-        fun build(omod: Omod): SGGravity? {
-            if (omod.destinationFinder !is DestinationFinderDefault) {
-                logger.warn(
-                    "MetaModel is not valid for the destination finder: " +
-                            omod.destinationFinder.javaClass.simpleName
-                )
-                return null
-            }
-            if (omod.activityGenerator !is ActivityGeneratorDefault) {
-                logger.warn(
-                    "MetaModel is not valid for the activity generator finder: " +
-                            omod.activityGenerator.javaClass.simpleName
-                )
-                return null
-            }
-            return SGGravity(omod)
+    init {
+        if (omod.destinationFinder !is DestinationFinderDefault) {
+            throw NotImplementedError(
+                "MetaModel is not valid for the destination finder: " +
+                        omod.destinationFinder.javaClass.simpleName
+            )
+        }
+        if (omod.activityGenerator !is ActivityGeneratorDefault) {
+            throw NotImplementedError(
+                "MetaModel is not valid for the activity generator finder: " +
+                        omod.activityGenerator.javaClass.simpleName
+            )
         }
     }
 
-    fun getDiffModel(
+    fun buildModelMSE(
         activityType: ActivityType,
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ): DifferentiableModel {
-        val m3rep = generateMatrixRep(activityType)
-
-        println("Building diff model...")
-        val (model, _) = buildDiffModel(m3rep, affectedSensors, sensors)
+        // TODO create test for SimCounts and refactor.
+        // - Combine generateMatrixRepForFixed and generateMatrixRepForFlex
+        // - Clean up rest and document
+        val (model, _) = buildDiffModel(activityType, affectedSensors, sensors)
         return model
     }
 
-    fun getDiffModelSimCounts(
+    fun buildModelSimCounts(
         activityType: ActivityType,
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ): DifferentiableModelMultiOut {
-        val m3rep = generateMatrixRep(activityType)
+        val (_, simCounts) = buildDiffModel(activityType, affectedSensors, sensors)
 
-        println("Building diff model multi out...")
-        val (_, simCounts) = buildDiffModel(m3rep, affectedSensors, sensors)
-
+        // Create DifferentiableModelMultiOut from simulated counts
         val countsFlat = mutableListOf<Term>()
         for (sensor in sensors) {
             for (t in 0 until T) {
@@ -85,68 +79,10 @@ class SGGravity private constructor(
         return model
     }
 
-    fun calibrateK1(
-        activityType: ActivityType,
-        sensors: List<TrafficSensor>,
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
-    ): List<Double> {
-        val m3rep = generateMatrixRep(activityType)
-
-        println("Building diff model...")
-        val (model, simCount) = buildDiffModel(m3rep, affectedSensors, sensors)
-
-        var parameters = DoubleArray(omod.grid.size - 1) { 1.0 }
-        parameters = (BFGS.run(model, parameters).toList() + listOf(1.0)).toDoubleArray()
-
-        println("_".repeat(20*4 + 5*3))
-        println("${"Sensor".padEnd(20)} | \t" +
-                "${"T".padEnd(20)} | \t" +
-                "${"Flow AltOpt".padEnd(20)} | \t" +
-                "Flow Measured".padEnd(20)
-        )
-        println("_".repeat(20) +
-                " | \t" + "_".repeat(20)  +
-                " | \t" + "_".repeat(20)  +
-                " | \t" + "_".repeat(20))
-        var oval = 0.0
-        for ((i, sensor) in sensors.withIndex()) {
-            for (seg in listOf(Pair(0, T))) {
-                var optVal = 0.0
-                var mVal = 0.0
-                for (t in seg.first until seg.second) {
-                    optVal += simCount[sensor]!![t].evaluate(parameters)
-                    mVal += sensors[i].measuredFlow[t]
-                }
-                println(
-                    "${sensors[i].name.padEnd(20)} | \t" +
-                    "${(seg.first.toString() + "-" + seg.second).padEnd(20)} | \t" +
-                    "${optVal.toString().padEnd(20)} | \t" +
-                    mVal.toString().padEnd(20)
-                )
-            }
-            for ( t in 0 until T) {
-                val optVal = simCount[sensor]!![t].evaluate(parameters)
-                oval += (sensors[i].measuredFlow[t] - optVal) * (sensors[i].measuredFlow[t] - optVal)
-            }
+    fun generateMatrixRep(activityType: ActivityType) : MetaModelMatrixRep {
+        if(activityType != ActivityType.HOME) {
+            throw  NotImplementedError("Surrogate model dependent on home coefficients is not implemented!")
         }
-        println("MSE: ${oval /sensors.size}")
-
-        return parameters.toList()
-    }
-
-    fun calibrateMatrix(
-        activityType: ActivityType,
-        sensors: List<TrafficSensor>,
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
-    ) : D2Array<Double>? {
-        println("GENERAL META MODEL OPTIMIZE")
-        val m3rep = generateMatrixRep(activityType)
-
-        return optimizeTMatrix(m3rep, affectedSensors, sensors)
-    }
-
-    private fun generateMatrixRep(activityType: ActivityType) : MetaModelMatrixRep {
-        require(activityType != ActivityType.HOME) { "Meta model dependent on home coefficients not implemented!" }
 
         return if (activityType in fixActivities) {
             generateMatrixRepForFixed(activityType)
@@ -158,7 +94,6 @@ class SGGravity private constructor(
     private fun generateMatrixRepForFixed(varActivityType: ActivityType) : MetaModelMatrixRep {
         val dependentMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
         val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
-
         val finderMatrices = computeTransitionMatrices()
 
         // Determine od pair probabilities
@@ -270,7 +205,6 @@ class SGGravity private constructor(
     private fun generateMatrixRepForFlex(varActivityType: ActivityType) : MetaModelMatrixRep {
         val dependentMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
         val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
-
         val finderMatrices = computeTransitionMatrices()
 
         // Determine od pair probabilities
@@ -475,7 +409,7 @@ class SGGravity private constructor(
     }
 
     @Suppress("SameParameterValue")
-    private fun monteCarloTripStartDistribution(n: Int) : Map<ActivityType, Array<Double>> {
+    fun monteCarloTripStartDistribution(n: Int) : Map<ActivityType, Array<Double>> {
         val distr = ActivityType.entries.associateWith {
             Array(T) { 0.0 }
         }.toMutableMap()
@@ -514,14 +448,16 @@ class SGGravity private constructor(
     }
 
     private fun buildDiffModel(
-        m3rep: MetaModelMatrixRep,
+        activityType: ActivityType,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>,
         irrelevantFactorThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
     ) : Pair<DifferentiableModel, Map<TrafficSensor, List<LinearTerm>>> {
+        logger.info("Building surrogate for activity $activityType with ${omod.grid.size -1} variables")
+        val m3rep = generateMatrixRep(activityType)
+
         val n = omod.grid.size
         val totalPop = omod.buildings.sumOf { it.population }
-        println("Building diff model with grid size: $n")
 
         val relevantODs = determineRelevantODs(affectedSensors)
 
@@ -637,157 +573,14 @@ class SGGravity private constructor(
         }
 
         diffModel.setRootTerm(obj)
+
+        var terms = 0
+        diffModel.visit { terms += 1 }
+        logger.info("Building surrogate complete. Number of terms: $terms")
         return diffModel to simCount
     }
 
-    private fun optimizeTMatrix(
-        m3rep: MetaModelMatrixRep,
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
-        sensors: List<TrafficSensor>,
-        irrelevantFactorThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
-    ) : D2Array<Double>? {
-        val n = omod.grid.size
-        val totalPop = omod.buildings.sumOf { it.population }
-        println("Optimization 1 start with grid size: ${n}")
 
-        val relevantODs = determineRelevantODs(affectedSensors)
-
-        try {
-            // Setup
-            val env = GRBEnv()
-            val model = GRBModel(env)
-
-            // Create demand matrix dependent on the variable transition matrix: demand(o, d | M)
-            val demand = ActivityType.entries.associateWith {
-                List(n) {
-                    List(n) {
-                        GRBLinExpr()
-                    }
-                }
-            }
-
-            // Transition matrix
-            val varTransitionMatrix = List<List<GRBVar>>(n) { o ->
-                model.addVars(
-                    DoubleArray(n) { 0.0 },
-                    DoubleArray(n) { 1.0 },
-                    DoubleArray(n) { 0.0 },
-                    CharArray(n) { GRB.CONTINUOUS },
-                    Array(n) { d -> "W_${o}_$d" }
-                ).toList()
-            }
-
-            // Ensure that each row of W is a proper probability distribution
-            for (o in 0 until n) {
-                val rowSum = GRBLinExpr()
-                for (d in 0 until n) {
-                    rowSum.addTerm(1.0, varTransitionMatrix[o][d])
-                }
-                model.addConstr(rowSum, GRB.EQUAL, 1.0, "ProbCondition")
-            }
-
-            // Demand with flexible destination
-            for (activity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
-                addFlexDemand(
-                    GRBDemandBuilder,
-                    n,
-                    m3rep,
-                    demand[activity]!!,
-                    varTransitionMatrix,
-                    relevantODs,
-                    irrelevantFactorThreshold,
-                    activity
-                )
-            }
-
-            // Demand for home
-            addHomeDemand(
-                GRBDemandBuilder,
-                n,
-                m3rep,
-                demand[ActivityType.HOME]!!,
-                varTransitionMatrix,
-                relevantODs,
-                irrelevantFactorThreshold
-            )
-
-            // School and Work
-            for (activity in listOf(ActivityType.SCHOOL, ActivityType.WORK)) {
-                addFixDemand(
-                    GRBDemandBuilder,
-                    n,
-                    m3rep,
-                    demand[activity]!!,
-                    varTransitionMatrix,
-                    relevantODs,
-                    irrelevantFactorThreshold,
-                    activity
-                )
-            }
-
-            // Temporal trip distribution
-            val tripStartDistr = monteCarloTripStartDistribution(MC_SAMPLES)
-
-            // Simulated Traffic Counts
-            val simCount = mutableMapOf<TrafficSensor, List<GRBLinExpr>>()
-            for (sensor in sensors) {
-                simCount[sensor] = List(T) { GRBLinExpr() }
-            }
-            for ((o, origin) in omod.grid.withIndex()) {
-                for ((d, destination) in omod.grid.withIndex()) {
-                    // Temporary variables to avoid GRBLinExpr().multAdd(). multAdd() leads to explosion in memory usage.
-                    val demandVars = mutableMapOf<ActivityType, GRBVar> ()
-                    for (activity in ActivityType.entries) {
-                        val v = model.addVar( 0.0, GRB.INFINITY, 0.0, GRB.CONTINUOUS, "demand")
-                        model.addConstr( demand[activity]!![o][d], GRB.EQUAL, v,"demandEq")
-                        demandVars[activity] = v
-                    }
-
-                    val od = Pair(origin, destination)
-                    if (od in affectedSensors) {
-                        val affected = affectedSensors[od]!!
-                        for (sensor in affected) {
-                            for (t in 0 until T) {
-                                for (activity in ActivityType.entries) {
-                                    simCount[sensor]!![t]
-                                        .addTerm(totalPop * tripStartDistr[activity]!![t], demandVars[activity]!!)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Objective
-            val obj = grbMseObjective(model, sensors, simCount)
-            model.setObjective(obj, GRB.MINIMIZE)
-
-            model.optimize()
-
-            val success = handleGrbStatus(model)
-            if (success) {
-                val oval = model[GRB.DoubleAttr.ObjVal]
-                logger.info("Gurobi optimization finished with optimal objective: $oval")
-
-                // Ideal transition matrix
-                val result = mk.ones<Double>(omod.grid.size, omod.grid.size)
-                for(o in omod.grid.indices) {
-                    for (d in omod.grid.indices) {
-                        result[o, d] = varTransitionMatrix[o][d].get(GRB.DoubleAttr.X)
-                    }
-                }
-                model.dispose()
-                env.dispose()
-                return result
-            }
-
-            model.dispose()
-            env.dispose()
-        }  catch (e: GRBException) {
-            logger.error("Gurobi Error! Error code: ${e.errorCode}. ${e.message}")
-        }
-        return null
-    }
 
     private fun <T, K> fromMatrixSandwichT(
         demandBuilder: DemandBuilder<T, K>,
@@ -877,7 +670,7 @@ class SGGravity private constructor(
         return FinderMatrices(homeProbs, transitionProbs)
     }
 
-    private fun <T, K> addFlexDemand(
+    fun <T, K> addFlexDemand(
         demandBuilder: DemandBuilder<T, K>,
         nVars: Int,
         m3rep: MetaModelMatrixRep,
@@ -952,7 +745,7 @@ class SGGravity private constructor(
 
     }
 
-    private fun <T, K> addHomeDemand(
+    fun <T, K> addHomeDemand(
         demandBuilder: DemandBuilder<T, K>,
         nVars: Int,
         m3rep: MetaModelMatrixRep,
@@ -997,7 +790,7 @@ class SGGravity private constructor(
 
     }
 
-    private fun <T, K> addFixDemand(
+    fun <T, K> addFixDemand(
         demandBuilder: DemandBuilder<T, K>,
         nVars: Int,
         m3rep: MetaModelMatrixRep,
@@ -1105,7 +898,7 @@ class SGGravity private constructor(
      *
      *  varActivityType: Activity those transition matrix is going to be calibrated.
      */
-    private data class MetaModelMatrixRep (
+    data class MetaModelMatrixRep (
         val homeP: D2Array<Double>,
         val dependentMatrix: Map<ActivityType, D2Array<Double>>,
         val fixedMatrix: Map<ActivityType,  D2Array<Double>>,
@@ -1114,7 +907,7 @@ class SGGravity private constructor(
         val varActivityType: ActivityType
     )
 
-    private fun determineRelevantODs(
+    fun determineRelevantODs(
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
     ): Set<Pair<Int, Int>> {
         val relevantODs = mutableSetOf<Pair<Int, Int>>()
@@ -1134,7 +927,7 @@ class SGGravity private constructor(
     /**
      * Wrapper Object that allows creating demand matrix for use in both DifferentialModel and Gurobi
      */
-    private interface DemandBuilder<T,K>  {
+    interface DemandBuilder<T,K>  {
         fun addTerm(demand: T, v: K, coefficient: Double) {}
         fun addConstant(demand: T, constant: Double) {}
         fun addSum(demand: T, sum: T, coefficient: Double) {}
@@ -1143,7 +936,7 @@ class SGGravity private constructor(
         fun addConstToSum(s: T, const: Double)
     }
 
-    private object DMDemandBuilder: DemandBuilder<LinearTerm, Term> {
+    object DMDemandBuilder: DemandBuilder<LinearTerm, Term> {
         override fun addTerm(demand: LinearTerm, v: Term, coefficient: Double) {
             demand.addTerm(v, coefficient)
         }
@@ -1165,33 +958,6 @@ class SGGravity private constructor(
         }
 
         override fun addConstToSum(s: LinearTerm, const: Double) {
-            s.addConstant(const)
-        }
-    }
-
-
-    private object GRBDemandBuilder: DemandBuilder<GRBLinExpr, GRBVar> {
-        override fun addTerm(demand: GRBLinExpr, v: GRBVar, coefficient: Double) {
-            demand.addTerm(coefficient, v)
-        }
-
-        override fun addConstant(demand: GRBLinExpr, constant: Double) {
-            demand.addConstant(constant)
-        }
-
-        override fun addSum(demand: GRBLinExpr, sum: GRBLinExpr, coefficient: Double) {
-            demand.multAdd(coefficient, sum)
-        }
-
-        override fun createSum(nVars: Int): GRBLinExpr {
-            return GRBLinExpr()
-        }
-
-        override fun addTermToSum(s: GRBLinExpr, v: GRBVar, coefficient: Double) {
-            s.addTerm(coefficient, v)
-        }
-
-        override fun addConstToSum(s: GRBLinExpr, const: Double) {
             s.addConstant(const)
         }
     }
