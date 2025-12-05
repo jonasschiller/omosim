@@ -73,4 +73,9 @@ class DifferentiableModel (
         visited.set(false)
         root.clearSearchMarkers()
     }
+
+    fun visit(visitor: (term: Term) -> Unit) {
+        root.visit(visitor)
+        clearSearchMarkers()
+    }
 }

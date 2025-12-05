@@ -53,4 +53,11 @@ class LinearBaseTerm(
     override fun clearReceivers() { }
 
     override fun clearSearchMarkers() { }
+
+    override fun visit(visitor: (term: Term) -> Unit) {
+        if ((visited.get() == null) || (visited.get() == false)) {
+            visited.set(true)
+            visitor(this)
+        }
+    }
 }

@@ -102,4 +102,14 @@ abstract class BranchTerm(
             }
         }
     }
+
+    override fun visit(visitor: (term: Term) -> Unit) {
+        if ((visited.get() == null) || (visited.get() == false)) {
+            visited.set(true)
+            visitor(this)
+            for (term in children) {
+                term.visit(visitor)
+            }
+        }
+    }
 }

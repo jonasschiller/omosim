@@ -12,4 +12,5 @@ interface Term {
     fun countReceivers()
     fun clearReceivers()
     fun clearSearchMarkers()
+    fun visit(visitor: (term: Term) -> Unit)
 }

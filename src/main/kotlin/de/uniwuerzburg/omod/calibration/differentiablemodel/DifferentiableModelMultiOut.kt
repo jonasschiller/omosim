@@ -49,21 +49,21 @@ class DifferentiableModelMultiOut (
         return result
     }
 
-    fun clearEvalCache() {
+    private fun clearEvalCache() {
         for (root in roots) {
             root.clearEvalCache()
         }
         clearSearchMarkers()
     }
 
-    fun clearGradientCache() {
+    private fun clearGradientCache() {
         for (root in roots) {
             root.clearGradientCache()
         }
         clearSearchMarkers()
     }
 
-    fun clearSearchMarkers() {
+    private fun clearSearchMarkers() {
         for (root in roots) {
             root.clearSearchMarkers()
         }
