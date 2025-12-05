@@ -1,16 +1,13 @@
 @file:Suppress("PropertyName")
 
-package de.uniwuerzburg.omod
+package de.uniwuerzburg.omod.cli
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.groups.*
 import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.clikt.parameters.types.*
-import de.uniwuerzburg.omod.calibration.CalibrationInfo
-import de.uniwuerzburg.omod.calibration.CalibrationOption
-import de.uniwuerzburg.omod.calibration.CalibrationStep
-import de.uniwuerzburg.omod.calibration.TrafficCountCalibrator
+import de.uniwuerzburg.omod.calibration.*
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.logger
@@ -37,7 +34,6 @@ class ShareOfPop (
     val value: Double
 ) : AgentNumberDefinition
 
-// TODO: Step interface: --cal_step TYPE:ALG:ITERATIONS:ACTIVITY?:PARAMS
 
 class CalibrationOptions : OptionGroup (
     help = "Calibration parameters."
@@ -47,7 +43,7 @@ class CalibrationOptions : OptionGroup (
     ).file(mustExist = true, mustBeReadable = true).required()
     val cal_steps by option(
         help = ""
-    ).enum<CalibrationStep>().multiple(default = listOf(CalibrationStep.GRAVITY, CalibrationStep.EVALUATE))
+    ).enum<CalibrationType>().multiple(default = listOf(CalibrationType.GRAVITY, CalibrationType.EVALUATE))
     val cal_method by option(
         help = "Calibration algorithm to use."
     ).enum<CalibrationOption>().default(CalibrationOption.PSO)

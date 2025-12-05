@@ -26,7 +26,7 @@ enum class CalibrationOption {
     MM_MATRIX,
 }
 
-enum class CalibrationStep {
+enum class CalibrationType {
     GRAVITY, MODE_CHOICE, EVALUATE, ALT_ROUTE
 }
 
@@ -54,7 +54,7 @@ class TrafficCountCalibrator(
     fun calibrate(
         gravityFile: File, modeChoiceCalFile: File, option: CalibrationOption, activities: List<ActivityType>,
         iterations: Int = 100, parameters: Map<String, String>? = null,
-        steps: List<CalibrationStep> = listOf(CalibrationStep.GRAVITY, CalibrationStep.EVALUATE)
+        steps: List<CalibrationType> = listOf(CalibrationType.GRAVITY, CalibrationType.EVALUATE)
     ) {
         /*if (modeChoice) {
             modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitTotalCarTrips)
@@ -62,7 +62,7 @@ class TrafficCountCalibrator(
         }*/
         for (step in steps) {
             when(step) {
-                CalibrationStep.GRAVITY -> {
+                CalibrationType.GRAVITY -> {
                     when (option) {
                         CalibrationOption.MM_LBFGS  -> calibrateLBFGSMM(activities, iterations, parameters)
                         CalibrationOption.MM_MINBC  -> calibrateMinBcMM(activities, iterations, parameters)
@@ -80,14 +80,14 @@ class TrafficCountCalibrator(
                     val finder = omod.destinationFinder as DestinationFinderDefault
                     CalibrationInfo.write(gravityFile, omod.buildings, finder.locChoiceWeightFuns)
                 }
-                CalibrationStep.MODE_CHOICE -> {
+                CalibrationType.MODE_CHOICE -> {
                     modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitIndividualMeasurements)
                     omod.tourModeUtilityFn = modeChoiceCalFile
                 }
-                CalibrationStep.ALT_ROUTE -> {
+                CalibrationType.ALT_ROUTE -> {
                     altRouteCal()
                 }
-                CalibrationStep.EVALUATE -> {
+                CalibrationType.EVALUATE -> {
                     evaluate(0.1)
                 }
             }
