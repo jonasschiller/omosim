@@ -332,7 +332,7 @@ class TrafficCountCalibrator(
 
         for (activity in activities) {
             val lossLogA = activityLogFile(activity, lossLog)
-            val objective = batchObjSimCounts(activity)
+            val objective = batchObjWSPSA(activity)
             val model = MetaModel.build(omod)!!.getDiffModelSimCounts(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = WSPSA.run(
@@ -461,8 +461,9 @@ class TrafficCountCalibrator(
         }
     }
 
-    private fun batchObjSimCounts(activity: ActivityType): (DoubleArray) -> Pair<Double, DoubleArray> {
-        return { x: DoubleArray ->
+    private fun batchObjWSPSA(activity: ActivityType): (DoubleArray) -> Pair<Double, DoubleArray> {
+        return { xTmp: DoubleArray ->
+            val x = (xTmp.toList() + listOf(1.0)).toDoubleArray()
             val dcFunction = finder.locChoiceWeightFuns[activity]!!
             for ((i, cell) in omod.grid.withIndex()) {
                 cell.updateAttractionScaler(dcFunction, x[i])
