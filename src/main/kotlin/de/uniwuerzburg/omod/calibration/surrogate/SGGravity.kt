@@ -128,11 +128,11 @@ class SGGravity(
      *      - mPriorCnst -> Does not contain the activity
      *      - mPriorVar  -> Contains the activity
      *
-     * @param varActivityType activity type for the variable gravity model
+     * @param vActivity activity type for the variable gravity model
      * @return compact markov chain representation.
      */
-    fun generateMarkovChainRep(varActivityType: ActivityType) : SGCompactMatrixRep {
-        if(varActivityType == ActivityType.HOME) {
+    fun generateMarkovChainRep(vActivity: ActivityType) : SGCompactMatrixRep {
+        if(vActivity == ActivityType.HOME) {
             throw NotImplementedError("Surrogate model dependent on home coefficients is not implemented!")
         }
 
@@ -169,7 +169,7 @@ class SGGravity(
                 ActivityType.WORK -> {
                     mK = mHW
                     mKExVar = mHW
-                    if (varActivityType == ActivityType.WORK) {
+                    if (vActivity == ActivityType.WORK) {
                         mPriorVar[nextActivity]!!.plusAssign(mPostFixed * chainP)
                     } else {
                         mPriorCnst[nextActivity]!!.plusAssign(mHW * chainP)
@@ -178,7 +178,7 @@ class SGGravity(
                 ActivityType.SCHOOL -> {
                     mK = mHS
                     mKExVar = mHS
-                    if (varActivityType == ActivityType.SCHOOL) {
+                    if (vActivity == ActivityType.SCHOOL) {
                         mPriorVar[nextActivity]!!.plusAssign(mPostFixed * chainP)
                     } else {
                         mPriorCnst[nextActivity]!!.plusAssign(mHS * chainP)
@@ -191,7 +191,7 @@ class SGGravity(
 
             // Run through chain cumulate mPriorVar and mPriorCnst
             var next = 2
-            var occurred = startActivity == varActivityType
+            var occurred = startActivity == vActivity
             for (activity in chain.drop(1).dropLast(1)) {
                 nextActivity = chain[next]
                 next += 1
@@ -204,11 +204,11 @@ class SGGravity(
                 }
 
                 // Variable activity is in the past
-                if ((varActivityType in fixActivities) and (occurred)) {
+                if ((vActivity in fixActivities) and (occurred)) {
                     // Cumulate all matrices after a fixed location activity has occurred
                     mPostFixed = mPostFixed.dot(mT)
                     mPriorVar[nextActivity]!!.plusAssign(mPostFixed * chainP)
-                } else if ((varActivityType !in fixActivities) and (occurred) and (nextActivity != varActivityType)){
+                } else if ((vActivity !in fixActivities) and (occurred) and (nextActivity != vActivity)){
                     // Cumulate location probabilities after a flex location activity
                     // Ignores all subsequent flex location activities of the same time
                     mPriorVar[nextActivity]!!.plusAssign(mKExVar * chainP)
@@ -221,25 +221,17 @@ class SGGravity(
 
                 // Update location probability distributions
                 mK = mK.dot(mT)
-                if ((varActivityType !in fixActivities) and (activity != varActivityType)) {
+                if ((vActivity !in fixActivities) and (activity != vActivity)) {
                     mKExVar = mKExVar.dot(mT)
                 }
 
-                if (nextActivity == varActivityType) {
+                if (nextActivity == vActivity) {
                     occurred = true
                 }
             }
         }
 
-        val m3rep = SGCompactMatrixRep(
-            h,
-            mPriorVar,
-            mPriorCnst,
-            tMatrices,
-            getPCar(),
-            varActivityType
-        )
-        return m3rep
+        return SGCompactMatrixRep(h, mPriorVar, mPriorCnst, tMatrices, getPCar(), vActivity)
     }
 
     /**
@@ -255,12 +247,12 @@ class SGGravity(
      *  varActivityType: Activity those transition matrix is going to be calibrated.
      */
     data class SGCompactMatrixRep (
-        val homeP: D2Array<Double>,
-        val dependentMatrix: Map<ActivityType, D2Array<Double>>,
-        val fixedMatrix: Map<ActivityType,  D2Array<Double>>,
-        val transitionMatrix: Map<ActivityType,  D2Array<Double>>,
-        val carP: Map<ActivityType,  D2Array<Double>>,
-        val varActivityType: ActivityType
+        val h: D2Array<Double>,
+        val mPriorVar: Map<ActivityType, D2Array<Double>>,
+        val mPriorCnst: Map<ActivityType,  D2Array<Double>>,
+        val tMatrices: Map<ActivityType,  D2Array<Double>>,
+        val pCar: Map<ActivityType,  D2Array<Double>>,
+        val vActivity: ActivityType
     )
 
     private fun computeTransitionMatrices() : Map<ActivityType,  D2Array<Double>> {
@@ -455,7 +447,7 @@ class SGGravity(
         irrelevancyThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
     ) : Pair<DifferentiableModel, Map<TrafficSensor, List<LinearTerm>>> {
         logger.info("Building surrogate for activity $activityType with ${omod.grid.size -1} variables")
-        val m3rep = generateMarkovChainRep(activityType)
+        val mrep = generateMarkovChainRep(activityType)
 
         val n = omod.grid.size
         val totalPop = omod.buildings.sumOf { it.population }
@@ -481,9 +473,9 @@ class SGGravity(
             for (d in 0 until n) {
                 val weight = LinearBaseTerm(diffModel.nVars)
                 if ( d != (n-1)) {
-                    weight.addTerm(d, m3rep.transitionMatrix[m3rep.varActivityType]!![o, d])
+                    weight.addTerm(d, mrep.tMatrices[mrep.vActivity]!![o, d])
                 } else {
-                    weight.addConstant(m3rep.transitionMatrix[m3rep.varActivityType]!![o, d])
+                    weight.addConstant(mrep.tMatrices[mrep.vActivity]!![o, d])
                 }
                 rowSumTerm.addTerm(weight, 1.0)
                 weightTerms.add(weight)
@@ -500,7 +492,7 @@ class SGGravity(
             addFlexE(
                 LinearTermBuilder,
                 diffModel.nVars,
-                m3rep,
+                mrep,
                 expectedTrips[activity]!!,
                 varTransitionMatrix,
                 relevantODs,
@@ -513,7 +505,7 @@ class SGGravity(
         addHomeE(
             LinearTermBuilder,
             diffModel.nVars,
-            m3rep,
+            mrep,
             expectedTrips[ActivityType.HOME]!!,
             varTransitionMatrix,
             relevantODs,
@@ -525,7 +517,7 @@ class SGGravity(
             addFixE(
                 LinearTermBuilder,
                 diffModel.nVars,
-                m3rep,
+                mrep,
                 expectedTrips[activity]!!,
                 varTransitionMatrix,
                 relevantODs,
@@ -594,7 +586,7 @@ class SGGravity(
     fun <T, K> addFlexE(
         demandBuilder: TermBuilder<T, K>,
         nVars: Int,
-        m3rep: SGCompactMatrixRep,
+        mrep: SGCompactMatrixRep,
         expectedTrips: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
@@ -608,10 +600,10 @@ class SGGravity(
         } else {
             flexActivity
         }
-        val mCarP = m3rep.carP[transitionActivity]!!
-        val mFixed = m3rep.fixedMatrix[flexActivity]!!
+        val mCarP = mrep.pCar[transitionActivity]!!
+        val mFixed = mrep.mPriorCnst[flexActivity]!!
 
-        if (flexActivity == m3rep.varActivityType) {
+        if (flexActivity == mrep.vActivity) {
             for (o in 0 until n) {
                 var cnst = 0.0
 
@@ -625,9 +617,9 @@ class SGGravity(
                 }
             }
         } else {
-            val mTransition = m3rep.transitionMatrix[transitionActivity]!!
-            val mDep = m3rep.dependentMatrix[flexActivity]!!
-            val pHome = m3rep.homeP.flatten()
+            val mTransition = mrep.tMatrices[transitionActivity]!!
+            val mDep = mrep.mPriorVar[flexActivity]!!
+            val pHome = mrep.h.flatten()
 
             for (o in 0 until n) {
                 val s = demandBuilder.new(nVars)
@@ -636,7 +628,7 @@ class SGGravity(
                 for (a in 0 until n) {
                     cnst += mFixed[a, o]
                     for (b in 0 until n) {
-                        val coeff = if (m3rep.varActivityType in fixActivities) {
+                        val coeff = if (mrep.vActivity in fixActivities) {
                             pHome[a] * mDep[b, o]
                         } else {
                             mDep[a, b]
@@ -647,7 +639,7 @@ class SGGravity(
                             continue
                         }
 
-                        if (m3rep.varActivityType in fixActivities) {
+                        if (mrep.vActivity in fixActivities) {
                             demandBuilder.addVar(s, varTransitionMatrix[a][b], coeff)
                         } else {
                             demandBuilder.addVar(s, varTransitionMatrix[b][o], coeff)
@@ -669,7 +661,7 @@ class SGGravity(
     fun <T, K> addHomeE(
         builder: TermBuilder<T, K>,
         nVars: Int,
-        m3rep: SGCompactMatrixRep,
+        mrep: SGCompactMatrixRep,
         expectedTrips: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
@@ -677,12 +669,12 @@ class SGGravity(
     ) {
         val n = omod.grid.size
 
-        val carP = m3rep.carP[ActivityType.HOME]!!
-        val fix = m3rep.fixedMatrix[ActivityType.HOME]!!.transpose().times(carP)
+        val carP = mrep.pCar[ActivityType.HOME]!!
+        val fix = mrep.mPriorCnst[ActivityType.HOME]!!.transpose().times(carP)
 
-        val depExpr = if(m3rep.varActivityType in fixActivities) {
-            val left = m3rep.dependentMatrix[ActivityType.HOME]!!.transpose()
-            val right = m3rep.homeP.diagonal().transpose()
+        val depExpr = if(mrep.vActivity in fixActivities) {
+            val left = mrep.mPriorVar[ActivityType.HOME]!!.transpose()
+            val right = mrep.h.diagonal().transpose()
             builder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
@@ -690,7 +682,7 @@ class SGGravity(
             )
         } else {
             val left = mk.identity<Double>(n)
-            val right = m3rep.dependentMatrix[ActivityType.HOME]!!.transpose()
+            val right = mrep.mPriorVar[ActivityType.HOME]!!.transpose()
             builder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
@@ -712,7 +704,7 @@ class SGGravity(
     fun <T, K> addFixE(
         builder: TermBuilder<T, K>,
         nVars: Int,
-        m3rep: SGCompactMatrixRep,
+        mrep: SGCompactMatrixRep,
         expectedTrips: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
@@ -721,14 +713,14 @@ class SGGravity(
     ) {
         val n = omod.grid.size
 
-        val carP = m3rep.carP[fixActivity]!!
-        val fix = m3rep.fixedMatrix[fixActivity]!!.transpose()
-            .dot(m3rep.transitionMatrix[fixActivity]!!)
+        val carP = mrep.pCar[fixActivity]!!
+        val fix = mrep.mPriorCnst[fixActivity]!!.transpose()
+            .dot(mrep.tMatrices[fixActivity]!!)
             .times(carP)
 
         // Tour starting at var activity
-        val pHome = m3rep.homeP.flatten()
-        val dMatrixT = m3rep.dependentMatrix[fixActivity]!!.transpose()
+        val pHome = mrep.h.flatten()
+        val dMatrixT = mrep.mPriorVar[fixActivity]!!.transpose()
         val varStartProbs = List(n) { builder.new(nVars) }
         for (col in 0 until n) {
             for (row in 0 until n) {
@@ -737,8 +729,8 @@ class SGGravity(
         }
 
         // Tour not starting at var activity
-        val depExpr = if (m3rep.varActivityType == fixActivity) {
-            val left = m3rep.fixedMatrix[fixActivity]!!.transpose()
+        val depExpr = if (mrep.vActivity == fixActivity) {
+            val left = mrep.mPriorCnst[fixActivity]!!.transpose()
             val right = mk.identity<Double>(n)
             builder.fromMatrixMult(
                 nVars,
@@ -747,12 +739,12 @@ class SGGravity(
                 relevantRCs = relevantODs,
                 irrelevancyThreshold=irrelevancyThreshold
             )
-        } else if (m3rep.varActivityType in fixActivities) {
-            val left = m3rep.dependentMatrix[fixActivity]!!.transpose()
-            val right = m3rep.homeP
+        } else if (mrep.vActivity in fixActivities) {
+            val left = mrep.mPriorVar[fixActivity]!!.transpose()
+            val right = mrep.h
                 .diagonal()
                 .transpose()
-                .dot(m3rep.transitionMatrix[fixActivity]!!)
+                .dot(mrep.tMatrices[fixActivity]!!)
             builder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
@@ -761,9 +753,9 @@ class SGGravity(
             )
         } else {
             val left = mk.identity<Double>(n)
-            val right = m3rep.dependentMatrix[fixActivity]!!
+            val right = mrep.mPriorVar[fixActivity]!!
                 .transpose()
-                .dot(m3rep.transitionMatrix[fixActivity]!!)
+                .dot(mrep.tMatrices[fixActivity]!!)
             builder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
@@ -777,7 +769,7 @@ class SGGravity(
                 if (Pair(o, d) !in relevantODs) { continue }
                 builder.addTerm(expectedTrips[o][d], depExpr[o][d], carP[o, d])
 
-                if (m3rep.varActivityType == fixActivity) {
+                if (mrep.vActivity == fixActivity) {
                     builder.addTerm(expectedTrips[o][d], varStartProbs[d], dMatrixT[o][d] * carP[o, d])
                 } else {
                     builder.addConstant(expectedTrips[o][d], fix[o,d])
@@ -804,11 +796,11 @@ class SGGravity(
     }
 
     // ========== DEBUG CODE ================= // TODO Delete
-    private fun getExpectedCountPerAgent(m3rep: SGCompactMatrixRep) : D2Array<Double> {
+    private fun getExpectedCountPerAgent(mrep: SGCompactMatrixRep) : D2Array<Double> {
         // Result: Expected trip count on each od-paid of one agent on one day
         val expectedCountPerAgent = mk.zeros<Double>(omod.grid.size, omod.grid.size)
 
-        val varTMatrix = m3rep.transitionMatrix[m3rep.varActivityType]!!
+        val varTMatrix = mrep.tMatrices[mrep.vActivity]!!
 
         // Flex
         for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
@@ -817,32 +809,32 @@ class SGGravity(
             } else {
                 flexActivity
             }
-            val carP = m3rep.carP[transitionActivity]!!
-            val fix = m3rep.fixedMatrix[flexActivity]!!
+            val carP = mrep.pCar[transitionActivity]!!
+            val fix = mrep.mPriorCnst[flexActivity]!!
 
-            val dep = if (m3rep.varActivityType in fixActivities) {
-                m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[flexActivity]!!)
-            } else if (flexActivity == m3rep.varActivityType) {
+            val dep = if (mrep.vActivity in fixActivities) {
+                mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[flexActivity]!!)
+            } else if (flexActivity == mrep.vActivity) {
                 mk.zeros<Double>(omod.grid.size, omod.grid.size)
             } else {
-                m3rep.dependentMatrix[flexActivity]!!.dot(varTMatrix)
+                mrep.mPriorVar[flexActivity]!!.dot(varTMatrix)
             }
             val total = mk.ones<Double>(omod.grid.size).expandDims(0).asDNArray()
                 .asD2Array().dot(dep.plus(fix))
-                .diagonal().dot(m3rep.transitionMatrix[transitionActivity]!!)
+                .diagonal().dot(mrep.tMatrices[transitionActivity]!!)
             expectedCountPerAgent.plusAssign(total.times(carP))
         }
 
         // Home
         for (fixActivity in listOf(ActivityType.HOME)) {
-            val carP = m3rep.carP[fixActivity]!!
+            val carP = mrep.pCar[fixActivity]!!
 
-            val dep = if (m3rep.varActivityType in fixActivities) {
-                m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[fixActivity]!!)
+            val dep = if (mrep.vActivity in fixActivities) {
+                mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[fixActivity]!!)
             } else {
-                m3rep.dependentMatrix[fixActivity]!!.dot(varTMatrix)
+                mrep.mPriorVar[fixActivity]!!.dot(varTMatrix)
             }
-            val fix = m3rep.fixedMatrix[fixActivity]!!
+            val fix = mrep.mPriorCnst[fixActivity]!!
             val total = dep.plus(fix).transpose()
 
             expectedCountPerAgent.plusAssign(total.times(carP))
@@ -850,42 +842,42 @@ class SGGravity(
 
         // School
         for (fixActivity in listOf(ActivityType.SCHOOL)) {
-            val carP = m3rep.carP[fixActivity]!!
-            val fix = m3rep.fixedMatrix[fixActivity]!!
+            val carP = mrep.pCar[fixActivity]!!
+            val fix = mrep.mPriorCnst[fixActivity]!!
 
-            if (m3rep.varActivityType == ActivityType.SCHOOL) {
-                val schoolProbs = m3rep.homeP.dot( m3rep.transitionMatrix[ActivityType.SCHOOL]!! )
-                val dep = schoolProbs.diagonal().dot( m3rep.dependentMatrix[fixActivity]!! ).transpose()
-                val total = dep.plus( fix.transpose().dot( m3rep.transitionMatrix[fixActivity]!!) )
+            if (mrep.vActivity == ActivityType.SCHOOL) {
+                val schoolProbs = mrep.h.dot( mrep.tMatrices[ActivityType.SCHOOL]!! )
+                val dep = schoolProbs.diagonal().dot( mrep.mPriorVar[fixActivity]!! ).transpose()
+                val total = dep.plus( fix.transpose().dot( mrep.tMatrices[fixActivity]!!) )
                 expectedCountPerAgent.plusAssign(total.times(carP))
             } else {
-                val dep = if (m3rep.varActivityType in fixActivities) {
-                    m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[fixActivity]!!)
+                val dep = if (mrep.vActivity in fixActivities) {
+                    mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[fixActivity]!!)
                 } else {
-                    m3rep.dependentMatrix[fixActivity]!!.dot(varTMatrix)
+                    mrep.mPriorVar[fixActivity]!!.dot(varTMatrix)
                 }
-                val total = dep.plus(fix).transpose().dot(m3rep.transitionMatrix[fixActivity]!!)
+                val total = dep.plus(fix).transpose().dot(mrep.tMatrices[fixActivity]!!)
                 expectedCountPerAgent.plusAssign(total.times(carP))
             }
         }
 
         // Work
         for (fixActivity in listOf(ActivityType.WORK)) {
-            val carP = m3rep.carP[fixActivity]!!
-            val fix = m3rep.fixedMatrix[fixActivity]!!
+            val carP = mrep.pCar[fixActivity]!!
+            val fix = mrep.mPriorCnst[fixActivity]!!
 
-            if (m3rep.varActivityType == ActivityType.WORK) {
-                val workProbs = m3rep.homeP.dot( m3rep.transitionMatrix[ActivityType.WORK]!! )
-                val dep = workProbs.diagonal().dot( m3rep.dependentMatrix[fixActivity]!! ).transpose()
-                val total = dep.plus( fix.transpose().dot( m3rep.transitionMatrix[fixActivity]!!) )
+            if (mrep.vActivity == ActivityType.WORK) {
+                val workProbs = mrep.h.dot( mrep.tMatrices[ActivityType.WORK]!! )
+                val dep = workProbs.diagonal().dot( mrep.mPriorVar[fixActivity]!! ).transpose()
+                val total = dep.plus( fix.transpose().dot( mrep.tMatrices[fixActivity]!!) )
                 expectedCountPerAgent.plusAssign(total.times(carP))
             } else {
-                val dep = if (m3rep.varActivityType in fixActivities) {
-                    m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[fixActivity]!!)
+                val dep = if (mrep.vActivity in fixActivities) {
+                    mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[fixActivity]!!)
                 } else {
-                    m3rep.dependentMatrix[fixActivity]!!.dot(varTMatrix)
+                    mrep.mPriorVar[fixActivity]!!.dot(varTMatrix)
                 }
-                val total = dep.plus(fix).transpose().dot(m3rep.transitionMatrix[fixActivity]!!)
+                val total = dep.plus(fix).transpose().dot(mrep.tMatrices[fixActivity]!!)
                 expectedCountPerAgent.plusAssign(total.times(carP))
             }
         }
@@ -894,11 +886,11 @@ class SGGravity(
     }
 
     private fun debugEval(
-        m3rep: SGCompactMatrixRep,
+        mrep: SGCompactMatrixRep,
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ) {
-        val expected = getExpectedCountPerAgent(m3rep)
+        val expected = getExpectedCountPerAgent(mrep)
         val totalPop = omod.buildings.sumOf { it.population }
 
         val simCount = sensors.associateWith { 0.0 }.toMutableMap()
