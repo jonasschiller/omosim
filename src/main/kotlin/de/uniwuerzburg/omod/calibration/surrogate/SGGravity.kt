@@ -904,14 +904,4 @@ class SGGravity(
     // ========== DEBUG CODE ENDS =================
 }
 
-private inline fun <reified T : Any> D2Array<T>.diagonal() : D2Array<T> {
-    require(this.shape[0] == 1)
-
-    val diagonal  = mk.zeros<T>(this.size, this.size)
-    for ( i in 0 until this.size) {
-        diagonal[i, i] = this[0,i]
-    }
-    return diagonal
-}
-
 
