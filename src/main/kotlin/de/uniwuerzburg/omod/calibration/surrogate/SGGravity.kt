@@ -16,10 +16,7 @@ import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
 import org.jetbrains.kotlinx.multik.ndarray.data.set
-import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
-import org.jetbrains.kotlinx.multik.ndarray.operations.plus
-import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
-import org.jetbrains.kotlinx.multik.ndarray.operations.times
+import org.jetbrains.kotlinx.multik.ndarray.operations.*
 import org.locationtech.jts.geom.Coordinate
 import kotlin.math.abs
 import kotlin.math.floor
@@ -589,8 +586,6 @@ class SGGravity(
         return diffModel to simCount
     }
 
-
-
     private fun <T, K> fromMatrixSandwichT(
         demandBuilder: DemandBuilder<T, K>,
         nVars: Int,
@@ -602,6 +597,7 @@ class SGGravity(
         irrelevantFactorThreshold: Double
     ) : List<List<T>> {
         val n = left.shape[0] // Assume all matrices are square and same size
+        val leftMax = left.max()!! // For computation shortcut
 
         val result = List(n) {
             List(n) {
@@ -620,9 +616,10 @@ class SGGravity(
                 val activeEntry = result[row][col]
 
                 for (i in 0 until n) {
-                    if (right[i, col] == 0.0) { continue }
+                    if (right[i, col] * leftMax <= irrelevantFactorThreshold) {
+                        continue
+                    }
                     for (j in 0 until n) {
-                        if (left[row, j] == 0.0) { continue }
                         val coeff = left[row, j] * right[i, col]
 
                         if (abs(coeff) <= irrelevantFactorThreshold) {
