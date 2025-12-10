@@ -48,14 +48,13 @@ class SGGravity(
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ): DifferentiableModel {
-        // - Combine generateMatrixRepForFixed and generateMatrixRepForFlex
         // - Clean up rest and document
         val (model, tstSimCounts) = buildDiffModel(activityType, affectedSensors, sensors)
 
         // DEBUG CODE // TODO DELETE
         println(activityType)
         println("Evaluate Matrix Rep")
-        debugEval(generateMatrixRep(activityType), sensors, affectedSensors)
+        debugEval(generateMarkovChainRep(activityType), sensors, affectedSensors)
         println("Evaluate Graph")
         for (sensor in sensors) {
             val sum = tstSimCounts[sensor]!!.map { it.evaluate(DoubleArray(omod.grid.size - 1) { 1.0 }) }.sum()
@@ -85,19 +84,11 @@ class SGGravity(
         return model
     }
 
-    fun generateMatrixRep(activityType: ActivityType) : MetaModelMatrixRep {
-        if(activityType == ActivityType.HOME) {
+    fun generateMarkovChainRep(varActivityType: ActivityType) : MetaModelMatrixRep {
+        if(varActivityType == ActivityType.HOME) {
             throw NotImplementedError("Surrogate model dependent on home coefficients is not implemented!")
         }
 
-        return if (activityType in fixActivities) {
-            generateMatrixRepForFixed(activityType)
-        } else {
-            generateMatrixRepForFlex(activityType)
-        }
-    }
-
-    private fun generateMatrixRepForFixed(varActivityType: ActivityType) : MetaModelMatrixRep {
         val dependentMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
         val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
         val finderMatrices = computeTransitionMatrices()
@@ -145,21 +136,26 @@ class SGGravity(
             // Setup
             var cumMatrix = mk.identity<Double>(omod.grid.size)
             var previousProbsDepHome: D2Array<Double>
+            var previousProbsDepHomeExVarActivity: D2Array<Double>
             when(startActivity) {
                 ActivityType.HOME -> {
                     previousProbsDepHome = finderMatrices.homeP.diagonal()
+                    previousProbsDepHomeExVarActivity = finderMatrices.homeP.diagonal()
                     fixedMatrix[nextActivity]!!.plusAssign(finderMatrices.homeP.diagonal() * chainP)
                 }
                 ActivityType.WORK -> {
                     previousProbsDepHome = finderMatrices.homeWorkProbs
+                    previousProbsDepHomeExVarActivity = finderMatrices.homeWorkProbs
                     if (varActivityType == ActivityType.WORK) {
                         dependentMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
                     } else {
+
                         fixedMatrix[nextActivity]!!.plusAssign(finderMatrices.homeWorkProbs * chainP)
                     }
                 }
                 ActivityType.SCHOOL -> {
                     previousProbsDepHome = finderMatrices.homeSchoolProbs
+                    previousProbsDepHomeExVarActivity = finderMatrices.homeSchoolProbs
                     if (varActivityType == ActivityType.SCHOOL) {
                         dependentMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
                     } else {
@@ -186,113 +182,20 @@ class SGGravity(
                 }
                 val transitionP = finderMatrices.transitionMatrix[transitionActivity]!!
 
-                if (startActivity == varActivityType) {
+                // Number of varActivityType activities that already occurred
+                val nBefore = chain.take(next-1).count { it == varActivityType }
+
+                if ((varActivityType in fixActivities) and (startActivity == varActivityType)) {
                     cumMatrix = cumMatrix.dot(transitionP)
                     dependentMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
-                } else {
-                    fixedMatrix[nextActivity]!!.plusAssign(previousProbsDepHome.dot(transitionP) * chainP)
-                }
-
-                previousProbsDepHome = previousProbsDepHome.dot(transitionP)
-            }
-        }
-
-        val m3rep = MetaModelMatrixRep(
-            finderMatrices.homeP,
-            dependentMatrix,
-            fixedMatrix,
-            finderMatrices.transitionMatrix,
-            getPCar(),
-            varActivityType
-        )
-        return m3rep
-    }
-
-    private fun generateMatrixRepForFlex(varActivityType: ActivityType) : MetaModelMatrixRep {
-        val dependentMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
-        val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
-        val finderMatrices = computeTransitionMatrices()
-
-        // Determine od pair probabilities
-        for ((chain, chainP) in getUniqueChainSegments()) {
-            if (chain.size <= 1) { continue }
-
-            val startActivity = chain.first()
-            val endActivity = chain.last()
-
-            // Short chains
-            if (chain.size == 2) {
-                when(Pair(startActivity, endActivity)) {
-                    Pair(ActivityType.HOME, ActivityType.WORK) -> {
-                        fixedMatrix[ActivityType.WORK]!!.plusAssign(finderMatrices.homeP.diagonal() * chainP)
-                        continue
-                    }
-                    Pair(ActivityType.HOME, ActivityType.SCHOOL) -> {
-                        fixedMatrix[ActivityType.SCHOOL]!!.plusAssign(finderMatrices.homeP.diagonal() * chainP)
-                        continue
-                    }
-                    Pair(ActivityType.WORK, ActivityType.HOME) -> {
-                        fixedMatrix[ActivityType.HOME]!!.plusAssign(finderMatrices.homeWorkProbs * chainP)
-                        continue
-                    }
-                    Pair(ActivityType.SCHOOL, ActivityType.HOME) -> {
-                        fixedMatrix[ActivityType.HOME]!!.plusAssign(finderMatrices.homeSchoolProbs * chainP)
-                        continue
-                    }
-                    else -> {}
-                }
-            }
-
-            var nextActivity = chain[1]
-
-            // Setup
-            var previousProbsDepHome: D2Array<Double>
-            var previousProbsDepHomeExVarActivity: D2Array<Double>
-            when(startActivity) {
-                ActivityType.HOME -> {
-                    previousProbsDepHome = finderMatrices.homeP.diagonal()
-                    previousProbsDepHomeExVarActivity = finderMatrices.homeP.diagonal()
-                    fixedMatrix[nextActivity]!!.plusAssign(finderMatrices.homeP.diagonal() * chainP)
-                }
-                ActivityType.WORK -> {
-                    previousProbsDepHome = finderMatrices.homeWorkProbs
-                    previousProbsDepHomeExVarActivity = finderMatrices.homeWorkProbs
-                    fixedMatrix[nextActivity]!!.plusAssign(finderMatrices.homeWorkProbs * chainP)
-                }
-                ActivityType.SCHOOL -> {
-                    previousProbsDepHome = finderMatrices.homeSchoolProbs
-                    previousProbsDepHomeExVarActivity = finderMatrices.homeSchoolProbs
-                    fixedMatrix[nextActivity]!!.plusAssign(finderMatrices.homeSchoolProbs * chainP)
-                }
-                else -> {
-                    throw IllegalStateException(
-                        "Last fixed activity can not be of type $startActivity !"
-                    )
-                }
-            }
-
-            // Flexible chain components
-            var next = 2
-            for (activity in chain.drop(1).dropLast(1)) {
-                nextActivity = chain[next]
-                next += 1
-
-                val transitionActivity = if (activity == ActivityType.SHOPPING) {
-                    activity
-                } else {
-                    ActivityType.OTHER
-                }
-                val transitionP = finderMatrices.transitionMatrix[transitionActivity]!!
-
-                val nBefore = chain.take(next-1).count { it == varActivityType }
-                if ((nBefore >= 1) and (nextActivity != varActivityType)) {
+                } else if ((varActivityType !in fixActivities) and (nBefore >= 1) and (nextActivity != varActivityType)){
                     dependentMatrix[nextActivity]!!.plusAssign(previousProbsDepHomeExVarActivity * chainP)
                 } else {
                     fixedMatrix[nextActivity]!!.plusAssign(previousProbsDepHome.dot(transitionP) * chainP)
                 }
 
                 previousProbsDepHome = previousProbsDepHome.dot(transitionP)
-                if (activity != varActivityType) {
+                if ((varActivityType !in fixActivities) and (activity != varActivityType)) {
                     previousProbsDepHomeExVarActivity = previousProbsDepHomeExVarActivity.dot(transitionP)
                 }
             }
@@ -306,7 +209,6 @@ class SGGravity(
             getPCar(),
             varActivityType
         )
-
         return m3rep
     }
 
@@ -460,7 +362,7 @@ class SGGravity(
         irrelevantFactorThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
     ) : Pair<DifferentiableModel, Map<TrafficSensor, List<LinearTerm>>> {
         logger.info("Building surrogate for activity $activityType with ${omod.grid.size -1} variables")
-        val m3rep = generateMatrixRep(activityType)
+        val m3rep = generateMarkovChainRep(activityType)
 
         val n = omod.grid.size
         val totalPop = omod.buildings.sumOf { it.population }

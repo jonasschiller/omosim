@@ -24,7 +24,7 @@ fun SGGravity.calibrateTransitionMatrix(
         "[Experimental] Calibrating transition matrix for activity $activityType directly." +
             "Number of variables: ${omod.grid.size}"
     )
-    val m3rep = generateMatrixRep(activityType)
+    val m3rep = generateMarkovChainRep(activityType)
     val matrix = optimizeTMatrix(m3rep, affectedSensors, sensors)
     logger.info("Transition matrix for activity $activityType optimized.")
     return matrix
