@@ -16,39 +16,56 @@ import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
 import org.jetbrains.kotlinx.multik.ndarray.data.set
-import org.jetbrains.kotlinx.multik.ndarray.operations.*
+import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
+import org.jetbrains.kotlinx.multik.ndarray.operations.plus
+import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
+import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.pow
 
+/**
+ * Surrogate model builder for the gravity model surrogate.
+ *
+ * @param omod The simulator for which to build a surrogate
+ */
 class SGGravity(
     val omod: Omod
 ) {
-    private val modeChoiceCalibration = ModeChoiceCalibration()
+    private val modeChoiceCalibration = ModeChoiceCalibration() // TODO adapt
     private val fixActivities = setOf(ActivityType.WORK, ActivityType.SCHOOL)
 
     init {
         if (omod.destinationFinder !is DestinationFinderDefault) {
             throw NotImplementedError(
-                "MetaModel is not valid for the destination finder: " +
+                "Surrogate is not valid for the destination finder " +
                         omod.destinationFinder.javaClass.simpleName
             )
         }
         if (omod.activityGenerator !is ActivityGeneratorDefault) {
             throw NotImplementedError(
-                "MetaModel is not valid for the activity generator finder: " +
+                "Surrogate is not valid for the activity generator " +
                         omod.activityGenerator.javaClass.simpleName
             )
         }
     }
 
-    fun buildModelMSE(
+    /**
+     * Build surrogate for a gravity model with Sum-of-Squared-Errors objective.
+     * Variables = Gravity Model attraction scalers for one activity type.
+     *
+     * @param activityType ActivityType for which the gravity model will be variable
+     * @param sensors Sensors with measurements
+     * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
+     * @return surrogate model
+     */
+    // TODO get population size as input
+    fun buildModelSSE(
         activityType: ActivityType,
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ): DifferentiableModel {
-        // - Clean up rest and document
         val (model, tstSimCounts) = buildDiffModel(activityType, affectedSensors, sensors)
 
         // DEBUG CODE // TODO DELETE
@@ -65,6 +82,16 @@ class SGGravity(
         return model
     }
 
+    /**
+     * Build surrogate for a gravity model. Returns the simulated traffic counts at each sensor.
+     * Used in W-SPSA.
+     * Variables = Gravity Model attraction scalers for one activity type.
+     *
+     * @param activityType ActivityType for which the gravity model will be variable
+     * @param sensors Sensors with measurements
+     * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
+     * @return surrogate model
+     */
     fun buildModelSimCounts(
         activityType: ActivityType,
         sensors: List<TrafficSensor>,
@@ -84,176 +111,195 @@ class SGGravity(
         return model
     }
 
+    /**
+     * TODO: Explain compact representation
+     *
+     * Generate markov chain representation of original model.
+     *
+     * Compact representation:
+     * - The expected trip matrix can be computed based on the probability matrix K that gives the probability of any
+     * agent being in location column given his home location row.
+     * - K depends on the sequence of prior activities. For example: HSSSO
+     * - All these sequences that have the same last activity can be grouped:
+     *      - O' = HSSSO + HO + HWO + ... etc.
+     * - O will not be included in the groups. Therefore actually: O' = HSSS + H + HW + ...
+     * - In this grouping we make a distinction between the sequences that contain the variable activity and those that
+     * do not:
+     *      - mPriorCnst -> Does not contain the activity
+     *      - mPriorVar  -> Contains the activity
+     *
+     * @param varActivityType activity type for the variable gravity model
+     * @return compact markov chain representation.
+     */
     fun generateMarkovChainRep(varActivityType: ActivityType) : SGCompactMatrixRep {
         if(varActivityType == ActivityType.HOME) {
             throw NotImplementedError("Surrogate model dependent on home coefficients is not implemented!")
         }
 
-        val dependentMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
-        val fixedMatrix = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
-        val finderMatrices = computeTransitionMatrices()
+        val n = omod.grid.size
 
-        // Determine od pair probabilities
+        // Transition matrices
+        val tMatrices = computeTransitionMatrices()
+        val h = tMatrices[ActivityType.HOME]!!
+        val mHW = h.diagonal().dot(tMatrices[ActivityType.WORK]!!)  // Home <-> Work, Work
+        val mHS = h.diagonal().dot(tMatrices[ActivityType.SCHOOL]!!)  // Home <-> School, School
+        val hDiag = h.diagonal()
+
+        // Compact representation:
+        val mPriorVar = ActivityType.entries.associateWith { mk.zeros<Double>(n, n) }
+        val mPriorCnst = ActivityType.entries.associateWith { mk.zeros<Double>(n, n) }
+
+        // Go through each unique fixed-fixed segment
         for ((chain, chainP) in getUniqueChainSegments()) {
             if (chain.size <= 1) { continue }
 
             val startActivity = chain.first()
-            val endActivity = chain.last()
-
-            // Short chains
-            if (chain.size == 2) {
-                when(Pair(startActivity, endActivity)) {
-                    Pair(ActivityType.HOME, ActivityType.WORK) -> {
-                        fixedMatrix[ActivityType.WORK]!!.plusAssign(finderMatrices.homeP.diagonal() * chainP)
-                        continue
-                    }
-                    Pair(ActivityType.HOME, ActivityType.SCHOOL) -> {
-                        fixedMatrix[ActivityType.SCHOOL]!!.plusAssign(finderMatrices.homeP.diagonal() * chainP)
-                        continue
-                    }
-                    Pair(ActivityType.WORK, ActivityType.HOME) -> {
-                        if (varActivityType == ActivityType.WORK) {
-                            dependentMatrix[ActivityType.HOME]!!.plusAssign(mk.identity<Double>(omod.grid.size) * chainP)
-                        } else {
-                            fixedMatrix[ActivityType.HOME]!!.plusAssign(finderMatrices.homeWorkProbs * chainP)
-                        }
-                        continue
-                    }
-                    Pair(ActivityType.SCHOOL, ActivityType.HOME) -> {
-                        if (varActivityType == ActivityType.SCHOOL) {
-                            dependentMatrix[ActivityType.HOME]!!.plusAssign(mk.identity<Double>(omod.grid.size) * chainP)
-                        } else {
-                            fixedMatrix[ActivityType.HOME]!!.plusAssign(finderMatrices.homeSchoolProbs * chainP)
-                        }
-                        continue
-                    }
-                    else -> {}
-                }
-            }
-
             var nextActivity = chain[1]
 
             // Setup
-            var cumMatrix = mk.identity<Double>(omod.grid.size)
-            var previousProbsDepHome: D2Array<Double>
-            var previousProbsDepHomeExVarActivity: D2Array<Double>
+            var mPostFixed = mk.identity<Double>(n)
+            var mK: D2Array<Double> // Location probability distribution given the home location
+            var mKExVar: D2Array<Double> // The same but ignoring the var activity
             when(startActivity) {
                 ActivityType.HOME -> {
-                    previousProbsDepHome = finderMatrices.homeP.diagonal()
-                    previousProbsDepHomeExVarActivity = finderMatrices.homeP.diagonal()
-                    fixedMatrix[nextActivity]!!.plusAssign(finderMatrices.homeP.diagonal() * chainP)
+                    mK = hDiag
+                    mKExVar = hDiag
+                    mPriorCnst[nextActivity]!!.plusAssign(hDiag * chainP)
                 }
                 ActivityType.WORK -> {
-                    previousProbsDepHome = finderMatrices.homeWorkProbs
-                    previousProbsDepHomeExVarActivity = finderMatrices.homeWorkProbs
+                    mK = mHW
+                    mKExVar = mHW
                     if (varActivityType == ActivityType.WORK) {
-                        dependentMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
+                        mPriorVar[nextActivity]!!.plusAssign(mPostFixed * chainP)
                     } else {
-
-                        fixedMatrix[nextActivity]!!.plusAssign(finderMatrices.homeWorkProbs * chainP)
+                        mPriorCnst[nextActivity]!!.plusAssign(mHW * chainP)
                     }
                 }
                 ActivityType.SCHOOL -> {
-                    previousProbsDepHome = finderMatrices.homeSchoolProbs
-                    previousProbsDepHomeExVarActivity = finderMatrices.homeSchoolProbs
+                    mK = mHS
+                    mKExVar = mHS
                     if (varActivityType == ActivityType.SCHOOL) {
-                        dependentMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
+                        mPriorVar[nextActivity]!!.plusAssign(mPostFixed * chainP)
                     } else {
-                        fixedMatrix[nextActivity]!!.plusAssign(finderMatrices.homeSchoolProbs * chainP)
+                        mPriorCnst[nextActivity]!!.plusAssign(mHS * chainP)
                     }
                 }
                 else -> {
-                    throw IllegalStateException(
-                        "Last fixed activity can not be of type $startActivity !"
-                    )
+                    throw IllegalStateException("Last fixed activity can not be of type $startActivity !")
                 }
             }
 
-            // Flexible chain components
+            // Run through chain cumulate mPriorVar and mPriorCnst
             var next = 2
+            var occurred = startActivity == varActivityType
             for (activity in chain.drop(1).dropLast(1)) {
                 nextActivity = chain[next]
                 next += 1
 
-                val transitionActivity = if (activity == ActivityType.SHOPPING) {
-                    activity
+                // Get transition matrix
+                val mT = if (activity == ActivityType.BUSINESS) {
+                    tMatrices[ActivityType.OTHER]!! // Edge case: Use other type transition matrix for business activity
                 } else {
-                    ActivityType.OTHER
-                }
-                val transitionP = finderMatrices.transitionMatrix[transitionActivity]!!
-
-                // Number of varActivityType activities that already occurred
-                val nBefore = chain.take(next-1).count { it == varActivityType }
-
-                if ((varActivityType in fixActivities) and (startActivity == varActivityType)) {
-                    cumMatrix = cumMatrix.dot(transitionP)
-                    dependentMatrix[nextActivity]!!.plusAssign(cumMatrix * chainP)
-                } else if ((varActivityType !in fixActivities) and (nBefore >= 1) and (nextActivity != varActivityType)){
-                    dependentMatrix[nextActivity]!!.plusAssign(previousProbsDepHomeExVarActivity * chainP)
-                } else {
-                    fixedMatrix[nextActivity]!!.plusAssign(previousProbsDepHome.dot(transitionP) * chainP)
+                    tMatrices[activity]!!
                 }
 
-                previousProbsDepHome = previousProbsDepHome.dot(transitionP)
+                // Variable activity is in the past
+                if ((varActivityType in fixActivities) and (occurred)) {
+                    // Cumulate all matrices after a fixed location activity has occurred
+                    mPostFixed = mPostFixed.dot(mT)
+                    mPriorVar[nextActivity]!!.plusAssign(mPostFixed * chainP)
+                } else if ((varActivityType !in fixActivities) and (occurred) and (nextActivity != varActivityType)){
+                    // Cumulate location probabilities after a flex location activity
+                    // Ignores all subsequent flex location activities of the same time
+                    mPriorVar[nextActivity]!!.plusAssign(mKExVar * chainP)
+                }
+                // Has not (yet) occured or is ignored
+                else {
+                    // Normal case cumulate matrices before next activity
+                    mPriorCnst[nextActivity]!!.plusAssign(mK.dot(mT) * chainP)
+                }
+
+                // Update location probability distributions
+                mK = mK.dot(mT)
                 if ((varActivityType !in fixActivities) and (activity != varActivityType)) {
-                    previousProbsDepHomeExVarActivity = previousProbsDepHomeExVarActivity.dot(transitionP)
+                    mKExVar = mKExVar.dot(mT)
+                }
+
+                if (nextActivity == varActivityType) {
+                    occurred = true
                 }
             }
         }
 
         val m3rep = SGCompactMatrixRep(
-            finderMatrices.homeP,
-            dependentMatrix,
-            fixedMatrix,
-            finderMatrices.transitionMatrix,
+            h,
+            mPriorVar,
+            mPriorCnst,
+            tMatrices,
             getPCar(),
             varActivityType
         )
         return m3rep
     }
 
-    private fun getPCar() : Map<ActivityType, D2Array<Double>> {
+    /**
+     * Matrices that describe the probability of an agent to be somewhere before an activity:
+     *  - homeP -> Home probability for each cell.
+     *  - dependentMatrix -> Probability part dependent on the currently calibrated activity.
+     *  - fixedMatrix -> Independent part
+     *
+     * Matrices that describe transition probabilities:
+     *  - transitionMatrix
+     *  - carP mode share of car mode for each transition
+     *
+     *  varActivityType: Activity those transition matrix is going to be calibrated.
+     */
+    data class SGCompactMatrixRep (
+        val homeP: D2Array<Double>,
+        val dependentMatrix: Map<ActivityType, D2Array<Double>>,
+        val fixedMatrix: Map<ActivityType,  D2Array<Double>>,
+        val transitionMatrix: Map<ActivityType,  D2Array<Double>>,
+        val carP: Map<ActivityType,  D2Array<Double>>,
+        val varActivityType: ActivityType
+    )
+
+    private fun computeTransitionMatrices() : Map<ActivityType,  D2Array<Double>> {
+        val transitionProbs = mutableMapOf<ActivityType,  D2Array<Double>>()
         val finder = omod.destinationFinder as DestinationFinderDefault
 
-        // Car probability
-        val dummyCoord = Coordinate(0.0,0.0)
-        val dummyLocation = DummyLocation(dummyCoord, dummyCoord, null, setOf())
-        val carProbs = mutableMapOf<ActivityType, D2Array<Double>>()
-        for (activity in ActivityType.entries) {
-            carProbs[activity] = mk.zeros<Double>(omod.grid.size, omod.grid.size)
-        }
-        for (stratum in omod.popStrata) {
-            if (stratum.stratumShare == 0.0) { continue }
-
-            for ((socioFeatureSet, pSFSet) in stratum.iterateOptions()) {
-                if (pSFSet == 0.0) { continue }
-
-                val dummyAgent = MobiAgent(
-                    -1,  socioFeatureSet.hom, socioFeatureSet.mob, socioFeatureSet.age,
-                    dummyLocation, dummyLocation, dummyLocation, socioFeatureSet.sex
-                )
-                dummyAgent.carAccess = true // Car ownership probability is considered separately
-
-                val carOwnershipP = omod.carOwnership.probability(dummyAgent, stratum)
-                if (carOwnershipP == 0.0) { continue }
-
-                for (activity in ActivityType.entries) {
-                    val carProbsActivity = mk.zeros<Double>(omod.grid.size, omod.grid.size)
-                    for (o in omod.grid.indices) {
-                        val distances = finder.routingCache.getDistances(omod.grid[o], omod.grid)
-                        for (d in omod.grid.indices) {
-                            val weights = modeChoiceCalibration.utilitiesForCalibration(
-                                distances[d].toDouble() / 1000.0, dummyAgent, activity, Weekday.UNDEFINED
-                            )
-                            val pTrip = weights[0] / weights.sum()
-                            carProbsActivity[o, d] = stratum.stratumShare * pSFSet * carOwnershipP * pTrip
-                        }
-                    }
-                    carProbs[activity]?.plusAssign(carProbsActivity)
+        // HOME
+        val homeWeights = finder.getWeightsNoOrigin(omod.grid, activityType=ActivityType.HOME).toMutableList()
+        if (!omod.populateBufferArea) { // Handle buffer area
+            for ((i, cell) in omod.grid.withIndex()) {
+                if (!cell.inFocusArea) {
+                    homeWeights[i] = 0.0
                 }
             }
         }
-        return carProbs
+        val homeProbs   = mk.ndarray( homeWeights.map { it / homeWeights.sum() } )
+            .expandDims(0).asDNArray().asD2Array()
+        transitionProbs[ActivityType.HOME] = homeProbs
+
+        // Transitions
+        for (activityType in ActivityType.entries) {
+            if (activityType == ActivityType.HOME) { continue }
+
+            val activityProbs = mk.zeros<Double>(omod.grid.size, omod.grid.size)
+            if (finder.forcedTransitionMatrix.containsKey(activityType)) { // If matrix is forced
+                val fMatrix = finder.forcedTransitionMatrix[activityType]!!
+                for ((o, cell) in omod.grid.withIndex()) {
+                    val activityWeights = fMatrix[cell]!!
+                    activityProbs[o] = mk.ndarray( activityWeights.map { it / activityWeights.sum() } )
+                }
+            } else { // Normal case
+                for (o in omod.grid.indices) {
+                    val activityWeights = finder.getWeights(omod.grid[o], omod.grid, activityType = activityType)
+                    activityProbs[o] = mk.ndarray( activityWeights.map { it / activityWeights.sum() } )
+                }
+            }
+            transitionProbs[activityType] = activityProbs
+        }
+        return transitionProbs
     }
 
     private fun getUniqueChainSegments() : List<ChainSegment> {
@@ -314,6 +360,55 @@ class SGGravity(
             )
         }
         return uniqueSegments
+    }
+
+    private data class ChainSegment(
+        val chain: List<ActivityType>,
+        val probability: Double
+    )
+
+    private fun getPCar() : Map<ActivityType, D2Array<Double>> {
+        val finder = omod.destinationFinder as DestinationFinderDefault
+
+        // Car probability
+        val dummyCoord = Coordinate(0.0,0.0)
+        val dummyLocation = DummyLocation(dummyCoord, dummyCoord, null, setOf())
+        val carProbs = mutableMapOf<ActivityType, D2Array<Double>>()
+        for (activity in ActivityType.entries) {
+            carProbs[activity] = mk.zeros<Double>(omod.grid.size, omod.grid.size)
+        }
+        for (stratum in omod.popStrata) {
+            if (stratum.stratumShare == 0.0) { continue }
+
+            for ((socioFeatureSet, pSFSet) in stratum.iterateOptions()) {
+                if (pSFSet == 0.0) { continue }
+
+                val dummyAgent = MobiAgent(
+                    -1,  socioFeatureSet.hom, socioFeatureSet.mob, socioFeatureSet.age,
+                    dummyLocation, dummyLocation, dummyLocation, socioFeatureSet.sex
+                )
+                dummyAgent.carAccess = true // Car ownership probability is considered separately
+
+                val carOwnershipP = omod.carOwnership.probability(dummyAgent, stratum)
+                if (carOwnershipP == 0.0) { continue }
+
+                for (activity in ActivityType.entries) {
+                    val carProbsActivity = mk.zeros<Double>(omod.grid.size, omod.grid.size)
+                    for (o in omod.grid.indices) {
+                        val distances = finder.routingCache.getDistances(omod.grid[o], omod.grid)
+                        for (d in omod.grid.indices) {
+                            val weights = modeChoiceCalibration.utilitiesForCalibration(
+                                distances[d].toDouble() / 1000.0, dummyAgent, activity, Weekday.UNDEFINED
+                            )
+                            val pTrip = weights[0] / weights.sum()
+                            carProbsActivity[o, d] = stratum.stratumShare * pSFSet * carOwnershipP * pTrip
+                        }
+                    }
+                    carProbs[activity]?.plusAssign(carProbsActivity)
+                }
+            }
+        }
+        return carProbs
     }
 
     @Suppress("SameParameterValue")
@@ -494,43 +589,7 @@ class SGGravity(
         return diffModel to simCount
     }
 
-    private fun computeTransitionMatrices() : TransitionMatrixStore {
-        val finder = omod.destinationFinder as DestinationFinderDefault
 
-        // HOME
-        val homeWeights = finder.getWeightsNoOrigin(omod.grid, activityType=ActivityType.HOME).toMutableList()
-        if (!omod.populateBufferArea) { // Handle buffer area
-            for ((i, cell) in omod.grid.withIndex()) {
-                if (!cell.inFocusArea) {
-                    homeWeights[i] = 0.0
-                }
-            }
-        }
-        val homeProbs   = mk.ndarray( homeWeights.map { it / homeWeights.sum() } )
-            .expandDims(0).asDNArray().asD2Array()
-
-        // Transitions
-        val transitionProbs = mutableMapOf<ActivityType,  D2Array<Double>>()
-        for (activityType in ActivityType.entries) {
-            if (activityType == ActivityType.HOME) { continue }
-
-            val activityProbs = mk.zeros<Double>(omod.grid.size, omod.grid.size)
-            if (finder.forcedTransitionMatrix.containsKey(activityType)) { // If matrix is forced
-                val fMatrix = finder.forcedTransitionMatrix[activityType]!!
-                for ((o, cell) in omod.grid.withIndex()) {
-                    val activityWeights = fMatrix[cell]!!
-                    activityProbs[o] = mk.ndarray( activityWeights.map { it / activityWeights.sum() } )
-                }
-            } else { // Normal case
-                for (o in omod.grid.indices) {
-                    val activityWeights = finder.getWeights(omod.grid[o], omod.grid, activityType = activityType)
-                    activityProbs[o] = mk.ndarray( activityWeights.map { it / activityWeights.sum() } )
-                }
-            }
-            transitionProbs[activityType] = activityProbs
-        }
-        return TransitionMatrixStore(homeProbs, transitionProbs)
-    }
 
     fun <T, K> addFlexE(
         demandBuilder: TermBuilder<T, K>,
@@ -726,43 +785,6 @@ class SGGravity(
             }
         }
     }
-
-    private data class ChainSegment(
-        val chain: List<ActivityType>,
-        val probability: Double
-    )
-
-    private data class TransitionMatrixStore (
-        val homeP: D2Array<Double>,
-        val transitionMatrix: Map<ActivityType,  D2Array<Double>>,
-    ) {
-        // Home <-> Work, Work
-        val homeWorkProbs = homeP.diagonal().dot( transitionMatrix[ActivityType.WORK]!! )
-
-        // Home <-> School, School
-        val homeSchoolProbs = homeP.diagonal().dot( transitionMatrix[ActivityType.SCHOOL]!! )
-    }
-
-    /**
-     * Matrices that describe the probability of an agent to be somewhere before an activity:
-     *  - homeP -> Home probability for each cell.
-     *  - dependentMatrix -> Probability part dependent on the currently calibrated activity.
-     *  - fixedMatrix -> Independent part
-     *
-     * Matrices that describe transition probabilities:
-     *  - transitionMatrix
-     *  - carP mode share of car mode for each transition
-     *
-     *  varActivityType: Activity those transition matrix is going to be calibrated.
-     */
-    data class SGCompactMatrixRep (
-        val homeP: D2Array<Double>,
-        val dependentMatrix: Map<ActivityType, D2Array<Double>>,
-        val fixedMatrix: Map<ActivityType,  D2Array<Double>>,
-        val transitionMatrix: Map<ActivityType,  D2Array<Double>>,
-        val carP: Map<ActivityType,  D2Array<Double>>,
-        val varActivityType: ActivityType
-    )
 
     fun determineRelevantODs(
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,

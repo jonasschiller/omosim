@@ -211,7 +211,7 @@ class TrafficCountCalibrator(
         activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
     )  {
         for (activity in activities) {
-            val model = SGGravity(omod).buildModelMSE(activity, sensors, affectedSensors)
+            val model = SGGravity(omod).buildModelSSE(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d =  BFGS.run(model, x0, iterations=iterations, parameters=parameters)
             d = (d.toList() + listOf(1.0)).toDoubleArray()
@@ -224,7 +224,7 @@ class TrafficCountCalibrator(
         activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
     )  {
         for (activity in activities) {
-            val model = SGGravity(omod).buildModelMSE(activity, sensors, affectedSensors)
+            val model = SGGravity(omod).buildModelSSE(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d =  MinBc.run(model, x0, iterations=iterations, parameters=parameters)
             d = (d.toList() + listOf(1.0)).toDoubleArray()
@@ -237,7 +237,7 @@ class TrafficCountCalibrator(
         activities: List<ActivityType>, iterations: Int, parameters: Map<String, String>? = null
     ){
         for (activity in activities) {
-            val model = SGGravity(omod).buildModelMSE(activity, sensors, affectedSensors)
+            val model = SGGravity(omod).buildModelSSE(activity, sensors, affectedSensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = GradientDescent.run(model, x0, iterations=iterations, parameters=parameters)
             d = (d.toList() + listOf(1.0)).toDoubleArray()
@@ -366,7 +366,7 @@ class TrafficCountCalibrator(
 
     // Objectives
     private fun metaModelObj(activity: ActivityType): (DoubleArray) -> Double {
-        val model = SGGravity(omod).buildModelMSE(activity, sensors, affectedSensors)
+        val model = SGGravity(omod).buildModelSSE(activity, sensors, affectedSensors)
         return { x: DoubleArray ->
             model.evaluate(x)
         }
