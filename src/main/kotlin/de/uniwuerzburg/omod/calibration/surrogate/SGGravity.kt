@@ -554,7 +554,7 @@ class SGGravity(
 
                 for (d in 0 until n) {
                     if (Pair(o, d) !in relevantODs) { continue }
-                    demandBuilder.addTerm(demand[o][d], varTransitionMatrix[o][d], cnst * mCarP[o, d])
+                    demandBuilder.addVar(demand[o][d], varTransitionMatrix[o][d], cnst * mCarP[o, d])
                 }
             }
         } else {
@@ -563,7 +563,7 @@ class SGGravity(
             val pHome = m3rep.homeP.flatten()
 
             for (o in 0 until n) {
-                val s = demandBuilder.createSum(nVars)
+                val s = demandBuilder.new(nVars)
                 var cnst = 0.0
 
                 for (a in 0 until n) {
@@ -581,18 +581,18 @@ class SGGravity(
                         }
 
                         if (m3rep.varActivityType in fixActivities) {
-                            demandBuilder.addTermToSum(s, varTransitionMatrix[a][b], coeff)
+                            demandBuilder.addVar(s, varTransitionMatrix[a][b], coeff)
                         } else {
-                            demandBuilder.addTermToSum(s, varTransitionMatrix[b][o], coeff)
+                            demandBuilder.addVar(s, varTransitionMatrix[b][o], coeff)
                         }
                     }
                 }
-                demandBuilder.addConstToSum(s, cnst)
+                demandBuilder.addConstant(s, cnst)
 
                 for (d in 0 until n) {
                     if (Pair(o, d) !in relevantODs) { continue }
                     val t = mTransition[o, d] * mCarP[o, d]
-                    demandBuilder.addSum(demand[o][d], s, t)
+                    demandBuilder.addTerm(demand[o][d], s, t)
                 }
             }
         }
@@ -635,7 +635,7 @@ class SGGravity(
         for (o in 0 until n) {
             for (d in 0 until n) {
                 if (Pair(o, d) !in relevantODs) { continue }
-                demandBuilder.addSum(demand[o][d], depExpr[o][d], carP[o, d])
+                demandBuilder.addTerm(demand[o][d], depExpr[o][d], carP[o, d])
                 demandBuilder.addConstant(demand[o][d], fix[o, d])
             }
         }
@@ -662,10 +662,10 @@ class SGGravity(
         // Tour starting at var activity
         val pHome = m3rep.homeP.flatten()
         val dMatrixT = m3rep.dependentMatrix[fixActivity]!!.transpose()
-        val varStartProbs = List(n) { demandBuilder.createSum(nVars) }
+        val varStartProbs = List(n) { demandBuilder.new(nVars) }
         for (col in 0 until n) {
             for (row in 0 until n) {
-                demandBuilder.addTermToSum(varStartProbs[col], varTransitionMatrix[row][col], pHome[row])
+                demandBuilder.addVar(varStartProbs[col], varTransitionMatrix[row][col], pHome[row])
             }
         }
 
@@ -708,10 +708,10 @@ class SGGravity(
         for (o in 0 until n) {
             for (d in 0 until n) {
                 if (Pair(o, d) !in relevantODs) { continue }
-                demandBuilder.addSum(demand[o][d], depExpr[o][d], carP[o, d])
+                demandBuilder.addTerm(demand[o][d], depExpr[o][d], carP[o, d])
 
                 if (m3rep.varActivityType == fixActivity) {
-                    demandBuilder.addSum(demand[o][d], varStartProbs[d], dMatrixT[o][d] * carP[o, d])
+                    demandBuilder.addTerm(demand[o][d], varStartProbs[d], dMatrixT[o][d] * carP[o, d])
                 } else {
                     demandBuilder.addConstant(demand[o][d], fix[o,d])
                 }

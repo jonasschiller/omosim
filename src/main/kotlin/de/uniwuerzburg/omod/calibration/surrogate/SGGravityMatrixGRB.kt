@@ -178,7 +178,7 @@ fun SGGravity.optimizeTMatrix(
 }
 
 object GRBLinExprBuilder: TermBuilder<GRBLinExpr, GRBVar> {
-    override fun addTerm(term: GRBLinExpr, v: GRBVar, coefficient: Double) {
+    override fun addVar(term: GRBLinExpr, v: GRBVar, coefficient: Double) {
         term.addTerm(coefficient, v)
     }
 
@@ -186,19 +186,11 @@ object GRBLinExprBuilder: TermBuilder<GRBLinExpr, GRBVar> {
         term.addConstant(constant)
     }
 
-    override fun addSum(term: GRBLinExpr, sum: GRBLinExpr, coefficient: Double) {
-        term.multAdd(coefficient, sum)
+    override fun addTerm(term: GRBLinExpr, other: GRBLinExpr, coefficient: Double) {
+        term.multAdd(coefficient, other)
     }
 
-    override fun createSum(nVars: Int): GRBLinExpr {
+    override fun new(nVars: Int): GRBLinExpr {
         return GRBLinExpr()
-    }
-
-    override fun addTermToSum(s: GRBLinExpr, v: GRBVar, coefficient: Double) {
-        s.addTerm(coefficient, v)
-    }
-
-    override fun addConstToSum(s: GRBLinExpr, const: Double) {
-        s.addConstant(const)
     }
 }

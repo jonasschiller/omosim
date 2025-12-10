@@ -8,14 +8,15 @@ import kotlin.math.abs
 /**
  * Generic interface that allows for the creation of functions that can build Gurobi models and
  * DifferentiableModel graphs
+ *
+ * T: Term
+ * V: Variable
  */
-interface TermBuilder<T,K> {
-    fun addTerm(term: T, v: K, coefficient: Double) {}
+interface TermBuilder<T, V> {
+    fun addVar(term: T, v: V, coefficient: Double) {}
     fun addConstant(term: T, constant: Double) {}
-    fun addSum(term: T, sum: T, coefficient: Double) {}
-    fun createSum(nVars: Int) : T
-    fun addTermToSum(s: T, v: K, coefficient: Double)
-    fun addConstToSum(s: T, const: Double)
+    fun addTerm(term: T, other: T, coefficient: Double) {}
+    fun new(nVars: Int) : T
 
     /**
      * Creates the terms that compute the following matrix multiplication:
@@ -38,7 +39,7 @@ interface TermBuilder<T,K> {
      */
     fun fromMatrixMult(
         nVars: Int,
-        x: List<List<K>>,
+        x: List<List<V>>,
         left: D2Array<Double>,
         right: D2Array<Double>,
         transpose: Boolean = true,
@@ -51,7 +52,7 @@ interface TermBuilder<T,K> {
         // Build empty result
         val result = List(n) {
             List(n) {
-                this.createSum(nVars)
+                this.new(nVars)
             }
         }
 
@@ -80,9 +81,9 @@ interface TermBuilder<T,K> {
 
                         // Add to result
                         if (transpose) {
-                            this.addTermToSum(activeEntry, x[i][j], coeff)
+                            this.addVar(activeEntry, x[i][j], coeff)
                         } else {
-                            this.addTermToSum(activeEntry, x[j][i], coeff)
+                            this.addVar(activeEntry, x[j][i], coeff)
                         }
                     }
                 }
