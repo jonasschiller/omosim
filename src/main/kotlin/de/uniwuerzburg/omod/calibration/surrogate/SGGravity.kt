@@ -10,16 +10,14 @@ import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
-import org.jetbrains.kotlinx.multik.api.identity
+import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
-import org.jetbrains.kotlinx.multik.api.mk
-import org.jetbrains.kotlinx.multik.api.ndarray
-import org.jetbrains.kotlinx.multik.api.zeros
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
 import org.jetbrains.kotlinx.multik.ndarray.data.set
 import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
+import org.jetbrains.kotlinx.multik.ndarray.operations.plus
 import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
@@ -53,10 +51,21 @@ class SGGravity(
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ): DifferentiableModel {
-        // TODO create test for SimCounts and refactor.
         // - Combine generateMatrixRepForFixed and generateMatrixRepForFlex
         // - Clean up rest and document
-        val (model, _) = buildDiffModel(activityType, affectedSensors, sensors)
+        val (model, tstSimCounts) = buildDiffModel(activityType, affectedSensors, sensors)
+
+        // DEBUG CODE // TODO DELETE
+        println(activityType)
+        println("Evaluate Matrix Rep")
+        debugEval(generateMatrixRep(activityType), sensors, affectedSensors)
+        println("Evaluate Graph")
+        for (sensor in sensors) {
+            val sum = tstSimCounts[sensor]!!.map { it.evaluate(DoubleArray(omod.grid.size - 1) { 1.0 }) }.sum()
+            val measured = sensor.measuredFlow.sum()
+            println("${sensor.name} \t | $measured\t|$sum ")
+        }
+        // DEBUG ENDS
         return model
     }
 
@@ -961,6 +970,136 @@ class SGGravity(
             s.addConstant(const)
         }
     }
+
+    // ========== DEBUG CODE ================= // TODO Delete
+    private fun getExpectedCountPerAgent(m3rep: MetaModelMatrixRep) : D2Array<Double> {
+        // Result: Expected trip count on each od-paid of one agent on one day
+        val expectedCountPerAgent = mk.zeros<Double>(omod.grid.size, omod.grid.size)
+
+        val varTMatrix = m3rep.transitionMatrix[m3rep.varActivityType]!!
+
+        // Flex
+        for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
+            val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
+                ActivityType.OTHER
+            } else {
+                flexActivity
+            }
+            val carP = m3rep.carP[transitionActivity]!!
+            val fix = m3rep.fixedMatrix[flexActivity]!!
+
+            val dep = if (m3rep.varActivityType in fixActivities) {
+                m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[flexActivity]!!)
+            } else if (flexActivity == m3rep.varActivityType) {
+                mk.zeros<Double>(omod.grid.size, omod.grid.size)
+            } else {
+                m3rep.dependentMatrix[flexActivity]!!.dot(varTMatrix)
+            }
+            val total = mk.ones<Double>(omod.grid.size).expandDims(0).asDNArray()
+                .asD2Array().dot(dep.plus(fix))
+                .diagonal().dot(m3rep.transitionMatrix[transitionActivity]!!)
+            expectedCountPerAgent.plusAssign(total.times(carP))
+        }
+
+        // Home
+        for (fixActivity in listOf(ActivityType.HOME)) {
+            val carP = m3rep.carP[fixActivity]!!
+
+            val dep = if (m3rep.varActivityType in fixActivities) {
+                m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[fixActivity]!!)
+            } else {
+                m3rep.dependentMatrix[fixActivity]!!.dot(varTMatrix)
+            }
+            val fix = m3rep.fixedMatrix[fixActivity]!!
+            val total = dep.plus(fix).transpose()
+
+            expectedCountPerAgent.plusAssign(total.times(carP))
+        }
+
+        // School
+        for (fixActivity in listOf(ActivityType.SCHOOL)) {
+            val carP = m3rep.carP[fixActivity]!!
+            val fix = m3rep.fixedMatrix[fixActivity]!!
+
+            if (m3rep.varActivityType == ActivityType.SCHOOL) {
+                val schoolProbs = m3rep.homeP.dot( m3rep.transitionMatrix[ActivityType.SCHOOL]!! )
+                val dep = schoolProbs.diagonal().dot( m3rep.dependentMatrix[fixActivity]!! ).transpose()
+                val total = dep.plus( fix.transpose().dot( m3rep.transitionMatrix[fixActivity]!!) )
+                expectedCountPerAgent.plusAssign(total.times(carP))
+            } else {
+                val dep = if (m3rep.varActivityType in fixActivities) {
+                    m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[fixActivity]!!)
+                } else {
+                    m3rep.dependentMatrix[fixActivity]!!.dot(varTMatrix)
+                }
+                val total = dep.plus(fix).transpose().dot(m3rep.transitionMatrix[fixActivity]!!)
+                expectedCountPerAgent.plusAssign(total.times(carP))
+            }
+        }
+
+        // Work
+        for (fixActivity in listOf(ActivityType.WORK)) {
+            val carP = m3rep.carP[fixActivity]!!
+            val fix = m3rep.fixedMatrix[fixActivity]!!
+
+            if (m3rep.varActivityType == ActivityType.WORK) {
+                val workProbs = m3rep.homeP.dot( m3rep.transitionMatrix[ActivityType.WORK]!! )
+                val dep = workProbs.diagonal().dot( m3rep.dependentMatrix[fixActivity]!! ).transpose()
+                val total = dep.plus( fix.transpose().dot( m3rep.transitionMatrix[fixActivity]!!) )
+                expectedCountPerAgent.plusAssign(total.times(carP))
+            } else {
+                val dep = if (m3rep.varActivityType in fixActivities) {
+                    m3rep.homeP.diagonal().dot(varTMatrix).dot(m3rep.dependentMatrix[fixActivity]!!)
+                } else {
+                    m3rep.dependentMatrix[fixActivity]!!.dot(varTMatrix)
+                }
+                val total = dep.plus(fix).transpose().dot(m3rep.transitionMatrix[fixActivity]!!)
+                expectedCountPerAgent.plusAssign(total.times(carP))
+            }
+        }
+
+        return expectedCountPerAgent
+    }
+
+    private fun debugEval(
+        m3rep: MetaModelMatrixRep,
+        sensors: List<TrafficSensor>,
+        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    ) {
+        val expected = getExpectedCountPerAgent(m3rep)
+        val totalPop = omod.buildings.sumOf { it.population }
+
+        val simCount = sensors.associateWith { 0.0 }.toMutableMap()
+        for ((o, origin) in omod.grid.withIndex()) {
+            for ((d, destination) in omod.grid.withIndex()) {
+                val odPair = Pair(origin, destination)
+                if (odPair in affectedSensors) {
+                    val affected = affectedSensors[odPair]!!
+                    for (sensor in affected) {
+
+                        simCount[sensor] = simCount[sensor]!! + expected[o,d] * totalPop
+                    }
+                }
+            }
+        }
+        var mse = 0.0
+        val allFlows = mutableMapOf<TrafficSensor, Double>()
+        for (sensor in sensors) {
+            val simFlow = simCount[sensor]!!
+            mse += (sensor.measuredFlow.sum() - simFlow).pow(2)
+
+            allFlows[sensor] = simFlow
+        }
+        mse /= sensors.size
+
+        println("MSE: $mse")
+        println("------------------------------")
+        println("Sensor | \t Flow OMOD | \t Flow Measured")
+        for ((i, flow) in simCount.values.withIndex()) {
+            println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow.sum()}")
+        }
+    }
+    // ========== DEBUG CODE ENDS =================
 }
 
 private inline fun <reified T : Any> D2Array<T>.diagonal() : D2Array<T> {
