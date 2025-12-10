@@ -317,9 +317,9 @@ class SGGravity(
     }
 
     @Suppress("SameParameterValue")
-    fun monteCarloTripStartDistribution(n: Int) : Map<ActivityType, Array<Double>> {
+    fun monteCarloTripStartDistribution(n: Int) : Map<ActivityType, DoubleArray> {
         val distr = ActivityType.entries.associateWith {
-            Array(T) { 0.0 }
+            DoubleArray(T) { 0.0 }
         }.toMutableMap()
 
         // Ensure results are deterministic
@@ -342,14 +342,12 @@ class SGGravity(
         }
 
         for ((key, arr) in distr.entries) {
-            distr[key] = arr.map {
-                val sum = arr.sum()
-                if (sum == 0.0) {
-                    0.0
-                } else {
-                    it / sum
-                }
-            }.toTypedArray()
+            val sum = arr.sum()
+            distr[key] = if (sum == 0.0) {
+                DoubleArray(arr.size) { 0.0 }
+            } else {
+                arr.map { it / sum }.toDoubleArray()
+            }
         }
 
         return distr
