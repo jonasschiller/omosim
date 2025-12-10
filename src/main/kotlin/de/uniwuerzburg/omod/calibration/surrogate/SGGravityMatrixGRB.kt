@@ -4,8 +4,8 @@ import com.gurobi.gurobi.*
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.MC_SAMPLES
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.TrafficSensor
+import de.uniwuerzburg.omod.calibration.differentiablemodel.TermBuilder
 import de.uniwuerzburg.omod.calibration.logger
-import de.uniwuerzburg.omod.calibration.surrogate.SGGravity.DemandBuilder
 import de.uniwuerzburg.omod.calibration.surrogate.SGGravity.MetaModelMatrixRep
 import de.uniwuerzburg.omod.core.models.ActivityType
 import de.uniwuerzburg.omod.core.models.RealLocation
@@ -77,7 +77,7 @@ fun SGGravity.optimizeTMatrix(
         // Demand with flexible destination
         for (activity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
             addFlexDemand(
-                GRBDemandBuilder,
+                GRBLinExprBuilder,
                 n,
                 m3rep,
                 demand[activity]!!,
@@ -90,7 +90,7 @@ fun SGGravity.optimizeTMatrix(
 
         // Demand for home
         addHomeDemand(
-            GRBDemandBuilder,
+            GRBLinExprBuilder,
             n,
             m3rep,
             demand[ActivityType.HOME]!!,
@@ -102,7 +102,7 @@ fun SGGravity.optimizeTMatrix(
         // School and Work
         for (activity in listOf(ActivityType.SCHOOL, ActivityType.WORK)) {
             addFixDemand(
-                GRBDemandBuilder,
+                GRBLinExprBuilder,
                 n,
                 m3rep,
                 demand[activity]!!,
@@ -177,17 +177,17 @@ fun SGGravity.optimizeTMatrix(
     return null
 }
 
-object GRBDemandBuilder: DemandBuilder<GRBLinExpr, GRBVar> {
-    override fun addTerm(demand: GRBLinExpr, v: GRBVar, coefficient: Double) {
-        demand.addTerm(coefficient, v)
+object GRBLinExprBuilder: TermBuilder<GRBLinExpr, GRBVar> {
+    override fun addTerm(term: GRBLinExpr, v: GRBVar, coefficient: Double) {
+        term.addTerm(coefficient, v)
     }
 
-    override fun addConstant(demand: GRBLinExpr, constant: Double) {
-        demand.addConstant(constant)
+    override fun addConstant(term: GRBLinExpr, constant: Double) {
+        term.addConstant(constant)
     }
 
-    override fun addSum(demand: GRBLinExpr, sum: GRBLinExpr, coefficient: Double) {
-        demand.multAdd(coefficient, sum)
+    override fun addSum(term: GRBLinExpr, sum: GRBLinExpr, coefficient: Double) {
+        term.multAdd(coefficient, sum)
     }
 
     override fun createSum(nVars: Int): GRBLinExpr {

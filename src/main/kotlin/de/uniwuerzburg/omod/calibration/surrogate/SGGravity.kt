@@ -357,7 +357,7 @@ class SGGravity(
         activityType: ActivityType,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         sensors: List<TrafficSensor>,
-        irrelevantFactorThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
+        irrelevancyThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
     ) : Pair<DifferentiableModel, Map<TrafficSensor, List<LinearTerm>>> {
         logger.info("Building surrogate for activity $activityType with ${omod.grid.size -1} variables")
         val m3rep = generateMarkovChainRep(activityType)
@@ -403,30 +403,30 @@ class SGGravity(
         // Demand with flexible destination
         for (activity in listOf( ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
             addFlexDemand(
-                DMDemandBuilder,
+                LinearTermBuilder,
                 diffModel.nVars,
                 m3rep,
                 demand[activity]!!,
                 varTransitionMatrix,
                 relevantODs,
-                irrelevantFactorThreshold,
+                irrelevancyThreshold,
                 activity
             )
         }
 
         // Demand for home
-        addHomeDemand(DMDemandBuilder, diffModel.nVars, m3rep, demand[ActivityType.HOME]!!, varTransitionMatrix, relevantODs, irrelevantFactorThreshold)
+        addHomeDemand(LinearTermBuilder, diffModel.nVars, m3rep, demand[ActivityType.HOME]!!, varTransitionMatrix, relevantODs, irrelevancyThreshold)
 
         // School and Work
         for (activity in listOf( ActivityType.SCHOOL, ActivityType.WORK)) {
             addFixDemand(
-                DMDemandBuilder,
+                LinearTermBuilder,
                 diffModel.nVars,
                 m3rep,
                 demand[activity]!!,
                 varTransitionMatrix,
                 relevantODs,
-                irrelevantFactorThreshold,
+                irrelevancyThreshold,
                 activity
             )
         }
@@ -486,58 +486,6 @@ class SGGravity(
         return diffModel to simCount
     }
 
-    private fun <T, K> fromMatrixSandwichT(
-        demandBuilder: DemandBuilder<T, K>,
-        nVars: Int,
-        mVar: List<List<K>>,
-        left: D2Array<Double>,
-        right: D2Array<Double>,
-        transpose: Boolean = true,
-        relevantRCs: Set<Pair<Int, Int>>? = null,
-        irrelevantFactorThreshold: Double
-    ) : List<List<T>> {
-        val n = left.shape[0] // Assume all matrices are square and same size
-        val leftMax = left.max()!! // For computation shortcut
-
-        val result = List(n) {
-            List(n) {
-                demandBuilder.createSum(nVars)
-            }
-        }
-
-        for (row in 0 until n) {
-            for (col in 0 until  n) {
-                if (relevantRCs != null) {
-                    if (Pair(row, col) !in relevantRCs) {
-                        continue
-                    }
-                }
-
-                val activeEntry = result[row][col]
-
-                for (i in 0 until n) {
-                    if (right[i, col] * leftMax <= irrelevantFactorThreshold) {
-                        continue
-                    }
-                    for (j in 0 until n) {
-                        val coeff = left[row, j] * right[i, col]
-
-                        if (abs(coeff) <= irrelevantFactorThreshold) {
-                            continue
-                        }
-
-                        if (transpose) {
-                            demandBuilder.addTermToSum(activeEntry, mVar[i][j], coeff)
-                        } else {
-                            demandBuilder.addTermToSum(activeEntry, mVar[j][i], coeff)
-                        }
-                    }
-                }
-            }
-        }
-        return result
-    }
-
     private fun computeTransitionMatrices() : FinderMatrices {
         val finder = omod.destinationFinder as DestinationFinderDefault
 
@@ -577,13 +525,13 @@ class SGGravity(
     }
 
     fun <T, K> addFlexDemand(
-        demandBuilder: DemandBuilder<T, K>,
+        demandBuilder: TermBuilder<T, K>,
         nVars: Int,
         m3rep: MetaModelMatrixRep,
         demand: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
-        irrelevantFactorThreshold: Double,
+        irrelevancyThreshold: Double,
         flexActivity: ActivityType
     ) {
         val n = omod.grid.size
@@ -628,7 +576,7 @@ class SGGravity(
                         }
 
                         // Ignore very small terms
-                        if (abs(coeff) <= irrelevantFactorThreshold) {
+                        if (abs(coeff) <= irrelevancyThreshold) {
                             continue
                         }
 
@@ -652,13 +600,13 @@ class SGGravity(
     }
 
     fun <T, K> addHomeDemand(
-        demandBuilder: DemandBuilder<T, K>,
+        demandBuilder: TermBuilder<T, K>,
         nVars: Int,
         m3rep: MetaModelMatrixRep,
         demand: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
-        irrelevantFactorThreshold: Double
+        irrelevancyThreshold: Double
     ) {
         val n = omod.grid.size
 
@@ -668,21 +616,19 @@ class SGGravity(
         val depExpr = if(m3rep.varActivityType in fixActivities) {
             val left = m3rep.dependentMatrix[ActivityType.HOME]!!.transpose()
             val right = m3rep.homeP.diagonal().transpose()
-            fromMatrixSandwichT(
-                demandBuilder,
+            demandBuilder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
-                relevantRCs = relevantODs, irrelevantFactorThreshold=irrelevantFactorThreshold
+                relevantRCs = relevantODs, irrelevancyThreshold=irrelevancyThreshold
             )
         } else {
             val left = mk.identity<Double>(n)
             val right = m3rep.dependentMatrix[ActivityType.HOME]!!.transpose()
-            fromMatrixSandwichT(
-                demandBuilder,
+            demandBuilder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
                 relevantRCs = relevantODs,
-                irrelevantFactorThreshold=irrelevantFactorThreshold
+                irrelevancyThreshold=irrelevancyThreshold
             )
         }
 
@@ -697,13 +643,13 @@ class SGGravity(
     }
 
     fun <T, K> addFixDemand(
-        demandBuilder: DemandBuilder<T, K>,
+        demandBuilder: TermBuilder<T, K>,
         nVars: Int,
         m3rep: MetaModelMatrixRep,
         demand: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
-        irrelevantFactorThreshold: Double,
+        irrelevancyThreshold: Double,
         fixActivity: ActivityType
     ) {
         val n = omod.grid.size
@@ -727,13 +673,12 @@ class SGGravity(
         val depExpr = if (m3rep.varActivityType == fixActivity) {
             val left = m3rep.fixedMatrix[fixActivity]!!.transpose()
             val right = mk.identity<Double>(n)
-            fromMatrixSandwichT(
-                demandBuilder,
+            demandBuilder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
                 transpose = false,
                 relevantRCs = relevantODs,
-                irrelevantFactorThreshold=irrelevantFactorThreshold
+                irrelevancyThreshold=irrelevancyThreshold
             )
         } else if (m3rep.varActivityType in fixActivities) {
             val left = m3rep.dependentMatrix[fixActivity]!!.transpose()
@@ -741,24 +686,22 @@ class SGGravity(
                 .diagonal()
                 .transpose()
                 .dot(m3rep.transitionMatrix[fixActivity]!!)
-            fromMatrixSandwichT(
-                demandBuilder,
+            demandBuilder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
                 relevantRCs = relevantODs,
-                irrelevantFactorThreshold=irrelevantFactorThreshold
+                irrelevancyThreshold=irrelevancyThreshold
             )
         } else {
             val left = mk.identity<Double>(n)
             val right = m3rep.dependentMatrix[fixActivity]!!
                 .transpose()
                 .dot(m3rep.transitionMatrix[fixActivity]!!)
-            fromMatrixSandwichT(
-                demandBuilder,
+            demandBuilder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
                 relevantRCs = relevantODs,
-                irrelevantFactorThreshold=irrelevantFactorThreshold
+                irrelevancyThreshold=irrelevancyThreshold
             )
         }
 
@@ -828,44 +771,6 @@ class SGGravity(
             }
         }
         return relevantODs
-    }
-
-    /**
-     * Wrapper Object that allows creating demand matrix for use in both DifferentialModel and Gurobi
-     */
-    interface DemandBuilder<T,K>  {
-        fun addTerm(demand: T, v: K, coefficient: Double) {}
-        fun addConstant(demand: T, constant: Double) {}
-        fun addSum(demand: T, sum: T, coefficient: Double) {}
-        fun createSum(nVars: Int) : T
-        fun addTermToSum(s: T, v: K, coefficient: Double)
-        fun addConstToSum(s: T, const: Double)
-    }
-
-    object DMDemandBuilder: DemandBuilder<LinearTerm, Term> {
-        override fun addTerm(demand: LinearTerm, v: Term, coefficient: Double) {
-            demand.addTerm(v, coefficient)
-        }
-
-        override fun addConstant(demand: LinearTerm, constant: Double) {
-            demand.addConstant(constant)
-        }
-
-        override fun addSum(demand: LinearTerm, sum: LinearTerm, coefficient: Double) {
-            demand.addTerm(sum, coefficient)
-        }
-
-        override fun createSum(nVars: Int): LinearTerm {
-            return LinearTerm(nVars)
-        }
-
-        override fun addTermToSum(s: LinearTerm, v: Term, coefficient: Double) {
-            s.addTerm(v, coefficient)
-        }
-
-        override fun addConstToSum(s: LinearTerm, const: Double) {
-            s.addConstant(const)
-        }
     }
 
     // ========== DEBUG CODE ================= // TODO Delete
