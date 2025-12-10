@@ -6,7 +6,7 @@ import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.TrafficSensor
 import de.uniwuerzburg.omod.calibration.differentiablemodel.TermBuilder
 import de.uniwuerzburg.omod.calibration.logger
-import de.uniwuerzburg.omod.calibration.surrogate.SGGravity.MetaModelMatrixRep
+import de.uniwuerzburg.omod.calibration.surrogate.SGGravity.SGCompactMatrixRep
 import de.uniwuerzburg.omod.core.models.ActivityType
 import de.uniwuerzburg.omod.core.models.RealLocation
 import org.jetbrains.kotlinx.multik.api.mk
@@ -31,7 +31,7 @@ fun SGGravity.calibrateTransitionMatrix(
 }
 
 fun SGGravity.optimizeTMatrix(
-    m3rep: MetaModelMatrixRep,
+    m3rep: SGCompactMatrixRep,
     affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
     sensors: List<TrafficSensor>,
     irrelevantFactorThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
@@ -46,7 +46,7 @@ fun SGGravity.optimizeTMatrix(
         val model = GRBModel(env)
 
         // Create demand matrix dependent on the variable transition matrix: demand(o, d | M)
-        val demand = ActivityType.entries.associateWith {
+        val expectedTrips = ActivityType.entries.associateWith {
             List(n) {
                 List(n) {
                     GRBLinExpr()
@@ -76,11 +76,11 @@ fun SGGravity.optimizeTMatrix(
 
         // Demand with flexible destination
         for (activity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
-            addFlexDemand(
+            addFlexE(
                 GRBLinExprBuilder,
                 n,
                 m3rep,
-                demand[activity]!!,
+                expectedTrips[activity]!!,
                 varTransitionMatrix,
                 relevantODs,
                 irrelevantFactorThreshold,
@@ -89,11 +89,11 @@ fun SGGravity.optimizeTMatrix(
         }
 
         // Demand for home
-        addHomeDemand(
+        addHomeE(
             GRBLinExprBuilder,
             n,
             m3rep,
-            demand[ActivityType.HOME]!!,
+            expectedTrips[ActivityType.HOME]!!,
             varTransitionMatrix,
             relevantODs,
             irrelevantFactorThreshold
@@ -101,11 +101,11 @@ fun SGGravity.optimizeTMatrix(
 
         // School and Work
         for (activity in listOf(ActivityType.SCHOOL, ActivityType.WORK)) {
-            addFixDemand(
+            addFixE(
                 GRBLinExprBuilder,
                 n,
                 m3rep,
-                demand[activity]!!,
+                expectedTrips[activity]!!,
                 varTransitionMatrix,
                 relevantODs,
                 irrelevantFactorThreshold,
@@ -127,7 +127,7 @@ fun SGGravity.optimizeTMatrix(
                 val demandVars = mutableMapOf<ActivityType, GRBVar> ()
                 for (activity in ActivityType.entries) {
                     val v = model.addVar( 0.0, GRB.INFINITY, 0.0, GRB.CONTINUOUS, "demand")
-                    model.addConstr( demand[activity]!![o][d], GRB.EQUAL, v,"demandEq")
+                    model.addConstr( expectedTrips[activity]!![o][d], GRB.EQUAL, v,"demandEq")
                     demandVars[activity] = v
                 }
 

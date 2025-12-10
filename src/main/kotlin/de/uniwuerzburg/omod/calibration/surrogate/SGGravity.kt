@@ -84,7 +84,7 @@ class SGGravity(
         return model
     }
 
-    fun generateMarkovChainRep(varActivityType: ActivityType) : MetaModelMatrixRep {
+    fun generateMarkovChainRep(varActivityType: ActivityType) : SGCompactMatrixRep {
         if(varActivityType == ActivityType.HOME) {
             throw NotImplementedError("Surrogate model dependent on home coefficients is not implemented!")
         }
@@ -201,7 +201,7 @@ class SGGravity(
             }
         }
 
-        val m3rep = MetaModelMatrixRep(
+        val m3rep = SGCompactMatrixRep(
             finderMatrices.homeP,
             dependentMatrix,
             fixedMatrix,
@@ -256,7 +256,7 @@ class SGGravity(
         return carProbs
     }
 
-    private fun getUniqueChainSegments() : List<FixedSegment> {
+    private fun getUniqueChainSegments() : List<ChainSegment> {
         val activityGenerator = omod.activityGenerator as ActivityGeneratorDefault
 
         // Get activity chains
@@ -285,7 +285,7 @@ class SGGravity(
 
         // Determine unique Fixed -> Fixed chain segments
         val fixedActivities = setOf(ActivityType.HOME, ActivityType.WORK, ActivityType.SCHOOL)
-        val fixedSegments = mutableListOf<FixedSegment>()
+        val fixedSegments = mutableListOf<ChainSegment>()
         val segment = mutableListOf<ActivityType>()
         for ((chain, chainP) in allChains) {
             segment.clear()
@@ -295,7 +295,7 @@ class SGGravity(
                 if (segment.size > 1) {
                     if ((activity in fixedActivities) or (i == chain.size - 1)) {
                         fixedSegments.add(
-                            FixedSegment(
+                            ChainSegment(
                                 segment.toList(),
                                 chainP
                             )
@@ -308,7 +308,7 @@ class SGGravity(
             }
         }
         val uniqueSegments = fixedSegments.groupBy { it.chain }.map { (chain, segments) ->
-            FixedSegment(
+            ChainSegment(
                 chain,
                 segments.sumOf { it.probability }
             )
@@ -370,8 +370,8 @@ class SGGravity(
         // Init diff model
         val diffModel = DifferentiableModel(omod.grid.size - 1)
 
-        // Create demand matrix dependent on the variable transition matrix: demand(o, d | M)
-        val demand = ActivityType.entries.associateWith {
+        // Create expected trips matrix dependent on the variable transition matrix: E(o, d | M)
+        val expectedTrips = ActivityType.entries.associateWith {
             List(n) {
                 List(n) {
                     LinearTerm(diffModel.nVars)
@@ -400,13 +400,13 @@ class SGGravity(
             varTransitionMatrix.add(entry)
         }
 
-        // Demand with flexible destination
+        // Flexible destination
         for (activity in listOf( ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
-            addFlexDemand(
+            addFlexE(
                 LinearTermBuilder,
                 diffModel.nVars,
                 m3rep,
-                demand[activity]!!,
+                expectedTrips[activity]!!,
                 varTransitionMatrix,
                 relevantODs,
                 irrelevancyThreshold,
@@ -414,16 +414,24 @@ class SGGravity(
             )
         }
 
-        // Demand for home
-        addHomeDemand(LinearTermBuilder, diffModel.nVars, m3rep, demand[ActivityType.HOME]!!, varTransitionMatrix, relevantODs, irrelevancyThreshold)
+        // Destination home
+        addHomeE(
+            LinearTermBuilder,
+            diffModel.nVars,
+            m3rep,
+            expectedTrips[ActivityType.HOME]!!,
+            varTransitionMatrix,
+            relevantODs,
+            irrelevancyThreshold
+        )
 
-        // School and Work
+        // Destination School and Work
         for (activity in listOf( ActivityType.SCHOOL, ActivityType.WORK)) {
-            addFixDemand(
+            addFixE(
                 LinearTermBuilder,
                 diffModel.nVars,
                 m3rep,
-                demand[activity]!!,
+                expectedTrips[activity]!!,
                 varTransitionMatrix,
                 relevantODs,
                 irrelevancyThreshold,
@@ -451,7 +459,7 @@ class SGGravity(
                                 /*if(demand[activity]!![o][d].terms.size == 0) { continue }
                                 if(activity == ActivityType.BUSINESS) {continue}*/
                                 simCount[sensor]!![t].addTerm(
-                                    demand[activity]!![o][d], totalPop * tripStartDistr[activity]!![t]
+                                    expectedTrips[activity]!![o][d], totalPop * tripStartDistr[activity]!![t]
                                 )
                             }
                         }
@@ -486,7 +494,7 @@ class SGGravity(
         return diffModel to simCount
     }
 
-    private fun computeTransitionMatrices() : FinderMatrices {
+    private fun computeTransitionMatrices() : TransitionMatrixStore {
         val finder = omod.destinationFinder as DestinationFinderDefault
 
         // HOME
@@ -521,14 +529,14 @@ class SGGravity(
             }
             transitionProbs[activityType] = activityProbs
         }
-        return FinderMatrices(homeProbs, transitionProbs)
+        return TransitionMatrixStore(homeProbs, transitionProbs)
     }
 
-    fun <T, K> addFlexDemand(
+    fun <T, K> addFlexE(
         demandBuilder: TermBuilder<T, K>,
         nVars: Int,
-        m3rep: MetaModelMatrixRep,
-        demand: List<List<T>>,
+        m3rep: SGCompactMatrixRep,
+        expectedTrips: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
         irrelevancyThreshold: Double,
@@ -554,7 +562,7 @@ class SGGravity(
 
                 for (d in 0 until n) {
                     if (Pair(o, d) !in relevantODs) { continue }
-                    demandBuilder.addVar(demand[o][d], varTransitionMatrix[o][d], cnst * mCarP[o, d])
+                    demandBuilder.addVar(expectedTrips[o][d], varTransitionMatrix[o][d], cnst * mCarP[o, d])
                 }
             }
         } else {
@@ -592,18 +600,18 @@ class SGGravity(
                 for (d in 0 until n) {
                     if (Pair(o, d) !in relevantODs) { continue }
                     val t = mTransition[o, d] * mCarP[o, d]
-                    demandBuilder.addTerm(demand[o][d], s, t)
+                    demandBuilder.addTerm(expectedTrips[o][d], s, t)
                 }
             }
         }
 
     }
 
-    fun <T, K> addHomeDemand(
-        demandBuilder: TermBuilder<T, K>,
+    fun <T, K> addHomeE(
+        builder: TermBuilder<T, K>,
         nVars: Int,
-        m3rep: MetaModelMatrixRep,
-        demand: List<List<T>>,
+        m3rep: SGCompactMatrixRep,
+        expectedTrips: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
         irrelevancyThreshold: Double
@@ -616,7 +624,7 @@ class SGGravity(
         val depExpr = if(m3rep.varActivityType in fixActivities) {
             val left = m3rep.dependentMatrix[ActivityType.HOME]!!.transpose()
             val right = m3rep.homeP.diagonal().transpose()
-            demandBuilder.fromMatrixMult(
+            builder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
                 relevantRCs = relevantODs, irrelevancyThreshold=irrelevancyThreshold
@@ -624,7 +632,7 @@ class SGGravity(
         } else {
             val left = mk.identity<Double>(n)
             val right = m3rep.dependentMatrix[ActivityType.HOME]!!.transpose()
-            demandBuilder.fromMatrixMult(
+            builder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
                 relevantRCs = relevantODs,
@@ -635,18 +643,18 @@ class SGGravity(
         for (o in 0 until n) {
             for (d in 0 until n) {
                 if (Pair(o, d) !in relevantODs) { continue }
-                demandBuilder.addTerm(demand[o][d], depExpr[o][d], carP[o, d])
-                demandBuilder.addConstant(demand[o][d], fix[o, d])
+                builder.addTerm(expectedTrips[o][d], depExpr[o][d], carP[o, d])
+                builder.addConstant(expectedTrips[o][d], fix[o, d])
             }
         }
 
     }
 
-    fun <T, K> addFixDemand(
-        demandBuilder: TermBuilder<T, K>,
+    fun <T, K> addFixE(
+        builder: TermBuilder<T, K>,
         nVars: Int,
-        m3rep: MetaModelMatrixRep,
-        demand: List<List<T>>,
+        m3rep: SGCompactMatrixRep,
+        expectedTrips: List<List<T>>,
         varTransitionMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
         irrelevancyThreshold: Double,
@@ -662,10 +670,10 @@ class SGGravity(
         // Tour starting at var activity
         val pHome = m3rep.homeP.flatten()
         val dMatrixT = m3rep.dependentMatrix[fixActivity]!!.transpose()
-        val varStartProbs = List(n) { demandBuilder.new(nVars) }
+        val varStartProbs = List(n) { builder.new(nVars) }
         for (col in 0 until n) {
             for (row in 0 until n) {
-                demandBuilder.addVar(varStartProbs[col], varTransitionMatrix[row][col], pHome[row])
+                builder.addVar(varStartProbs[col], varTransitionMatrix[row][col], pHome[row])
             }
         }
 
@@ -673,7 +681,7 @@ class SGGravity(
         val depExpr = if (m3rep.varActivityType == fixActivity) {
             val left = m3rep.fixedMatrix[fixActivity]!!.transpose()
             val right = mk.identity<Double>(n)
-            demandBuilder.fromMatrixMult(
+            builder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
                 transpose = false,
@@ -686,7 +694,7 @@ class SGGravity(
                 .diagonal()
                 .transpose()
                 .dot(m3rep.transitionMatrix[fixActivity]!!)
-            demandBuilder.fromMatrixMult(
+            builder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
                 relevantRCs = relevantODs,
@@ -697,7 +705,7 @@ class SGGravity(
             val right = m3rep.dependentMatrix[fixActivity]!!
                 .transpose()
                 .dot(m3rep.transitionMatrix[fixActivity]!!)
-            demandBuilder.fromMatrixMult(
+            builder.fromMatrixMult(
                 nVars,
                 varTransitionMatrix, left, right,
                 relevantRCs = relevantODs,
@@ -708,23 +716,23 @@ class SGGravity(
         for (o in 0 until n) {
             for (d in 0 until n) {
                 if (Pair(o, d) !in relevantODs) { continue }
-                demandBuilder.addTerm(demand[o][d], depExpr[o][d], carP[o, d])
+                builder.addTerm(expectedTrips[o][d], depExpr[o][d], carP[o, d])
 
                 if (m3rep.varActivityType == fixActivity) {
-                    demandBuilder.addTerm(demand[o][d], varStartProbs[d], dMatrixT[o][d] * carP[o, d])
+                    builder.addTerm(expectedTrips[o][d], varStartProbs[d], dMatrixT[o][d] * carP[o, d])
                 } else {
-                    demandBuilder.addConstant(demand[o][d], fix[o,d])
+                    builder.addConstant(expectedTrips[o][d], fix[o,d])
                 }
             }
         }
     }
 
-    private data class FixedSegment(
+    private data class ChainSegment(
         val chain: List<ActivityType>,
         val probability: Double
     )
 
-    private data class FinderMatrices (
+    private data class TransitionMatrixStore (
         val homeP: D2Array<Double>,
         val transitionMatrix: Map<ActivityType,  D2Array<Double>>,
     ) {
@@ -747,7 +755,7 @@ class SGGravity(
      *
      *  varActivityType: Activity those transition matrix is going to be calibrated.
      */
-    data class MetaModelMatrixRep (
+    data class SGCompactMatrixRep (
         val homeP: D2Array<Double>,
         val dependentMatrix: Map<ActivityType, D2Array<Double>>,
         val fixedMatrix: Map<ActivityType,  D2Array<Double>>,
@@ -774,7 +782,7 @@ class SGGravity(
     }
 
     // ========== DEBUG CODE ================= // TODO Delete
-    private fun getExpectedCountPerAgent(m3rep: MetaModelMatrixRep) : D2Array<Double> {
+    private fun getExpectedCountPerAgent(m3rep: SGCompactMatrixRep) : D2Array<Double> {
         // Result: Expected trip count on each od-paid of one agent on one day
         val expectedCountPerAgent = mk.zeros<Double>(omod.grid.size, omod.grid.size)
 
@@ -864,7 +872,7 @@ class SGGravity(
     }
 
     private fun debugEval(
-        m3rep: MetaModelMatrixRep,
+        m3rep: SGCompactMatrixRep,
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ) {
