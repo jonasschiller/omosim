@@ -80,8 +80,8 @@ class SGGravity(
     }
 
     fun generateMatrixRep(activityType: ActivityType) : MetaModelMatrixRep {
-        if(activityType != ActivityType.HOME) {
-            throw  NotImplementedError("Surrogate model dependent on home coefficients is not implemented!")
+        if(activityType == ActivityType.HOME) {
+            throw NotImplementedError("Surrogate model dependent on home coefficients is not implemented!")
         }
 
         return if (activityType in fixActivities) {
