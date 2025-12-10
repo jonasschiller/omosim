@@ -1,8 +1,7 @@
-package de.uniwuerzburg.omod.calibration.surrogate
+package de.uniwuerzburg.omod.calibration
 
 import com.gurobi.gurobi.GRB
 import com.gurobi.gurobi.GRBModel
-import de.uniwuerzburg.omod.calibration.logger
 
 /**
  * Call after optimize()

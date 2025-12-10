@@ -1,10 +1,8 @@
-package de.uniwuerzburg.omod.calibration.surrogate
+package de.uniwuerzburg.omod.calibration
 
 import com.gurobi.gurobi.*
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
-import de.uniwuerzburg.omod.calibration.TrafficSensor
 import de.uniwuerzburg.omod.calibration.differentiablemodel.*
-import de.uniwuerzburg.omod.calibration.logger
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
 import java.time.LocalTime

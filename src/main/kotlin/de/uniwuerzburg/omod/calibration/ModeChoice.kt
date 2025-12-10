@@ -1,7 +1,6 @@
-package de.uniwuerzburg.omod.calibration.surrogate
+package de.uniwuerzburg.omod.calibration
 
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
-import de.uniwuerzburg.omod.calibration.TrafficSensor
 import de.uniwuerzburg.omod.calibration.differentiablemodel.*
 import de.uniwuerzburg.omod.core.ModeChoiceFast
 import de.uniwuerzburg.omod.core.Omod

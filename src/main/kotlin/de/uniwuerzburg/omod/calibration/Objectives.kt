@@ -1,4 +1,4 @@
-package de.uniwuerzburg.omod.calibration.surrogate
+package de.uniwuerzburg.omod.calibration
 
 import com.gurobi.gurobi.GRB
 import com.gurobi.gurobi.GRBExpr
@@ -6,7 +6,6 @@ import com.gurobi.gurobi.GRBLinExpr
 import com.gurobi.gurobi.GRBModel
 import com.gurobi.gurobi.GRBQuadExpr
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
-import de.uniwuerzburg.omod.calibration.TrafficSensor
 import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearTerm
 import de.uniwuerzburg.omod.calibration.differentiablemodel.QuadraticTerm
 import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
