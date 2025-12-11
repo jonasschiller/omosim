@@ -253,11 +253,16 @@ class SGGravity(
         val vActivity: ActivityType
     )
 
+    /**
+     * Compute the current transition matrices based on the gravity models.
+     *
+     * @return Transition matrices. HOME: 1xn vector, Rest: nxn matrix
+     */
     private fun computeTransitionMatrices() : Map<ActivityType,  D2Array<Double>> {
-        val transitionProbs = mutableMapOf<ActivityType,  D2Array<Double>>()
+        val tMatrices = mutableMapOf<ActivityType,  D2Array<Double>>()
         val finder = omod.destinationFinder as DestinationFinderDefault
 
-        // HOME
+        // HOME. A vector.
         val homeWeights = finder.getWeightsNoOrigin(omod.grid, activityType=ActivityType.HOME).toMutableList()
         if (!omod.populateBufferArea) { // Handle buffer area
             for ((i, cell) in omod.grid.withIndex()) {
@@ -266,30 +271,30 @@ class SGGravity(
                 }
             }
         }
-        val homeProbs   = mk.ndarray( homeWeights.map { it / homeWeights.sum() } )
+        val h = mk.ndarray( homeWeights.map { it / homeWeights.sum() } )
             .expandDims(0).asDNArray().asD2Array()
-        transitionProbs[ActivityType.HOME] = homeProbs
+        tMatrices[ActivityType.HOME] = h
 
-        // Transitions
+        // Transition matrices
         for (activityType in ActivityType.entries) {
             if (activityType == ActivityType.HOME) { continue }
 
-            val activityProbs = mk.zeros<Double>(omod.grid.size, omod.grid.size)
-            if (finder.forcedTransitionMatrix.containsKey(activityType)) { // If matrix is forced
-                val fMatrix = finder.forcedTransitionMatrix[activityType]!!
+            val mT = mk.zeros<Double>(omod.grid.size, omod.grid.size)
+            if (finder.forcedTransitionMatrix.containsKey(activityType)) { // Handle forced matrix
+                val mWeights = finder.forcedTransitionMatrix[activityType]!!
                 for ((o, cell) in omod.grid.withIndex()) {
-                    val activityWeights = fMatrix[cell]!!
-                    activityProbs[o] = mk.ndarray( activityWeights.map { it / activityWeights.sum() } )
+                    val weights = mWeights[cell]!!
+                    mT[o] = mk.ndarray( weights.map { it / weights.sum() } )
                 }
             } else { // Normal case
                 for (o in omod.grid.indices) {
-                    val activityWeights = finder.getWeights(omod.grid[o], omod.grid, activityType = activityType)
-                    activityProbs[o] = mk.ndarray( activityWeights.map { it / activityWeights.sum() } )
+                    val weights = finder.getWeights(omod.grid[o], omod.grid, activityType=activityType)
+                    mT[o] = mk.ndarray( weights.map { it / weights.sum() } )
                 }
             }
-            transitionProbs[activityType] = activityProbs
+            tMatrices[activityType] = mT
         }
-        return transitionProbs
+        return tMatrices
     }
 
     private fun getUniqueChainSegments() : List<ChainSegment> {
