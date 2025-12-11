@@ -137,8 +137,6 @@ class SGGravity(
             throw NotImplementedError("Surrogate model dependent on home coefficients is not implemented!")
         }
 
-        val n = omod.grid.size
-
         // Transition matrices
         val tMatrices = computeTransitionMatrices()
         val h = tMatrices[ActivityType.HOME]!!
@@ -147,8 +145,8 @@ class SGGravity(
         val hDiag = h.diagonal()
 
         // Compact representation:
-        val mPriorVar  = ActivityType.entries.associateWith { mk.zeros<Double>(n, n) }
-        val mPriorCnst = ActivityType.entries.associateWith { mk.zeros<Double>(n, n) }
+        val mPriorVar  = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
+        val mPriorCnst = ActivityType.entries.associateWith { mk.zeros<Double>(omod.grid.size, omod.grid.size) }
 
         // Go through each unique fixed-fixed segment
         for ((chain, chainP) in getUniqueChainSegments()) {
@@ -158,7 +156,7 @@ class SGGravity(
             var nextActivity = chain[1]
 
             // Setup
-            var mPostFixed = mk.identity<Double>(n) // Matrix product of matrices after vActivity that are not vActivity
+            var mPostFixed = mk.identity<Double>(omod.grid.size) // Matrix product of matrices after vActivity that are not vActivity
             var mK: D2Array<Double>      // Location probability distributions given the home location
             var mKExVar: D2Array<Double> // The same but ignoring the var activity
             when(startActivity) {
@@ -363,53 +361,67 @@ class SGGravity(
         return uniqueSegments
     }
 
+    /**
+     * Fixed-fixed activity chain segment with probability of occurrence
+     */
     private data class ChainSegment(
         val chain: List<ActivityType>,
         val probability: Double
     )
 
-    private fun getPCar() : Map<ActivityType, D2Array<Double>> {
+    /**
+     * Get probability matrix for the car mode. Each entry gives the probability that the origin-destination trip
+     * given by o=row and d=col is by car.
+     *
+     * @param weekday Weekday
+     * @return Probability matrix for each activity type.
+     */
+    private fun getPCar(weekday: Weekday = Weekday.UNDEFINED) : Map<ActivityType, D2Array<Double>> {
         val finder = omod.destinationFinder as DestinationFinderDefault
 
-        // Car probability
+        val pCar = mutableMapOf<ActivityType, D2Array<Double>>()
+        for (activity in ActivityType.entries) {
+            pCar[activity] = mk.zeros<Double>(omod.grid.size, omod.grid.size)
+        }
+
+        // Dummy location for home, work, and school of dummy agent. Irrelevant for mode choice.
         val dummyCoord = Coordinate(0.0,0.0)
         val dummyLocation = DummyLocation(dummyCoord, dummyCoord, null, setOf())
-        val carProbs = mutableMapOf<ActivityType, D2Array<Double>>()
-        for (activity in ActivityType.entries) {
-            carProbs[activity] = mk.zeros<Double>(omod.grid.size, omod.grid.size)
-        }
+
         for (stratum in omod.popStrata) {
             if (stratum.stratumShare == 0.0) { continue }
 
             for ((socioFeatureSet, pSFSet) in stratum.iterateOptions()) {
                 if (pSFSet == 0.0) { continue }
 
-                val dummyAgent = MobiAgent(
+                // Agent representing the population stratum
+                val stratumAgent = MobiAgent(
                     -1,  socioFeatureSet.hom, socioFeatureSet.mob, socioFeatureSet.age,
                     dummyLocation, dummyLocation, dummyLocation, socioFeatureSet.sex
                 )
-                dummyAgent.carAccess = true // Car ownership probability is considered separately
+                stratumAgent.carAccess = true // Car ownership probability is considered later
 
-                val carOwnershipP = omod.carOwnership.probability(dummyAgent, stratum)
+                // Car ownership probability
+                val carOwnershipP = omod.carOwnership.probability(stratumAgent, stratum)
                 if (carOwnershipP == 0.0) { continue }
 
                 for (activity in ActivityType.entries) {
-                    val carProbsActivity = mk.zeros<Double>(omod.grid.size, omod.grid.size)
+                    val pCarActivity = mk.zeros<Double>(omod.grid.size, omod.grid.size)
                     for (o in omod.grid.indices) {
                         val distances = finder.routingCache.getDistances(omod.grid[o], omod.grid)
                         for (d in omod.grid.indices) {
                             val weights = modeChoiceCalibration.utilitiesForCalibration(
-                                distances[d].toDouble() / 1000.0, dummyAgent, activity, Weekday.UNDEFINED
+                                distances[d].toDouble() / 1000.0, stratumAgent, activity, weekday
                             )
                             val pTrip = weights[0] / weights.sum()
-                            carProbsActivity[o, d] = stratum.stratumShare * pSFSet * carOwnershipP * pTrip
+                            pCarActivity[o, d] = stratum.stratumShare * pSFSet * carOwnershipP * pTrip
                         }
                     }
-                    carProbs[activity]?.plusAssign(carProbsActivity)
+                    pCar[activity]?.plusAssign(pCarActivity)
                 }
             }
         }
-        return carProbs
+        return pCar
     }
 
     @Suppress("SameParameterValue")
