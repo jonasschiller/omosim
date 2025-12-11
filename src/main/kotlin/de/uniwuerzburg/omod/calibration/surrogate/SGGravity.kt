@@ -4,6 +4,7 @@ import de.uniwuerzburg.omod.calibration.CalibrationConstants.MC_SAMPLES
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.ModeChoiceCalibration
 import de.uniwuerzburg.omod.calibration.TrafficSensor
+import de.uniwuerzburg.omod.calibration.determineTimeSlice
 import de.uniwuerzburg.omod.calibration.differentiablemodel.*
 import de.uniwuerzburg.omod.calibration.logger
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
@@ -424,8 +425,17 @@ class SGGravity(
         return pCar
     }
 
+    /**
+     * Sample simulation to determine the distribution of trips across the time of day separated into T time slices.
+     *
+     * @see de.uniwuerzburg.omod.calibration.CalibrationConstants.T
+     *
+     * @n Sample size
+     * @param weekday Weekday
+     * @return Distributions where key is of size T
+     */
     @Suppress("SameParameterValue")
-    fun monteCarloTripStartDistribution(n: Int) : Map<ActivityType, DoubleArray> {
+    fun monteCarloTripStartDistribution(n: Int, weekday: Weekday = Weekday.UNDEFINED) : Map<ActivityType, DoubleArray> {
         val distr = ActivityType.entries.associateWith {
             DoubleArray(T) { 0.0 }
         }.toMutableMap()
@@ -434,21 +444,20 @@ class SGGravity(
         omod.mainRng.setSeed(0)
 
         // Run Simulation
-        val agents = omod.run(n, verbose = false)
+        val agents = omod.run(n, verbose = false, start_wd = weekday)
         omod.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
 
+        // Determine counts at sensors
         val visitor: TripVisitor = { _, _, destinationActivity, departureTime, _, _ ->
             val arr = distr[destinationActivity.type]!!
-            val mod = departureTime.minute + departureTime.hour * 60
-            val i = floor((mod % 1440.0) / 1440.0 * T).toInt()
+            val i = departureTime.determineTimeSlice()
             arr[i] = arr[i] + 1
         }
-
-        // Determine counts at sensors
         for (agent in agents) {
             agent.mobilityDemand[0].visitTrips(visitor)
         }
 
+        // Normalize
         for ((key, arr) in distr.entries) {
             distr[key] = arr.normalize() ?: DoubleArray(arr.size) { 0.0 }
         }
