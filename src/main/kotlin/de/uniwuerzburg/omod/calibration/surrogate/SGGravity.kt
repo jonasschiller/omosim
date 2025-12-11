@@ -8,6 +8,7 @@ import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
+import de.uniwuerzburg.omod.utils.diagonal
 import de.uniwuerzburg.omod.utils.normalize
 import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
@@ -468,7 +469,7 @@ class SGGravity(
      * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
      * @return Set of relevant od-Pairs
      */
-    private fun getRelevantODs(
+    fun getRelevantODs(
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
     ): Set<Pair<Int, Int>> {
         val relevantODs = mutableSetOf<Pair<Int, Int>>()
@@ -621,47 +622,48 @@ class SGGravity(
         return model to simCount
     }
 
+    /**
+     * Determine expected trips matrix with the destination HOME.
+     */
     fun <T, K> addHomeE(
         builder: TermBuilder<T, K>,
         nVars: Int,
         mrep: SGCompactMatrixRep,
         expectedTrips: List<List<T>>,
-        varTransitionMatrix : List<List<K>>,
+        vMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
         irrelevancyThreshold: Double
     ) {
         val n = omod.grid.size
-
         val carP = mrep.pCar[ActivityType.HOME]!!
-        val fix = mrep.mPriorCnst[ActivityType.HOME]!!.transpose().times(carP)
+        val mPriorCnst = mrep.mPriorCnst[ActivityType.HOME]!!
+        val mPriorVar  = mrep.mPriorVar[ActivityType.HOME]!!
 
-        val depExpr = if(mrep.vActivity in fixActivitiesNotHome) {
-            val left = mrep.mPriorVar[ActivityType.HOME]!!.transpose()
+        // Expected trip contribution unaffected by vActivity
+        // F = K^T
+        val mFix = mPriorCnst.transpose()
+
+        // Expected trip contribution affected by vActivity
+        val mVar = if(mrep.vActivity in fixActivitiesNotHome) {
+            // V = ( diag(h)XK )^T
+            val left = mPriorVar.transpose()
             val right = mrep.h.diagonal().transpose()
-            builder.fromMatrixMult(
-                nVars,
-                varTransitionMatrix, left, right,
-                relevantRCs = relevantODs, irrelevancyThreshold=irrelevancyThreshold
-            )
+            builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
         } else {
+            // V = ( KX )^T
             val left = mk.identity<Double>(n)
-            val right = mrep.mPriorVar[ActivityType.HOME]!!.transpose()
-            builder.fromMatrixMult(
-                nVars,
-                varTransitionMatrix, left, right,
-                relevantRCs = relevantODs,
-                irrelevancyThreshold=irrelevancyThreshold
-            )
+            val right = mPriorVar.transpose()
+            builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
         }
 
+        // E += ( F + V ) odot pCar
         for (o in 0 until n) {
             for (d in 0 until n) {
                 if (Pair(o, d) !in relevantODs) { continue }
-                builder.addTerm(expectedTrips[o][d], depExpr[o][d], carP[o, d])
-                builder.addConstant(expectedTrips[o][d], fix[o, d])
+                builder.addTerm(expectedTrips[o][d], mVar[o][d], carP[o, d])
+                builder.addConstant(expectedTrips[o][d], mFix[o, d] * carP[o, d])
             }
         }
-
     }
 
     fun <T, K> addFixE(
@@ -700,7 +702,7 @@ class SGGravity(
                 varTransitionMatrix, left, right,
                 transpose = false,
                 relevantRCs = relevantODs,
-                irrelevancyThreshold=irrelevancyThreshold
+                cTol=irrelevancyThreshold
             )
         } else if (mrep.vActivity in fixActivitiesNotHome) {
             val left = mrep.mPriorVar[fixActivity]!!.transpose()
@@ -712,7 +714,7 @@ class SGGravity(
                 nVars,
                 varTransitionMatrix, left, right,
                 relevantRCs = relevantODs,
-                irrelevancyThreshold=irrelevancyThreshold
+                cTol=irrelevancyThreshold
             )
         } else {
             val left = mk.identity<Double>(n)
@@ -723,7 +725,7 @@ class SGGravity(
                 nVars,
                 varTransitionMatrix, left, right,
                 relevantRCs = relevantODs,
-                irrelevancyThreshold=irrelevancyThreshold
+                cTol=irrelevancyThreshold
             )
         }
 

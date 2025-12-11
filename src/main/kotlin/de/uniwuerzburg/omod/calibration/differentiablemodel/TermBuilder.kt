@@ -31,19 +31,19 @@ interface TermBuilder<T, V> {
      * @param x matrix filled with variable terms
      * @param left L
      * @param right R
-     * @param transpose if true computes: (L * X * R)^T useful for the LIVE=EVIL rule.
+     * @param transpose if true computes: (L * X * R)^T useful for the LIVE=EVIL rule. // TODO only transposes X
      * @param relevantRCs if not null specifies which rows and columns of the result are relevant.
      * Not included columns are ignored.
-     * @param irrelevancyThreshold All terms with coefficients below this value will be ignored and not added to the result.
+     * @param cTol All terms with coefficients below this value will be ignored and not added to the result.
      */
-    fun fromMatrixMult(
+    fun fromMatrixMult( // TODO remove default value for transpose
         nVars: Int,
         x: List<List<V>>,
         left: D2Array<Double>,
         right: D2Array<Double>,
         transpose: Boolean = true,
         relevantRCs: Set<Pair<Int, Int>>? = null,
-        irrelevancyThreshold: Double
+        cTol: Double
     ) : List<List<T>> {
         val n = left.shape[0] // Assume all matrices are square and same size
         val leftMax = left.max()!! // For computation shortcut
@@ -67,14 +67,14 @@ interface TermBuilder<T, V> {
 
                 val activeEntry = result[row][col]
                 for (i in 0 until n) {
-                    if (right[i, col] * leftMax <= irrelevancyThreshold) {
+                    if (right[i, col] * leftMax <= cTol) {
                         continue
                     }
                     for (j in 0 until n) {
                         val coeff = left[row, j] * right[i, col]
 
                         // Coefficient relevant?
-                        if (abs(coeff) <= irrelevancyThreshold) {
+                        if (abs(coeff) <= cTol) {
                             continue
                         }
 

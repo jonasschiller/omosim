@@ -40,7 +40,7 @@ fun SGGravity.optimizeTMatrix(
 ) : D2Array<Double>? {
     val n = omod.grid.size
     val totalPop = omod.buildings.sumOf { it.population }
-    val relevantODs = determineRelevantODs(affectedSensors)
+    val relevantODs = getRelevantODs(affectedSensors)
 
     try {
         // Setup

@@ -1,4 +1,4 @@
-package de.uniwuerzburg.omod.calibration.surrogate
+package de.uniwuerzburg.omod.utils
 
 import org.jetbrains.kotlinx.multik.api.mk
 import org.jetbrains.kotlinx.multik.api.zeros
