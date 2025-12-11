@@ -34,8 +34,7 @@ interface TermBuilder<T, V> {
      * @param transpose if true computes: (L * X * R)^T useful for the LIVE=EVIL rule.
      * @param relevantRCs if not null specifies which rows and columns of the result are relevant.
      * Not included columns are ignored.
-     * @param irrelevancyThreshold All terms with coefficients
-     * below this value will be ignored and not added to the result.
+     * @param irrelevancyThreshold All terms with coefficients below this value will be ignored and not added to the result.
      */
     fun fromMatrixMult(
         nVars: Int,

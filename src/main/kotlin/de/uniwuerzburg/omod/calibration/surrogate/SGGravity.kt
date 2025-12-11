@@ -1,12 +1,9 @@
 package de.uniwuerzburg.omod.calibration.surrogate
 
+import de.uniwuerzburg.omod.calibration.*
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.MC_SAMPLES
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
-import de.uniwuerzburg.omod.calibration.ModeChoiceCalibration
-import de.uniwuerzburg.omod.calibration.TrafficSensor
-import de.uniwuerzburg.omod.calibration.determineTimeSlice
 import de.uniwuerzburg.omod.calibration.differentiablemodel.*
-import de.uniwuerzburg.omod.calibration.logger
 import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
@@ -24,7 +21,6 @@ import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
 import kotlin.math.abs
-import kotlin.math.floor
 import kotlin.math.pow
 
 /**
@@ -38,6 +34,7 @@ class SGGravity(
     private val modeChoiceCalibration = ModeChoiceCalibration() // TODO adapt
     private val fixActivitiesNotHome = setOf(ActivityType.WORK, ActivityType.SCHOOL)
     private val fixActivities = setOf(ActivityType.HOME) + fixActivitiesNotHome
+    private val flexActivities = setOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)
 
     init {
         if (omod.destinationFinder !is DestinationFinderDefault) {
@@ -69,7 +66,7 @@ class SGGravity(
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ): DifferentiableModel {
-        val (model, tstSimCounts) = buildDiffModel(activityType, affectedSensors, sensors)
+        val (model, tstSimCounts) = buildDiffModel(activityType, sensors, affectedSensors)
 
         // DEBUG CODE // TODO DELETE
         println(activityType)
@@ -100,7 +97,7 @@ class SGGravity(
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ): DifferentiableModelMultiOut {
-        val (_, simCounts) = buildDiffModel(activityType, affectedSensors, sensors)
+        val (_, simCounts) = buildDiffModel(activityType, sensors, affectedSensors)
 
         // Create DifferentiableModelMultiOut from simulated counts
         val countsFlat = mutableListOf<Term>()
@@ -465,113 +462,121 @@ class SGGravity(
         return distr
     }
 
+    /**
+     * Create computational graph of surrogate model.
+     *
+     * @param vActivity ActivityType for which the gravity model will be variable
+     * @param sensors Sensors with measurements
+     * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
+     * @param irrelevancyThreshold Performance parameter.
+     * All terms with coefficients below this value will be ignored and not added to the result.
+     * Higher values -> Computes faster but is a rougher approximation of the markov chain representation.
+     */
     private fun buildDiffModel(
-        activityType: ActivityType,
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
+        vActivity: ActivityType,
         sensors: List<TrafficSensor>,
+        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         irrelevancyThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
     ) : Pair<DifferentiableModel, Map<TrafficSensor, List<LinearTerm>>> {
-        logger.info("Building surrogate for activity $activityType with ${omod.grid.size -1} variables")
-        val mrep = generateMarkovChainRep(activityType)
+        logger.info("Building surrogate for activity $vActivity with ${omod.grid.size - 1} variables")
 
         val n = omod.grid.size
-        val totalPop = omod.buildings.sumOf { it.population }
-
-        val relevantODs = determineRelevantODs(affectedSensors)
+        val population = omod.buildings.sumOf { it.population }
+        val mrep = generateMarkovChainRep(vActivity) // Compact matrix representation
+        val relevantODs = determineRelevantODs(affectedSensors) // Relevant origin-destination pairs for measurements
 
         // Init diff model
-        val diffModel = DifferentiableModel(omod.grid.size - 1)
+        val model = DifferentiableModel(omod.grid.size - 1)
 
-        // Create expected trips matrix dependent on the variable transition matrix: E(o, d | M)
+        // Create graph of the expected trips matrix: E(o, d | Car)
         val expectedTrips = ActivityType.entries.associateWith {
             List(n) {
                 List(n) {
-                    LinearTerm(diffModel.nVars)
+                    LinearTerm(model.nVars)
                 }
             }
         }
-        val varTransitionMatrix = mutableListOf<List<Term>>()
+
+        // Transition matrix containing variable terms
+        val vMatrix = mutableListOf<List<Term>>()
         for (o in 0 until n) {
-            val entry = mutableListOf<Term>()
-            val weightTerms = mutableListOf<Term>()
-            val rowSumTerm = LinearTerm(diffModel.nVars)
+            // Get weight terms
+            val weights = mutableListOf<Term>()
+            val sum = LinearTerm(model.nVars)
             for (d in 0 until n) {
-                val weight = LinearBaseTerm(diffModel.nVars)
-                if ( d != (n-1)) {
+                val weight = LinearBaseTerm(model.nVars)
+                if ( d != (n-1) ) {
                     weight.addTerm(d, mrep.tMatrices[mrep.vActivity]!![o, d])
                 } else {
+                    // Last destination is chosen as the pivot element
                     weight.addConstant(mrep.tMatrices[mrep.vActivity]!![o, d])
                 }
-                rowSumTerm.addTerm(weight, 1.0)
-                weightTerms.add(weight)
+                sum.addTerm(weight, 1.0)
+                weights.add(weight)
             }
+
+            // Normalize
+            val t = mutableListOf<Term>()
             for (d in 0 until n) {
-                val scaledWeight = DivisionTerm(diffModel.nVars, weightTerms[d], rowSumTerm)
-                entry.add(scaledWeight)
+                t.add( DivisionTerm(model.nVars, weights[d], sum) )
             }
-            varTransitionMatrix.add(entry)
-        }
 
-        // Flexible destination
-        for (activity in listOf( ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
-            addFlexE(
-                LinearTermBuilder,
-                diffModel.nVars,
-                mrep,
-                expectedTrips[activity]!!,
-                varTransitionMatrix,
-                relevantODs,
-                irrelevancyThreshold,
-                activity
-            )
-        }
-
-        // Destination home
-        addHomeE(
-            LinearTermBuilder,
-            diffModel.nVars,
-            mrep,
-            expectedTrips[ActivityType.HOME]!!,
-            varTransitionMatrix,
-            relevantODs,
-            irrelevancyThreshold
-        )
-
-        // Destination School and Work
-        for (activity in listOf( ActivityType.SCHOOL, ActivityType.WORK)) {
-            addFixE(
-                LinearTermBuilder,
-                diffModel.nVars,
-                mrep,
-                expectedTrips[activity]!!,
-                varTransitionMatrix,
-                relevantODs,
-                irrelevancyThreshold,
-                activity
-            )
+            vMatrix.add(t)
         }
 
         // Temporal trip distribution
         val tripStartDistr = monteCarloTripStartDistribution( MC_SAMPLES )
 
-        // Simulated Traffic Counts
+        // Add expected trips for each destination activity
+        addHomeE( // Destination home
+            LinearTermBuilder,
+            model.nVars,
+            mrep,
+            expectedTrips[ActivityType.HOME]!!,
+            vMatrix,
+            relevantODs,
+            irrelevancyThreshold
+        )
+        for (activity in fixActivitiesNotHome) {  // Fix Destination
+            addFixE(
+                LinearTermBuilder,
+                model.nVars,
+                mrep,
+                expectedTrips[activity]!!,
+                vMatrix,
+                relevantODs,
+                irrelevancyThreshold,
+                activity
+            )
+        }
+        for (activity in flexActivities) { // Flexible destination
+            addFlexE(
+                LinearTermBuilder,
+                model.nVars,
+                mrep,
+                expectedTrips[activity]!!,
+                vMatrix,
+                relevantODs,
+                irrelevancyThreshold,
+                activity
+            )
+        }
+
+        // Simulated traffic counts
         val simCount = mutableMapOf<TrafficSensor, List<LinearTerm>>()
         for (sensor in sensors) {
-            simCount[sensor] = List(T) { LinearTerm(diffModel.nVars) }
+            simCount[sensor] = List(T) { LinearTerm(model.nVars) }
         }
         for ((o, origin) in omod.grid.withIndex()) {
             for ((d, destination) in omod.grid.withIndex()) {
                 val od = Pair(origin, destination)
                 if (od in affectedSensors) {
                     val affected = affectedSensors[od]!!
-
                     for (sensor in affected) {
                         for (t in 0 until T) {
                             for (activity in ActivityType.entries) {
-                                /*if(demand[activity]!![o][d].terms.size == 0) { continue }
-                                if(activity == ActivityType.BUSINESS) {continue}*/
                                 simCount[sensor]!![t].addTerm(
-                                    expectedTrips[activity]!![o][d], totalPop * tripStartDistr[activity]!![t]
+                                    expectedTrips[activity]!![o][d], population * tripStartDistr[activity]!![t]
                                 )
                             }
                         }
@@ -581,29 +586,16 @@ class SGGravity(
         }
 
         // Objective
-        val obj = LinearTerm(diffModel.nVars)
-        for (sensor in sensors) {
-            for (t in 0 until T) {
-                // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
-                val simCountTerm = simCount[sensor]!![t]
-                obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
-                obj.addTerm(simCountTerm, -2 * sensor.measuredFlow[t])
-                val qTerm = QuadraticTerm(
-                    diffModel.nVars,
-                    simCountTerm,
-                    simCountTerm,
-                    1.0
-                )
-                obj.addTerm(qTerm, 1.0)
-            }
-        }
+        val obj = mseObjective(model.nVars, sensors, simCount)
 
-        diffModel.setRootTerm(obj)
+        model.setRootTerm(obj)
 
+        // Logging
         var terms = 0
-        diffModel.visit { terms += 1 }
+        model.visit { terms += 1 }
         logger.info("Building surrogate complete. Number of terms: $terms")
-        return diffModel to simCount
+
+        return model to simCount
     }
 
 

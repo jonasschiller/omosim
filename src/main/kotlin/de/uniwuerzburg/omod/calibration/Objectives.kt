@@ -14,16 +14,12 @@ fun mseObjective(nVars: Int, sensors: List<TrafficSensor>, simCount: Map<Traffic
     val obj = LinearTerm(nVars)
     for (sensor in sensors) {
         for (t in 0 until T) {
-            // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
-            val simCountTerm = simCount[sensor]!![t]
-            obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
-            obj.addTerm(simCountTerm, -2 * sensor.measuredFlow[t])
-            val qTerm = QuadraticTerm(
-                nVars,
-                simCountTerm,
-                simCountTerm,
-                1.0
-            )
+            // (m - s)^2 = m^2 - 2ms + s^2
+            val s = simCount[sensor]!![t]
+            val m = sensor.measuredFlow[t]
+            obj.addConstant(m * m)
+            obj.addTerm(s, -2 * m)
+            val qTerm = QuadraticTerm(nVars, s, s,1.0)
             obj.addTerm(qTerm, 1.0)
         }
     }
