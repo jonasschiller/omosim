@@ -140,12 +140,12 @@ class SGGravity(
         // Transition matrices
         val tMatrices = computeTransitionMatrices()
         val h = tMatrices[ActivityType.HOME]!!
-        val mHW = h.diagonal().dot(tMatrices[ActivityType.WORK]!!)  // Home <-> Work, Work
-        val mHS = h.diagonal().dot(tMatrices[ActivityType.SCHOOL]!!)  // Home <-> School, School
+        val mHW = h.diagonal().dot(tMatrices[ActivityType.WORK]!!)    // Work | Home
+        val mHS = h.diagonal().dot(tMatrices[ActivityType.SCHOOL]!!)  // School | Home
         val hDiag = h.diagonal()
 
         // Compact representation:
-        val mPriorVar = ActivityType.entries.associateWith { mk.zeros<Double>(n, n) }
+        val mPriorVar  = ActivityType.entries.associateWith { mk.zeros<Double>(n, n) }
         val mPriorCnst = ActivityType.entries.associateWith { mk.zeros<Double>(n, n) }
 
         // Go through each unique fixed-fixed segment
@@ -156,8 +156,8 @@ class SGGravity(
             var nextActivity = chain[1]
 
             // Setup
-            var mPostFixed = mk.identity<Double>(n)
-            var mK: D2Array<Double> // Location probability distribution given the home location
+            var mPostFixed = mk.identity<Double>(n) // Matrix product of matrices after vActivity that are not vActivity
+            var mK: D2Array<Double>      // Location probability distributions given the home location
             var mKExVar: D2Array<Double> // The same but ignoring the var activity
             when(startActivity) {
                 ActivityType.HOME -> {
@@ -188,7 +188,7 @@ class SGGravity(
                 }
             }
 
-            // Run through chain cumulate mPriorVar and mPriorCnst
+            // Run through chain cumulate mPriorVar, mPriorCnst, and mPostFixed
             var next = 2
             var occurred = (startActivity == vActivity) || (nextActivity == vActivity)
             for (activity in chain.drop(1).dropLast(1)) {
@@ -208,11 +208,11 @@ class SGGravity(
                     mPostFixed = mPostFixed.dot(mT)
                     mPriorVar[nextActivity]!!.plusAssign(mPostFixed * chainP)
                 } else if ((vActivity !in fixActivities) and (occurred) and (nextActivity != vActivity)){
-                    // Cumulate location probabilities after a flex location activity
-                    // Ignores all subsequent flex location activities of the same time
+                    // Cumulate probability distributions after a flex location activity
+                    // Ignores all subsequent vActivities
                     mPriorVar[nextActivity]!!.plusAssign(mKExVar * chainP)
                 }
-                // Has not (yet) occured or is ignored
+                // vActivity has not yet occured or is ignored
                 else {
                     // Normal case cumulate matrices before next activity
                     mPriorCnst[nextActivity]!!.plusAssign(mK.dot(mT) * chainP)
@@ -224,6 +224,7 @@ class SGGravity(
                     mKExVar = mKExVar.dot(mT)
                 }
 
+                // Check if vActivity occurrs
                 if (nextActivity == vActivity) {
                     occurred = true
                 }
