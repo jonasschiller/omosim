@@ -614,7 +614,7 @@ class SGGravity(
     }
 
     /**
-     * Determine expected trips matrix with the destination HOME.
+     * Determine expected trips matrix with a fixed activity destination.
      */
     fun <T, K> addFixE(
         builder: TermBuilder<T, K>,
@@ -628,11 +628,15 @@ class SGGravity(
     ) {
         val n = omod.grid.size
         val carP = mrep.pCar[fixActivity]!!
-        val mPriorCnst = mrep.mPriorCnst[fixActivity]!!
-        val mPriorVar  = mrep.mPriorVar[fixActivity]!!
+        val mPriorCnst  = mrep.mPriorCnst[fixActivity]!!
+        val mPriorVar   = mrep.mPriorVar[fixActivity]!!
+        val mPriorVarT  = mPriorVar.transpose()
+
+        // In the case that the segment starts at vActivity
+        val vStart = List(n) { builder.new(nVars) }
 
         // Transition matrix
-        val tMatrix    = if (fixActivity == ActivityType.HOME) {
+        val tMatrix = if (fixActivity == ActivityType.HOME) {
             mk.identity<Double>(n)
         } else {
             mrep.tMatrices[fixActivity]!!
@@ -644,31 +648,34 @@ class SGGravity(
 
         // Expected trip contribution affected by vActivity
         val mVar = if (mrep.vActivity == fixActivity) {
+            // For segments that started at vActivity: V = (vK)^T
+            // Here we only build v (vStart)
+            val h = mrep.h.flatten()
+            for (col in 0 until n) {
+                for (row in 0 until n) {
+                    builder.addVar(vStart[col], vMatrix[row][col], h[row])
+                }
+            }
+            // For other segments: V = (K^T)X
             val left  = mPriorCnst.transpose()
             val right = mk.identity<Double>(n)
-            builder.fromMatrixMult(nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
+            builder.fromMatrixMult(
+                nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
+            )
         } else if (mrep.vActivity in fixActivitiesNotHome) {
             // V = ( ( diag(h)XK )^T ) A
-            val left  = mPriorVar.transpose()
+            val left  = mPriorVarT
             val right = mrep.h.diagonal().transpose().dot(tMatrix)
             builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
         } else {
             // V = ( ( KX )^T ) A
             val left  = mk.identity<Double>(n)
-            val right = mPriorVar.transpose().dot(tMatrix)
+            val right = mPriorVarT.dot(tMatrix)
             builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
         }
 
-        // Tour starting at var activity
-        val h = mrep.h.flatten()
-        val dMatrixT = mPriorVar.transpose()
-        val vStart = List(n) { builder.new(nVars) }
-        for (col in 0 until n) {
-            for (row in 0 until n) {
-                builder.addVar(vStart[col], vMatrix[row][col], h[row])
-            }
-        }
-
+        // E += ( F + V ) odot pCar
+        val mPriorVarTCar = mPriorVarT.times(carP)
         val fix = mFix.times(carP)
         for (o in 0 until n) {
             for (d in 0 until n) {
@@ -676,7 +683,8 @@ class SGGravity(
                 builder.addTerm(expectedTrips[o][d], mVar[o][d], carP[o, d])
 
                 if (mrep.vActivity == fixActivity) {
-                    builder.addTerm(expectedTrips[o][d], vStart[d], dMatrixT[o][d] * carP[o, d]) // TODO should be vStart[o] i think
+                    // For segments that started at vActivity: V = (vK)^T
+                    builder.addTerm(expectedTrips[o][d], vStart[d], mPriorVarTCar[o, d]) // TODO should be vStart[o] i think
                 } else {
                     builder.addConstant(expectedTrips[o][d], fix[o,d])
                 }
