@@ -463,6 +463,29 @@ class SGGravity(
     }
 
     /**
+     * Determine od-Pairs that contribute to sensor measurements.
+     *
+     * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
+     * @return Set of relevant od-Pairs
+     */
+    private fun getRelevantODs(
+        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
+    ): Set<Pair<Int, Int>> {
+        val relevantODs = mutableSetOf<Pair<Int, Int>>()
+        for ((o, origin) in omod.grid.withIndex()) {
+            for ((d, destination) in omod.grid.withIndex()) {
+                val od = Pair(origin, destination)
+                if (od in affectedSensors) {
+                    if (affectedSensors[od]!!.isNotEmpty()) {
+                        relevantODs.add(Pair(o, d))
+                    }
+                }
+            }
+        }
+        return relevantODs
+    }
+
+    /**
      * Create computational graph of surrogate model.
      *
      * @param vActivity ActivityType for which the gravity model will be variable
@@ -483,7 +506,7 @@ class SGGravity(
         val n = omod.grid.size
         val population = omod.buildings.sumOf { it.population }
         val mrep = generateMarkovChainRep(vActivity) // Compact matrix representation
-        val relevantODs = determineRelevantODs(affectedSensors) // Relevant origin-destination pairs for measurements
+        val relevantODs = getRelevantODs(affectedSensors) // Relevant origin-destination pairs for measurements
 
         // Init diff model
         val model = DifferentiableModel(omod.grid.size - 1)
@@ -596,83 +619,6 @@ class SGGravity(
         logger.info("Building surrogate complete. Number of terms: $terms")
 
         return model to simCount
-    }
-
-
-
-    fun <T, K> addFlexE(
-        demandBuilder: TermBuilder<T, K>,
-        nVars: Int,
-        mrep: SGCompactMatrixRep,
-        expectedTrips: List<List<T>>,
-        varTransitionMatrix : List<List<K>>,
-        relevantODs: Set<Pair<Int, Int>>,
-        irrelevancyThreshold: Double,
-        flexActivity: ActivityType
-    ) {
-        val n = omod.grid.size
-
-        val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
-            ActivityType.OTHER
-        } else {
-            flexActivity
-        }
-        val mCarP = mrep.pCar[transitionActivity]!!
-        val mFixed = mrep.mPriorCnst[flexActivity]!!
-
-        if (flexActivity == mrep.vActivity) {
-            for (o in 0 until n) {
-                var cnst = 0.0
-
-                for (a in 0 until n) {
-                    cnst += mFixed[a, o]
-                }
-
-                for (d in 0 until n) {
-                    if (Pair(o, d) !in relevantODs) { continue }
-                    demandBuilder.addVar(expectedTrips[o][d], varTransitionMatrix[o][d], cnst * mCarP[o, d])
-                }
-            }
-        } else {
-            val mTransition = mrep.tMatrices[transitionActivity]!!
-            val mDep = mrep.mPriorVar[flexActivity]!!
-            val pHome = mrep.h.flatten()
-
-            for (o in 0 until n) {
-                val s = demandBuilder.new(nVars)
-                var cnst = 0.0
-
-                for (a in 0 until n) {
-                    cnst += mFixed[a, o]
-                    for (b in 0 until n) {
-                        val coeff = if (mrep.vActivity in fixActivitiesNotHome) {
-                            pHome[a] * mDep[b, o]
-                        } else {
-                            mDep[a, b]
-                        }
-
-                        // Ignore very small terms
-                        if (abs(coeff) <= irrelevancyThreshold) {
-                            continue
-                        }
-
-                        if (mrep.vActivity in fixActivitiesNotHome) {
-                            demandBuilder.addVar(s, varTransitionMatrix[a][b], coeff)
-                        } else {
-                            demandBuilder.addVar(s, varTransitionMatrix[b][o], coeff)
-                        }
-                    }
-                }
-                demandBuilder.addConstant(s, cnst)
-
-                for (d in 0 until n) {
-                    if (Pair(o, d) !in relevantODs) { continue }
-                    val t = mTransition[o, d] * mCarP[o, d]
-                    demandBuilder.addTerm(expectedTrips[o][d], s, t)
-                }
-            }
-        }
-
     }
 
     fun <T, K> addHomeE(
@@ -795,21 +741,79 @@ class SGGravity(
         }
     }
 
-    fun determineRelevantODs(
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
-    ): Set<Pair<Int, Int>> {
-        val relevantODs = mutableSetOf<Pair<Int, Int>>()
-        for ((o, origin) in omod.grid.withIndex()) {
-            for ((d, destination) in omod.grid.withIndex()) {
-                val od = Pair(origin, destination)
-                if (od in affectedSensors) {
-                    if (affectedSensors[od]!!.isNotEmpty()) {
-                        relevantODs.add(Pair(o, d))
+    fun <T, K> addFlexE(
+        demandBuilder: TermBuilder<T, K>,
+        nVars: Int,
+        mrep: SGCompactMatrixRep,
+        expectedTrips: List<List<T>>,
+        varTransitionMatrix : List<List<K>>,
+        relevantODs: Set<Pair<Int, Int>>,
+        irrelevancyThreshold: Double,
+        flexActivity: ActivityType
+    ) {
+        val n = omod.grid.size
+
+        val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
+            ActivityType.OTHER
+        } else {
+            flexActivity
+        }
+        val mCarP = mrep.pCar[transitionActivity]!!
+        val mFixed = mrep.mPriorCnst[flexActivity]!!
+
+        if (flexActivity == mrep.vActivity) {
+            for (o in 0 until n) {
+                var cnst = 0.0
+
+                for (a in 0 until n) {
+                    cnst += mFixed[a, o]
+                }
+
+                for (d in 0 until n) {
+                    if (Pair(o, d) !in relevantODs) { continue }
+                    demandBuilder.addVar(expectedTrips[o][d], varTransitionMatrix[o][d], cnst * mCarP[o, d])
+                }
+            }
+        } else {
+            val mTransition = mrep.tMatrices[transitionActivity]!!
+            val mDep = mrep.mPriorVar[flexActivity]!!
+            val pHome = mrep.h.flatten()
+
+            for (o in 0 until n) {
+                val s = demandBuilder.new(nVars)
+                var cnst = 0.0
+
+                for (a in 0 until n) {
+                    cnst += mFixed[a, o]
+                    for (b in 0 until n) {
+                        val coeff = if (mrep.vActivity in fixActivitiesNotHome) {
+                            pHome[a] * mDep[b, o]
+                        } else {
+                            mDep[a, b]
+                        }
+
+                        // Ignore very small terms
+                        if (abs(coeff) <= irrelevancyThreshold) {
+                            continue
+                        }
+
+                        if (mrep.vActivity in fixActivitiesNotHome) {
+                            demandBuilder.addVar(s, varTransitionMatrix[a][b], coeff)
+                        } else {
+                            demandBuilder.addVar(s, varTransitionMatrix[b][o], coeff)
+                        }
                     }
+                }
+                demandBuilder.addConstant(s, cnst)
+
+                for (d in 0 until n) {
+                    if (Pair(o, d) !in relevantODs) { continue }
+                    val t = mTransition[o, d] * mCarP[o, d]
+                    demandBuilder.addTerm(expectedTrips[o][d], s, t)
                 }
             }
         }
-        return relevantODs
+
     }
 
     // ========== DEBUG CODE ================= // TODO Delete
