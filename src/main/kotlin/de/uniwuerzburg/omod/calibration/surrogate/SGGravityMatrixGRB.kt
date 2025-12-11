@@ -90,19 +90,8 @@ fun SGGravity.optimizeTMatrix(
             )
         }
 
-        // Demand for home
-        addHomeE(
-            GRBLinExprBuilder,
-            n,
-            m3rep,
-            expectedTrips[ActivityType.HOME]!!,
-            varTransitionMatrix,
-            relevantODs,
-            irrelevantFactorThreshold
-        )
-
-        // School and Work
-        for (activity in listOf(ActivityType.SCHOOL, ActivityType.WORK)) {
+        // Fixed location
+        for (activity in listOf(ActivityType.SCHOOL, ActivityType.WORK, ActivityType.HOME)) {
             addFixE(
                 GRBLinExprBuilder,
                 n,

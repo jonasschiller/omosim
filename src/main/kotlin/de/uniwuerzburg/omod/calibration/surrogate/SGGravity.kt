@@ -552,16 +552,7 @@ class SGGravity(
         val tripStartDistr = monteCarloTripStartDistribution( MC_SAMPLES )
 
         // Add expected trips for each destination activity
-        addHomeE( // Destination home
-            LinearTermBuilder,
-            model.nVars,
-            mrep,
-            expectedTrips[ActivityType.HOME]!!,
-            vMatrix,
-            relevantODs,
-            irrelevancyThreshold
-        )
-        for (activity in fixActivitiesNotHome) {  // Fix Destination
+        for (activity in fixActivities) {  // Fix Destination
             addFixE(
                 LinearTermBuilder,
                 model.nVars,
@@ -625,48 +616,6 @@ class SGGravity(
     /**
      * Determine expected trips matrix with the destination HOME.
      */
-    fun <T, K> addHomeE(
-        builder: TermBuilder<T, K>,
-        nVars: Int,
-        mrep: SGCompactMatrixRep,
-        expectedTrips: List<List<T>>,
-        vMatrix : List<List<K>>,
-        relevantODs: Set<Pair<Int, Int>>,
-        irrelevancyThreshold: Double
-    ) {
-        val n = omod.grid.size
-        val carP = mrep.pCar[ActivityType.HOME]!!
-        val mPriorCnst = mrep.mPriorCnst[ActivityType.HOME]!!
-        val mPriorVar  = mrep.mPriorVar[ActivityType.HOME]!!
-
-        // Expected trip contribution unaffected by vActivity
-        // F = K^T
-        val mFix = mPriorCnst.transpose()
-
-        // Expected trip contribution affected by vActivity
-        val mVar = if(mrep.vActivity in fixActivitiesNotHome) {
-            // V = ( diag(h)XK )^T
-            val left = mPriorVar.transpose()
-            val right = mrep.h.diagonal().transpose()
-            builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
-        } else {
-            // V = ( KX )^T
-            val left = mk.identity<Double>(n)
-            val right = mPriorVar.transpose()
-            builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
-        }
-
-        // E += ( F + V ) odot pCar
-        val fix = mFix.times(carP)
-        for (o in 0 until n) {
-            for (d in 0 until n) {
-                if (Pair(o, d) !in relevantODs) { continue }
-                builder.addTerm(expectedTrips[o][d], mVar[o][d], carP[o, d])
-                builder.addConstant(expectedTrips[o][d], fix[o, d])
-            }
-        }
-    }
-
     fun <T, K> addFixE(
         builder: TermBuilder<T, K>,
         nVars: Int,
@@ -681,7 +630,13 @@ class SGGravity(
         val carP = mrep.pCar[fixActivity]!!
         val mPriorCnst = mrep.mPriorCnst[fixActivity]!!
         val mPriorVar  = mrep.mPriorVar[fixActivity]!!
-        val tMatrix    = mrep.tMatrices[fixActivity]!!
+
+        // Transition matrix
+        val tMatrix    = if (fixActivity == ActivityType.HOME) {
+            mk.identity<Double>(n)
+        } else {
+            mrep.tMatrices[fixActivity]!!
+        }
 
         // Expected trip contribution unaffected by vActivity
         // F = (K^T)A
