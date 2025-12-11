@@ -191,7 +191,7 @@ class SGGravity(
 
             // Run through chain cumulate mPriorVar and mPriorCnst
             var next = 2
-            var occurred = startActivity == vActivity
+            var occurred = (startActivity == vActivity) || (nextActivity == vActivity)
             for (activity in chain.drop(1).dropLast(1)) {
                 nextActivity = chain[next]
                 next += 1
