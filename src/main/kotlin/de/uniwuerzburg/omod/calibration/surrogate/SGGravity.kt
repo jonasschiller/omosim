@@ -112,21 +112,20 @@ class SGGravity(
     }
 
     /**
-     * TODO: Explain compact representation
+     * Generate compact markov chain representation of original model.
      *
-     * Generate markov chain representation of original model.
-     *
-     * Compact representation:
-     * - The expected trip matrix can be computed based on the probability matrix K that gives the probability of any
-     * agent being in location column given his home location row.
+     * Compact representation explanation:
+     * - The expected trip matrix can be computed with the probability matrix mPrior (K in the paper)
+     * that gives the probability of an agent being in location col given his home location is row.
      * - K depends on the sequence of prior activities. For example: HSSSO
      * - All these sequences that have the same last activity can be grouped:
      *      - O' = HSSSO + HO + HWO + ... etc.
-     * - O will not be included in the groups. Therefore actually: O' = HSSS + H + HW + ...
-     * - In this grouping we make a distinction between the sequences that contain the variable activity and those that
-     * do not:
-     *      - mPriorCnst -> Does not contain the activity
-     *      - mPriorVar  -> Contains the activity
+     * - The last activity O will not be included in the groups, since it is always the same and because it might
+     * be dependent on the variables. Therefore: O' = HSSS + H + HW + ...
+     * - In this grouping we make a distinction between the sequences that contain the variable activity vActivity
+     * and those that do not:
+     *      - mPriorCnst -> Does not contain vActivity
+     *      - mPriorVar  -> Contains vActivity
      *
      * @param vActivity activity type for the variable gravity model
      * @return compact markov chain representation.
