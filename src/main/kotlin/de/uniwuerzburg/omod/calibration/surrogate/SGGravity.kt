@@ -235,16 +235,14 @@ class SGGravity(
     }
 
     /**
-     * Matrices that describe the probability of an agent to be somewhere before an activity:
-     *  - homeP -> Home probability for each cell.
-     *  - dependentMatrix -> Probability part dependent on the currently calibrated activity.
-     *  - fixedMatrix -> Independent part
+     * Compact markov chain representation of original model.
      *
-     * Matrices that describe transition probabilities:
-     *  - transitionMatrix
-     *  - carP mode share of car mode for each transition
-     *
-     *  varActivityType: Activity those transition matrix is going to be calibrated.
+     * @param h home probability for each location
+     * @param mPriorVar @see de.uniwuerzburg.omod.calibration.surrogate.SGGravity.generateMarkovChainRep
+     * @param mPriorCnst @see de.uniwuerzburg.omod.calibration.surrogate.SGGravity.generateMarkovChainRep
+     * @param tMatrices Current transition matrices for each activity
+     * @param pCar mode share of car for each transition
+     * @param vActivity activity type for the variable gravity model
      */
     data class SGCompactMatrixRep (
         val h: D2Array<Double>,
