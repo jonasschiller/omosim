@@ -657,11 +657,12 @@ class SGGravity(
         }
 
         // E += ( F + V ) odot pCar
+        val fix = mFix.times(carP)
         for (o in 0 until n) {
             for (d in 0 until n) {
                 if (Pair(o, d) !in relevantODs) { continue }
                 builder.addTerm(expectedTrips[o][d], mVar[o][d], carP[o, d])
-                builder.addConstant(expectedTrips[o][d], mFix[o, d] * carP[o, d])
+                builder.addConstant(expectedTrips[o][d], fix[o, d])
             }
         }
     }
@@ -671,71 +672,56 @@ class SGGravity(
         nVars: Int,
         mrep: SGCompactMatrixRep,
         expectedTrips: List<List<T>>,
-        varTransitionMatrix : List<List<K>>,
+        vMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
         irrelevancyThreshold: Double,
         fixActivity: ActivityType
     ) {
         val n = omod.grid.size
-
         val carP = mrep.pCar[fixActivity]!!
-        val fix = mrep.mPriorCnst[fixActivity]!!.transpose()
-            .dot(mrep.tMatrices[fixActivity]!!)
-            .times(carP)
+        val mPriorCnst = mrep.mPriorCnst[fixActivity]!!
+        val mPriorVar  = mrep.mPriorVar[fixActivity]!!
+        val tMatrix    = mrep.tMatrices[fixActivity]!!
+
+        // Expected trip contribution unaffected by vActivity
+        // F = (K^T)A
+        val mFix = mPriorCnst.transpose().dot(tMatrix)
+
+        // Expected trip contribution affected by vActivity
+        val mVar = if (mrep.vActivity == fixActivity) {
+            val left  = mPriorCnst.transpose()
+            val right = mk.identity<Double>(n)
+            builder.fromMatrixMult(nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
+        } else if (mrep.vActivity in fixActivitiesNotHome) {
+            // V = ( ( diag(h)XK )^T ) A
+            val left  = mPriorVar.transpose()
+            val right = mrep.h.diagonal().transpose().dot(tMatrix)
+            builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
+        } else {
+            // V = ( ( KX )^T ) A
+            val left  = mk.identity<Double>(n)
+            val right = mPriorVar.transpose().dot(tMatrix)
+            builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
+        }
 
         // Tour starting at var activity
-        val pHome = mrep.h.flatten()
-        val dMatrixT = mrep.mPriorVar[fixActivity]!!.transpose()
-        val varStartProbs = List(n) { builder.new(nVars) }
+        val h = mrep.h.flatten()
+        val dMatrixT = mPriorVar.transpose()
+        val vStart = List(n) { builder.new(nVars) }
         for (col in 0 until n) {
             for (row in 0 until n) {
-                builder.addVar(varStartProbs[col], varTransitionMatrix[row][col], pHome[row])
+                builder.addVar(vStart[col], vMatrix[row][col], h[row])
             }
         }
 
-        // Tour not starting at var activity
-        val depExpr = if (mrep.vActivity == fixActivity) {
-            val left = mrep.mPriorCnst[fixActivity]!!.transpose()
-            val right = mk.identity<Double>(n)
-            builder.fromMatrixMult(
-                nVars,
-                varTransitionMatrix, left, right,
-                transpose = false,
-                relevantRCs = relevantODs,
-                cTol=irrelevancyThreshold
-            )
-        } else if (mrep.vActivity in fixActivitiesNotHome) {
-            val left = mrep.mPriorVar[fixActivity]!!.transpose()
-            val right = mrep.h
-                .diagonal()
-                .transpose()
-                .dot(mrep.tMatrices[fixActivity]!!)
-            builder.fromMatrixMult(
-                nVars,
-                varTransitionMatrix, left, right,
-                relevantRCs = relevantODs,
-                cTol=irrelevancyThreshold
-            )
-        } else {
-            val left = mk.identity<Double>(n)
-            val right = mrep.mPriorVar[fixActivity]!!
-                .transpose()
-                .dot(mrep.tMatrices[fixActivity]!!)
-            builder.fromMatrixMult(
-                nVars,
-                varTransitionMatrix, left, right,
-                relevantRCs = relevantODs,
-                cTol=irrelevancyThreshold
-            )
-        }
-
+        val fix = mFix.times(carP)
         for (o in 0 until n) {
             for (d in 0 until n) {
                 if (Pair(o, d) !in relevantODs) { continue }
-                builder.addTerm(expectedTrips[o][d], depExpr[o][d], carP[o, d])
+                builder.addTerm(expectedTrips[o][d], mVar[o][d], carP[o, d])
 
                 if (mrep.vActivity == fixActivity) {
-                    builder.addTerm(expectedTrips[o][d], varStartProbs[d], dMatrixT[o][d] * carP[o, d])
+                    builder.addTerm(expectedTrips[o][d], vStart[d], dMatrixT[o][d] * carP[o, d]) // TODO should be vStart[o] i think
                 } else {
                     builder.addConstant(expectedTrips[o][d], fix[o,d])
                 }
