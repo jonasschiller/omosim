@@ -35,7 +35,8 @@ class SGGravity(
     val omod: Omod
 ) {
     private val modeChoiceCalibration = ModeChoiceCalibration() // TODO adapt
-    private val fixActivities = setOf(ActivityType.WORK, ActivityType.SCHOOL)
+    private val fixActivitiesNotHome = setOf(ActivityType.WORK, ActivityType.SCHOOL)
+    private val fixActivities = setOf(ActivityType.HOME) + fixActivitiesNotHome
 
     init {
         if (omod.destinationFinder !is DestinationFinderDefault) {
@@ -204,11 +205,11 @@ class SGGravity(
                 }
 
                 // Variable activity is in the past
-                if ((vActivity in fixActivities) and (occurred)) {
+                if ((vActivity in fixActivitiesNotHome) and (occurred)) {
                     // Cumulate all matrices after a fixed location activity has occurred
                     mPostFixed = mPostFixed.dot(mT)
                     mPriorVar[nextActivity]!!.plusAssign(mPostFixed * chainP)
-                } else if ((vActivity !in fixActivities) and (occurred) and (nextActivity != vActivity)){
+                } else if ((vActivity !in fixActivitiesNotHome) and (occurred) and (nextActivity != vActivity)){
                     // Cumulate probability distributions after a flex location activity
                     // Ignores all subsequent vActivities
                     mPriorVar[nextActivity]!!.plusAssign(mKExVar * chainP)
@@ -221,7 +222,7 @@ class SGGravity(
 
                 // Update location probability distributions
                 mK = mK.dot(mT)
-                if ((vActivity !in fixActivities) and (activity != vActivity)) {
+                if ((vActivity !in fixActivitiesNotHome) and (activity != vActivity)) {
                     mKExVar = mKExVar.dot(mT)
                 }
 
@@ -298,58 +299,62 @@ class SGGravity(
         return tMatrices
     }
 
+    /**
+     * Determine all unique fixed-fixed chain segments and their probabilities of occurrence.
+     *
+     * @return unique chain segments with probabilities
+     */
     private fun getUniqueChainSegments() : List<ChainSegment> {
         val activityGenerator = omod.activityGenerator as ActivityGeneratorDefault
 
-        // Get activity chains
+        // Get all activity chains
         val allChains = mutableMapOf<List<ActivityType>, Double>()
         for (stratum in omod.popStrata) {
             if (stratum.stratumShare == 0.0) { continue }
 
             for ((socioFeatureSet, pSFSet) in stratum.iterateOptions()) {
                 if (pSFSet == 0.0) { continue }
+
+                // Get chains for that stratum
                 val ageGrp = AgeGrp.fromInt(socioFeatureSet.age)
                 val chains = activityGenerator.getChain(
                     Weekday.UNDEFINED, socioFeatureSet.hom, socioFeatureSet.mob, ageGrp, ActivityType.HOME
                 )
                 val chainProbs = chains.weights.normalize()!!.toTypedArray()
 
+                // Cumulate probabilities
                 for ((chain, chainP) in chains.chains.zip(chainProbs)) {
                     val p = stratum.stratumShare * pSFSet * chainP
-                    if (chain in allChains) {
-                        allChains[chain] = allChains[chain]!! + p
-                    } else {
-                        allChains[chain] = p
-                    }
+                    allChains[chain] = allChains.getOrDefault(chain, 0.0) + p
                 }
             }
         }
 
-        // Determine unique Fixed -> Fixed chain segments
-        val fixedActivities = setOf(ActivityType.HOME, ActivityType.WORK, ActivityType.SCHOOL)
-        val fixedSegments = mutableListOf<ChainSegment>()
-        val segment = mutableListOf<ActivityType>()
+        // Determine fixed-fixed chain segments
+        val segments = mutableListOf<ChainSegment>()
         for ((chain, chainP) in allChains) {
-            segment.clear()
+            val currentSegment = mutableListOf<ActivityType>()
 
             for ((i, activity) in chain.withIndex()) {
-                segment.add(activity)
-                if (segment.size > 1) {
-                    if ((activity in fixedActivities) or (i == chain.size - 1)) {
-                        fixedSegments.add(
+                currentSegment.add(activity)
+                if (currentSegment.size > 1) {
+                    // Reached fixed or last activity -> Segment finished
+                    if ((activity in fixActivities) or (i == chain.size - 1)) {
+                        segments.add(
                             ChainSegment(
-                                segment.toList(),
+                                currentSegment.toList(),
                                 chainP
                             )
                         )
-                        // New segment starts with last activity
-                        segment.clear()
-                        segment.add(activity)
+                        currentSegment.clear()
+                        currentSegment.add(activity)  // New segment starts with end activity of this segment
                     }
                 }
             }
         }
-        val uniqueSegments = fixedSegments.groupBy { it.chain }.map { (chain, segments) ->
+
+        // Get unique segments and cumulate probabilities
+        val uniqueSegments = segments.groupBy { it.chain }.map { (chain, segments) ->
             ChainSegment(
                 chain,
                 segments.sumOf { it.probability }
@@ -627,7 +632,7 @@ class SGGravity(
                 for (a in 0 until n) {
                     cnst += mFixed[a, o]
                     for (b in 0 until n) {
-                        val coeff = if (mrep.vActivity in fixActivities) {
+                        val coeff = if (mrep.vActivity in fixActivitiesNotHome) {
                             pHome[a] * mDep[b, o]
                         } else {
                             mDep[a, b]
@@ -638,7 +643,7 @@ class SGGravity(
                             continue
                         }
 
-                        if (mrep.vActivity in fixActivities) {
+                        if (mrep.vActivity in fixActivitiesNotHome) {
                             demandBuilder.addVar(s, varTransitionMatrix[a][b], coeff)
                         } else {
                             demandBuilder.addVar(s, varTransitionMatrix[b][o], coeff)
@@ -671,7 +676,7 @@ class SGGravity(
         val carP = mrep.pCar[ActivityType.HOME]!!
         val fix = mrep.mPriorCnst[ActivityType.HOME]!!.transpose().times(carP)
 
-        val depExpr = if(mrep.vActivity in fixActivities) {
+        val depExpr = if(mrep.vActivity in fixActivitiesNotHome) {
             val left = mrep.mPriorVar[ActivityType.HOME]!!.transpose()
             val right = mrep.h.diagonal().transpose()
             builder.fromMatrixMult(
@@ -738,7 +743,7 @@ class SGGravity(
                 relevantRCs = relevantODs,
                 irrelevancyThreshold=irrelevancyThreshold
             )
-        } else if (mrep.vActivity in fixActivities) {
+        } else if (mrep.vActivity in fixActivitiesNotHome) {
             val left = mrep.mPriorVar[fixActivity]!!.transpose()
             val right = mrep.h
                 .diagonal()
@@ -811,7 +816,7 @@ class SGGravity(
             val carP = mrep.pCar[transitionActivity]!!
             val fix = mrep.mPriorCnst[flexActivity]!!
 
-            val dep = if (mrep.vActivity in fixActivities) {
+            val dep = if (mrep.vActivity in fixActivitiesNotHome) {
                 mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[flexActivity]!!)
             } else if (flexActivity == mrep.vActivity) {
                 mk.zeros<Double>(omod.grid.size, omod.grid.size)
@@ -828,7 +833,7 @@ class SGGravity(
         for (fixActivity in listOf(ActivityType.HOME)) {
             val carP = mrep.pCar[fixActivity]!!
 
-            val dep = if (mrep.vActivity in fixActivities) {
+            val dep = if (mrep.vActivity in fixActivitiesNotHome) {
                 mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[fixActivity]!!)
             } else {
                 mrep.mPriorVar[fixActivity]!!.dot(varTMatrix)
@@ -850,7 +855,7 @@ class SGGravity(
                 val total = dep.plus( fix.transpose().dot( mrep.tMatrices[fixActivity]!!) )
                 expectedCountPerAgent.plusAssign(total.times(carP))
             } else {
-                val dep = if (mrep.vActivity in fixActivities) {
+                val dep = if (mrep.vActivity in fixActivitiesNotHome) {
                     mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[fixActivity]!!)
                 } else {
                     mrep.mPriorVar[fixActivity]!!.dot(varTMatrix)
@@ -871,7 +876,7 @@ class SGGravity(
                 val total = dep.plus( fix.transpose().dot( mrep.tMatrices[fixActivity]!!) )
                 expectedCountPerAgent.plusAssign(total.times(carP))
             } else {
-                val dep = if (mrep.vActivity in fixActivities) {
+                val dep = if (mrep.vActivity in fixActivitiesNotHome) {
                     mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[fixActivity]!!)
                 } else {
                     mrep.mPriorVar[fixActivity]!!.dot(varTMatrix)
