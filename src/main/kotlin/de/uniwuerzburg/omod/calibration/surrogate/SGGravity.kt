@@ -10,6 +10,7 @@ import de.uniwuerzburg.omod.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
+import de.uniwuerzburg.omod.utils.normalize
 import org.jetbrains.kotlinx.multik.api.*
 import org.jetbrains.kotlinx.multik.api.linalg.dot
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
@@ -271,7 +272,7 @@ class SGGravity(
                 }
             }
         }
-        val h = mk.ndarray( homeWeights.map { it / homeWeights.sum() } )
+        val h = mk.ndarray( homeWeights.normalize()!! )
             .expandDims(0).asDNArray().asD2Array()
         tMatrices[ActivityType.HOME] = h
 
@@ -284,12 +285,12 @@ class SGGravity(
                 val mWeights = finder.forcedTransitionMatrix[activityType]!!
                 for ((o, cell) in omod.grid.withIndex()) {
                     val weights = mWeights[cell]!!
-                    mT[o] = mk.ndarray( weights.map { it / weights.sum() } )
+                    mT[o] = mk.ndarray( weights.normalize()!! )
                 }
             } else { // Normal case
                 for (o in omod.grid.indices) {
                     val weights = finder.getWeights(omod.grid[o], omod.grid, activityType=activityType)
-                    mT[o] = mk.ndarray( weights.map { it / weights.sum() } )
+                    mT[o] = mk.ndarray( weights.normalize()!! )
                 }
             }
             tMatrices[activityType] = mT
@@ -311,7 +312,7 @@ class SGGravity(
                 val chains = activityGenerator.getChain(
                     Weekday.UNDEFINED, socioFeatureSet.hom, socioFeatureSet.mob, ageGrp, ActivityType.HOME
                 )
-                val chainProbs = chains.weights.map { it / chains.weights.sum() }.toTypedArray()
+                val chainProbs = chains.weights.normalize()!!.toTypedArray()
 
                 for ((chain, chainP) in chains.chains.zip(chainProbs)) {
                     val p = stratum.stratumShare * pSFSet * chainP
@@ -432,12 +433,7 @@ class SGGravity(
         }
 
         for ((key, arr) in distr.entries) {
-            val sum = arr.sum()
-            distr[key] = if (sum == 0.0) {
-                DoubleArray(arr.size) { 0.0 }
-            } else {
-                arr.map { it / sum }.toDoubleArray()
-            }
+            distr[key] = arr.normalize() ?: DoubleArray(arr.size) { 0.0 }
         }
 
         return distr
