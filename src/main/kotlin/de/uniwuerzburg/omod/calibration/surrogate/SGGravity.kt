@@ -726,7 +726,7 @@ class SGGravity(
             val left = ones.dot(mPriorCnst).diagonal()
             val right = mk.identity<Double>(n)
             val mVar = builder.fromMatrixMult(
-                nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=0.0 // TODO cTol
+                nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
             )
 
             for (o in 0 until n) {
@@ -749,49 +749,33 @@ class SGGravity(
                 }
             }
 
-            // V = diag(hKX) A
-            val left2 = mrep.h.dot(mPriorVar)
-            val right2 = mk.identity<Double>(n)
-            val mVarFlat = builder.fromMatrixMult(
-                nVars, vMatrix, left2, right2, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
-            )[0]
-            for (o in 0 until n) {
-                for (d in 0 until n) {
-                    if (Pair(o, d) !in relevantODs) { continue }
-                    builder.addTerm(expectedTrips[o][d], mVarFlat[o], tMatrix[o,d] * carP[o,d])
-                }
-            }
-
-            /*val h = mrep.h.flatten()
-            for (o in 0 until n) {
-                val s = builder.new(nVars)
-                for (a in 0 until n) {
-                    for (b in 0 until n) {
-                        val coeff = if (mrep.vActivity in fixActivitiesNotHome) {
-                            h[a] * mPriorVar[b, o]
-                        } else {
-                            mPriorVar[a, b]
-                        }
-
-                        // Ignore very small terms
-                        if (abs(coeff) <= irrelevancyThreshold) {
-                            continue
-                        }
-
-                        if (mrep.vActivity in fixActivitiesNotHome) {
-                            builder.addVar(s, vMatrix[a][b], coeff)
-                        } else {
-                            builder.addVar(s, vMatrix[b][o], coeff)
-                        }
+            if (mrep.vActivity in fixActivitiesNotHome) {
+                // V = diag(hXK)A
+                val left2 = mrep.h
+                val right2 = mPriorVar
+                val mVarFlat = builder.fromMatrixMult(
+                    nVars, vMatrix, left2, right2, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
+                )[0]
+                for (o in 0 until n) {
+                    for (d in 0 until n) {
+                        if (Pair(o, d) !in relevantODs) { continue }
+                        builder.addTerm(expectedTrips[o][d], mVarFlat[o], tMatrix[o,d] * carP[o,d])
                     }
                 }
-
-                for (d in 0 until n) {
-                    if (Pair(o, d) !in relevantODs) { continue }
-                    val t = tMatrix[o, d] * carP[o, d]
-                    builder.addTerm(expectedTrips[o][d], s, t)
+            } else {
+                // V = diag(KX)A // Correct -> Generate new truth
+                val left2 = mk.ones<Double>(1, n).dot(mPriorVar)
+                val right2 = mk.identity<Double>(n)
+                val mVarFlat = builder.fromMatrixMult(
+                    nVars, vMatrix, left2, right2, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
+                )[0]
+                for (o in 0 until n) {
+                    for (d in 0 until n) {
+                        if (Pair(o, d) !in relevantODs) { continue }
+                        builder.addTerm(expectedTrips[o][d], mVarFlat[o], tMatrix[o,d] * carP[o,d])
+                    }
                 }
-            }*/
+            }
         }
 
     }
