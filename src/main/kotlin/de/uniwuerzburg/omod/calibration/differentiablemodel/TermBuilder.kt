@@ -45,19 +45,24 @@ interface TermBuilder<T, V> {
         relevantRCs: Set<Pair<Int, Int>>? = null,
         cTol: Double
     ) : List<List<T>> {
-        val n = left.shape[0] // Assume all matrices are square and same size
+        // Dimensions
+        val lRow = left.shape[0]
+        val lCol = left.shape[1]
+        val rRow = right.shape[0]
+        val rCol = right.shape[1]
+
         val leftMax = left.max()!! // For computation shortcut
 
         // Build empty result
-        val result = List(n) {
-            List(n) {
+        val result = List(lRow) {
+            List(rCol) {
                 this.new(nVars)
             }
         }
 
         // Build terms of matrix multiplication
-        for (row in 0 until n) {
-            for (col in 0 until  n) {
+        for (row in 0 until lRow) {
+            for (col in 0 until rCol) {
                 // Ignored entry?
                 if (relevantRCs != null) {
                     if (Pair(row, col) !in relevantRCs) {
@@ -66,11 +71,11 @@ interface TermBuilder<T, V> {
                 }
 
                 val activeEntry = result[row][col]
-                for (i in 0 until n) {
+                for (i in 0 until rRow) {
                     if (right[i, col] * leftMax <= cTol) {
                         continue
                     }
-                    for (j in 0 until n) {
+                    for (j in 0 until lCol) {
                         val coeff = left[row, j] * right[i, col]
 
                         // Coefficient relevant?
