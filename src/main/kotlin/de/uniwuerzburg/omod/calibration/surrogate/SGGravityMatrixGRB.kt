@@ -76,23 +76,9 @@ fun SGGravity.optimizeTMatrix(
             model.addConstr(rowSum, GRB.EQUAL, 1.0, "ProbCondition")
         }
 
-        // Demand with flexible destination
-        for (activity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
-            addFlexE(
-                GRBLinExprBuilder,
-                n,
-                m3rep,
-                expectedTrips[activity]!!,
-                varTransitionMatrix,
-                relevantODs,
-                irrelevantFactorThreshold,
-                activity
-            )
-        }
-
-        // Fixed location
-        for (activity in listOf(ActivityType.SCHOOL, ActivityType.WORK, ActivityType.HOME)) {
-            addFixE(
+        // Add expected trips for each destination activity
+        for (activity in ActivityType.entries) {
+            addE(
                 GRBLinExprBuilder,
                 n,
                 m3rep,
