@@ -720,64 +720,58 @@ class SGGravity(
             mrep.tMatrices[tActivity]!!
         }
 
-        if (flexActivity == mrep.vActivity) {
+        // F = diag(iK) A
+        val mFix =  if (flexActivity != mrep.vActivity) {
+            val ones = mk.ones<Double>(1, n)
+            val left = ones.dot(mPriorCnst).diagonal()
+            left.dot(tMatrix)
+        } else {
+            mk.zeros<Double>(n, n)
+        }
+
+        val mVar = if (flexActivity == mrep.vActivity) {
             // V = diag(iK)X
             val ones = mk.ones<Double>(1, n)
             val left = ones.dot(mPriorCnst).diagonal()
             val right = mk.identity<Double>(n)
-            val mVar = builder.fromMatrixMult(
+            builder.fromMatrixMult(
                 nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
             )
-
-            for (o in 0 until n) {
-                for (d in 0 until n) {
-                    if (Pair(o, d) !in relevantODs) { continue }
-                    builder.addTerm(expectedTrips[o][d], mVar[o][d], carP[o, d])
-                }
-            }
         } else {
-            // F = diag(iK) A
-            val ones = mk.ones<Double>(1, n)
-            val left = ones.dot(mPriorCnst).diagonal()
-            val mFix = left.dot(tMatrix)
-
-            val fix = mFix.times(carP)
-            for (o in 0 until n) {
-                for (d in 0 until n) {
-                    if (Pair(o, d) !in relevantODs) { continue }
-                    builder.addConstant(expectedTrips[o][d], fix[o][d])
-                }
-            }
-
             if (mrep.vActivity in fixActivitiesNotHome) {
                 // V = diag(hXK)A
-                val left2 = mrep.h
-                val right2 = mPriorVar
-                val mVarFlat = builder.fromMatrixMult(
-                    nVars, vMatrix, left2, right2, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
-                )[0]
-                for (o in 0 until n) {
-                    for (d in 0 until n) {
-                        if (Pair(o, d) !in relevantODs) { continue }
-                        builder.addTerm(expectedTrips[o][d], mVarFlat[o], tMatrix[o,d] * carP[o,d])
-                    }
-                }
+                val left = mrep.h
+                val right = mPriorVar
+                builder.fromMatrixMult(
+                    nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
+                )
             } else {
-                // V = diag(KX)A // Correct -> Generate new truth
-                val left2 = mk.ones<Double>(1, n).dot(mPriorVar)
-                val right2 = mk.identity<Double>(n)
-                val mVarFlat = builder.fromMatrixMult(
-                    nVars, vMatrix, left2, right2, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
-                )[0]
-                for (o in 0 until n) {
-                    for (d in 0 until n) {
-                        if (Pair(o, d) !in relevantODs) { continue }
-                        builder.addTerm(expectedTrips[o][d], mVarFlat[o], tMatrix[o,d] * carP[o,d])
-                    }
-                }
+                // V = diag(KX)A
+                val left = mk.ones<Double>(1, n).dot(mPriorVar)
+                val right = mk.identity<Double>(n)
+                builder.fromMatrixMult(
+                    nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
+                )
             }
         }
 
+        // E += ( F + V ) odot pCar
+        val tMatrixCar = tMatrix.times(carP)
+        val fix = mFix.times(carP)
+        for (o in 0 until n) {
+            for (d in 0 until n) {
+                if (Pair(o, d) !in relevantODs) { continue }
+                // F
+                builder.addConstant(expectedTrips[o][d], fix[o,d])
+
+                // V
+                if (mVar.size == 1) {
+                    builder.addTerm(expectedTrips[o][d], mVar[0][o], tMatrixCar[o,d])
+                } else {
+                    builder.addTerm(expectedTrips[o][d], mVar[o][d], carP[o, d])
+                }
+            }
+        }
     }
 
     // ========== DEBUG CODE ================= // TODO Delete
