@@ -222,7 +222,7 @@ class SGGravity(
                     mKExVar = mKExVar.dot(mT)
                 }
 
-                // Check if vActivity occurrs
+                // Check if vActivity occurs
                 if (nextActivity == vActivity) {
                     occurred = true
                 }
@@ -748,7 +748,7 @@ class SGGravity(
                     builder.addTerm(expectedTrips[o][d], mVar[o][d], pCar[o, d])
                 }
                 if ((mrep.vActivity in fixActivities) and (mrep.vActivity == activity)){
-                    // For segments that started at vActivity: V = (vK)^T
+                    // For segments that started at vActivity: V = (diag(v)K)^T
                     builder.addTerm(expectedTrips[o][d], vStart[o], mPriorVarTCar[o, d])
                 }
             }
