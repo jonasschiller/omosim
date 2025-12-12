@@ -684,13 +684,14 @@ class SGGravity(
                         builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=iThresh)
                     }
                     ActivityType.HOME -> {
-                        // Destination: HOME
+                        throw NotImplementedError("Surrogate model dependent on home coefficients is not implemented!")
+                    }
+                    else -> {
                         // V = ( ( KX )^T ) A
                         val left  = mk.identity<Double>(n)
                         val right = mPriorVarT.dot(tMatrix)
                         builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=iThresh)
                     }
-                    else -> { throw IllegalStateException("$mrep.vActivity neither HOME nor in fixActivitiesNotHome") }
                 }
             }
             in flexActivities -> {
@@ -711,6 +712,9 @@ class SGGravity(
                         builder.fromMatrixMult(
                             nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=iThresh
                         )
+                    }
+                    ActivityType.HOME -> {
+                        throw NotImplementedError("Surrogate model dependent on home coefficients is not implemented!")
                     }
                     else -> {
                         // V = diag(KX)A
