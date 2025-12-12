@@ -491,7 +491,7 @@ class SGGravity(
      * @param vActivity ActivityType for which the gravity model will be variable
      * @param sensors Sensors with measurements
      * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
-     * @param irrelevancyThreshold Performance parameter.
+     * @param iThresh Performance parameter.
      * All terms with coefficients below this value will be ignored and not added to the result.
      * Higher values -> Computes faster but is a rougher approximation of the markov chain representation.
      */
@@ -499,7 +499,7 @@ class SGGravity(
         vActivity: ActivityType,
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
-        irrelevancyThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
+        iThresh: Double = (1/omod.grid.size.toDouble()).pow(1.5)
     ) : Pair<DifferentiableModel, Map<TrafficSensor, List<LinearTerm>>> {
         logger.info("Building surrogate for activity $vActivity with ${omod.grid.size - 1} variables")
 
@@ -559,7 +559,7 @@ class SGGravity(
                 expectedTrips[activity]!!,
                 vMatrix,
                 relevantODs,
-                irrelevancyThreshold,
+                iThresh,
                 activity
             )
         }
@@ -601,7 +601,16 @@ class SGGravity(
     }
 
     /**
-     * Determine expected trips matrix with a fixed activity destination.
+     * Determine expected trips matrix with the given activity at the destination.
+     *
+     * @param builder Term builder of the desired model
+     * @param nVars Number of variables in the problem
+     * @param mrep Compact markov chain representation of original model.
+     * @param expectedTrips Expected trips matrix model to which the new terms are added
+     * @param vMatrix Transition matrix containing variable terms
+     * @param relevantODs ActivityType for which the gravity model will be variable
+     * @param iThresh Performance parameter. @see de.uniwuerzburg.omod.calibration.surrogate.SGGravity.buildDiffModel
+     * @param activity Activity at the destination of the trip matrix
      */
     fun <T, K> addE(
         builder: TermBuilder<T, K>,
@@ -610,7 +619,7 @@ class SGGravity(
         expectedTrips: List<List<T>>,
         vMatrix : List<List<K>>,
         relevantODs: Set<Pair<Int, Int>>,
-        irrelevancyThreshold: Double,
+        iThresh: Double,
         activity: ActivityType
     ) {
         val tActivity = if (activity == ActivityType.BUSINESS) {
@@ -651,61 +660,69 @@ class SGGravity(
         // Expected trip contribution affected by vActivity
         val mVar = when(activity) {
             in fixActivities -> {
-                if (mrep.vActivity == activity) {
-                    // For segments that started at vActivity: V = (vK)^T
-                    // Here we only build v (vStart)
-                    val h = mrep.h.flatten()
-                    for (col in 0 until n) {
-                        for (row in 0 until n) {
-                            builder.addVar(vStart[col], vMatrix[row][col], h[row])
+                when (mrep.vActivity) {
+                    activity -> {
+                        // For segments that started at vActivity: V = (vK)^T
+                        // Here we only build v (vStart)
+                        val h = mrep.h.flatten()
+                        for (col in 0 until n) {
+                            for (row in 0 until n) {
+                                builder.addVar(vStart[col], vMatrix[row][col], h[row])
+                            }
                         }
+                        // For other segments: V = (K^T)X
+                        val left  = mPriorCnst.transpose()
+                        val right = mk.identity<Double>(n)
+                        builder.fromMatrixMult(
+                            nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=iThresh
+                        )
                     }
-                    // For other segments: V = (K^T)X
-                    val left  = mPriorCnst.transpose()
-                    val right = mk.identity<Double>(n)
-                    builder.fromMatrixMult(
-                        nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
-                    )
-                } else if (mrep.vActivity in fixActivitiesNotHome) {
-                    // V = ( ( diag(h)XK )^T ) A
-                    val left  = mPriorVarT
-                    val right = mrep.h.diagonal().transpose().dot(tMatrix)
-                    builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
-                } else {
-                    // V = ( ( KX )^T ) A
-                    val left  = mk.identity<Double>(n)
-                    val right = mPriorVarT.dot(tMatrix)
-                    builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=irrelevancyThreshold)
+                    in fixActivitiesNotHome -> {
+                        // V = ( ( diag(h)XK )^T ) A
+                        val left  = mPriorVarT
+                        val right = mrep.h.diagonal().transpose().dot(tMatrix)
+                        builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=iThresh)
+                    }
+                    ActivityType.HOME -> {
+                        // Destination: HOME
+                        // V = ( ( KX )^T ) A
+                        val left  = mk.identity<Double>(n)
+                        val right = mPriorVarT.dot(tMatrix)
+                        builder.fromMatrixMult(nVars, vMatrix, left, right, relevantRCs=relevantODs, cTol=iThresh)
+                    }
+                    else -> { throw IllegalStateException("$mrep.vActivity neither HOME nor in fixActivitiesNotHome") }
                 }
             }
-            else -> {
-                // CASE: Flexible activity
-                if (activity == mrep.vActivity) {
-                    // V = diag(iK)X
-                    val ones = mk.ones<Double>(1, n)
-                    val left = ones.dot(mPriorCnst).diagonal()
-                    val right = mk.identity<Double>(n)
-                    builder.fromMatrixMult(
-                        nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
-                    )
-                } else {
-                    if (mrep.vActivity in fixActivitiesNotHome) {
+            in flexActivities -> {
+                when (mrep.vActivity) {
+                    activity -> {
+                        // V = diag(iK)X
+                        val ones = mk.ones<Double>(1, n)
+                        val left = ones.dot(mPriorCnst).diagonal()
+                        val right = mk.identity<Double>(n)
+                        builder.fromMatrixMult(
+                            nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=iThresh
+                        )
+                    }
+                    in fixActivitiesNotHome -> {
                         // V = diag(hXK)A
                         val left = mrep.h
                         val right = mPriorVar
                         builder.fromMatrixMult(
-                            nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
+                            nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=iThresh
                         )
-                    } else {
+                    }
+                    else -> {
                         // V = diag(KX)A
                         val left = mk.ones<Double>(1, n).dot(mPriorVar)
                         val right = mk.identity<Double>(n)
                         builder.fromMatrixMult(
-                            nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
+                            nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=iThresh
                         )
                     }
                 }
             }
+            else -> { throw IllegalStateException("$activity neither fixed nor flexible") }
         }
 
         // E += ( F + V ) odot pCar
@@ -729,88 +746,6 @@ class SGGravity(
                 if ((mrep.vActivity in fixActivities) and (mrep.vActivity == activity)){
                     // For segments that started at vActivity: V = (vK)^T
                     builder.addTerm(expectedTrips[o][d], vStart[d], mPriorVarTCar[o, d]) // TODO should be vStart[o] i think
-                }
-            }
-        }
-    }
-
-    fun <T, K> addFlexE(
-        builder: TermBuilder<T, K>,
-        nVars: Int,
-        mrep: SGCompactMatrixRep,
-        expectedTrips: List<List<T>>,
-        vMatrix : List<List<K>>,
-        relevantODs: Set<Pair<Int, Int>>,
-        irrelevancyThreshold: Double,
-        flexActivity: ActivityType
-    ) {
-        val tActivity = if (flexActivity == ActivityType.BUSINESS) {
-            ActivityType.OTHER // Edge case: Use other type transition matrix for business activity
-        } else {
-            flexActivity
-        }
-
-        val n = omod.grid.size
-        val carP = mrep.pCar[tActivity]!!
-        val mPriorCnst  = mrep.mPriorCnst[flexActivity]!!
-        val mPriorVar   = mrep.mPriorVar[flexActivity]!!
-
-        // Transition matrix
-        val tMatrix = if (tActivity == ActivityType.HOME) {
-            mk.identity<Double>(n)
-        } else {
-            mrep.tMatrices[tActivity]!!
-        }
-
-        // F = diag(iK) A
-        val mFix =  if (flexActivity != mrep.vActivity) {
-            val ones = mk.ones<Double>(1, n)
-            val left = ones.dot(mPriorCnst).diagonal()
-            left.dot(tMatrix)
-        } else {
-            mk.zeros<Double>(n, n)
-        }
-
-        val mVar = if (flexActivity == mrep.vActivity) {
-            // V = diag(iK)X
-            val ones = mk.ones<Double>(1, n)
-            val left = ones.dot(mPriorCnst).diagonal()
-            val right = mk.identity<Double>(n)
-            builder.fromMatrixMult(
-                nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
-            )
-        } else {
-            if (mrep.vActivity in fixActivitiesNotHome) {
-                // V = diag(hXK)A
-                val left = mrep.h
-                val right = mPriorVar
-                builder.fromMatrixMult(
-                    nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
-                )
-            } else {
-                // V = diag(KX)A
-                val left = mk.ones<Double>(1, n).dot(mPriorVar)
-                val right = mk.identity<Double>(n)
-                builder.fromMatrixMult(
-                    nVars, vMatrix, left, right, transpose=false, relevantRCs=relevantODs, cTol=irrelevancyThreshold
-                )
-            }
-        }
-
-        // E += ( F + V ) odot pCar
-        val tMatrixCar = tMatrix.times(carP)
-        val fix = mFix.times(carP)
-        for (o in 0 until n) {
-            for (d in 0 until n) {
-                if (Pair(o, d) !in relevantODs) { continue }
-                // F
-                builder.addConstant(expectedTrips[o][d], fix[o,d])
-
-                // V
-                if (mVar.size == 1) {
-                    builder.addTerm(expectedTrips[o][d], mVar[0][o], tMatrixCar[o,d])
-                } else {
-                    builder.addTerm(expectedTrips[o][d], mVar[o][d], carP[o, d])
                 }
             }
         }
