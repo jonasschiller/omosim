@@ -745,7 +745,7 @@ class SGGravity(
                 }
                 if ((mrep.vActivity in fixActivities) and (mrep.vActivity == activity)){
                     // For segments that started at vActivity: V = (vK)^T
-                    builder.addTerm(expectedTrips[o][d], vStart[d], mPriorVarTCar[o, d]) // TODO should be vStart[o] i think
+                    builder.addTerm(expectedTrips[o][d], vStart[o], mPriorVarTCar[o, d])
                 }
             }
         }
