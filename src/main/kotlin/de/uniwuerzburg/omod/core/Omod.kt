@@ -4,6 +4,7 @@ import com.graphhopper.GraphHopper
 import com.graphhopper.gtfs.GraphHopperGtfs
 import com.graphhopper.gtfs.PtRouter
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
+import de.uniwuerzburg.omod.calibration.ODTTriple
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.io.geojson.*
 import de.uniwuerzburg.omod.io.gtfs.clipGTFSFile
@@ -94,7 +95,7 @@ class Omod(
     val carOwnership: CarOwnership
     var tourModeUtilityFn: File? = null
     var tripModeUtilityFn: File? = null
-    var altPercentages: Map<Triple<LocationOption, LocationOption, Int>, List<Double>> = mapOf()
+    var altPercentages: Map<ODTTriple, List<Double>> = mapOf()
 
     init {
         val timeSource = TimeSource.Monotonic
@@ -602,7 +603,7 @@ class Omod(
     }
 
     fun altRouteSelection(agents: List<MobiAgent>) : List<MobiAgent> {
-        val calT = altPercentages.maxOf { (k, v) -> k.third } + 1
+        val calT = altPercentages.maxOf { (k, v) -> k.t } + 1
         val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, _, _ ->
             val mod = departureTime.minute + departureTime.hour * 60
             val t = floor((mod % 1440.0) / 1440.0 * calT).toInt()
@@ -610,7 +611,7 @@ class Omod(
                 originActivity.location.getAggLoc()!! as RealLocation,
                 destinationActivity.location.getAggLoc()!! as RealLocation
             )
-            val key = Triple(od.first, od.second, t)
+            val key = ODTTriple(od.first, od.second, t)
             if ((trip.mode == Mode.CAR_DRIVER) && (key in altPercentages)){
                 val response = routeAltCar(
                     originActivity.location.getAggLoc()!! as RealLocation,

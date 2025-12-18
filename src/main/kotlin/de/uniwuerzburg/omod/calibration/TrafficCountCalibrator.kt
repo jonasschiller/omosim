@@ -127,7 +127,7 @@ class TrafficCountCalibrator(
         affectedAltSensors = TrafficSensor.altAffectedSensors(sensors, omod)
 
         // Mode Choice
-        omod.altPercentages = SGALtRoute.grb(agents, omod, sensors, affectedAltSensors)
+        omod.altPercentages = RouteChoice.optimize(agents, omod, sensors, affectedAltSensors)
     }
 
     fun evaluate(sharePop: Double) {
@@ -471,7 +471,7 @@ class TrafficCountCalibrator(
                    val od = Pair(originActivity.location.getAggLoc() as Cell, destinationActivity.location.getAggLoc() as Cell)
 
                    if (od in affectedSensors) {
-                       val key = Triple(od.first, od.second, t)
+                       val key = ODTTriple(od.first, od.second, t)
                        if (key in omod.altPercentages) {
                            val p = omod.altPercentages[key]!!
                            for ((i, alternative) in affectedAltSensors[od]!!.withIndex()) {
