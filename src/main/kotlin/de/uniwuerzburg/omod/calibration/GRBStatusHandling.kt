@@ -4,7 +4,7 @@ import com.gurobi.gurobi.GRB
 import com.gurobi.gurobi.GRBModel
 
 /**
- * Call after optimize()
+ * Call after optimize() to handle the resulting status code.
  */
 internal fun handleGrbStatus(model: GRBModel) : Boolean {
     var status = model[GRB.IntAttr.Status]
@@ -17,7 +17,7 @@ internal fun handleGrbStatus(model: GRBModel) : Boolean {
     when(status) {
         GRB.Status.OPTIMAL    -> return true
         GRB.Status.INFEASIBLE -> logger.error("Gurobi error: Model is infeasible")
-        GRB.Status.UNBOUNDED  ->  logger.error("Gurobi error: Model is unbounded")
+        GRB.Status.UNBOUNDED  -> logger.error("Gurobi error: Model is unbounded")
         else -> logger.error("Gurobi error: Optimization was stopped with status = $status")
     }
     return false
