@@ -353,7 +353,7 @@ class TrafficCountCalibrator(
     private fun calibrateMatrix(activities: List<ActivityType>) {
         for (activity in activities) {
             val model = SGGravity(omod)
-            val wm = model.calibrateTransitionMatrix(activity, sensors, affectedSensors)
+            val wm = model.optimizeTMatrix(activity, sensors, affectedSensors)
 
             val finder = omod.destinationFinder as DestinationFinderDefault
             val force = mutableMapOf<Cell, DoubleArray>()

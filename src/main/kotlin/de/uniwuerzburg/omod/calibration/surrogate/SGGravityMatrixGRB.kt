@@ -8,7 +8,6 @@ import de.uniwuerzburg.omod.calibration.differentiablemodel.TermBuilder
 import de.uniwuerzburg.omod.calibration.grbMseObjective
 import de.uniwuerzburg.omod.calibration.handleGrbStatus
 import de.uniwuerzburg.omod.calibration.logger
-import de.uniwuerzburg.omod.calibration.surrogate.SGGravity.SGCompactMatrixRep
 import de.uniwuerzburg.omod.core.models.ActivityType
 import de.uniwuerzburg.omod.core.models.RealLocation
 import org.jetbrains.kotlinx.multik.api.mk
@@ -17,27 +16,32 @@ import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.jetbrains.kotlinx.multik.ndarray.data.set
 import kotlin.math.pow
 
-fun SGGravity.calibrateTransitionMatrix(
+/**
+ * Optimize the transition matrix of one activity directly with the gurobi solver
+ * while ignoring the structure of the gravity model.
+ *
+ * Requirement: Gurobi must be installed and Gurobi_HOME must be added to the path.
+ *
+ * @param activityType Activity for which the transition matrix is optimized.
+ * @param sensors Sensors with measurements
+ * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
+ * @param iThresh Performance parameter.
+ * All terms with coefficients below this value will be ignored and not added to the result.
+ * Higher values -> Computes faster but is a rougher approximation of the markov chain representation.
+ * @return Optimal transition matrix
+ */
+fun SGGravity.optimizeTMatrix(
     activityType: ActivityType,
     sensors: List<TrafficSensor>,
-    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
+    iThresh: Double = (1/omod.grid.size.toDouble()).pow(1.5)
 ) : D2Array<Double>? {
     logger.info(
         "[Experimental] Calibrating transition matrix for activity $activityType directly." +
-            "Number of variables: ${omod.grid.size}"
+                "Number of variables: ${omod.grid.size}"
     )
     val m3rep = generateMarkovChainRep(activityType)
-    val matrix = optimizeTMatrix(m3rep, affectedSensors, sensors)
-    logger.info("Transition matrix for activity $activityType optimized.")
-    return matrix
-}
 
-fun SGGravity.optimizeTMatrix(
-    m3rep: SGCompactMatrixRep,
-    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
-    sensors: List<TrafficSensor>,
-    irrelevantFactorThreshold: Double = (1/omod.grid.size.toDouble()).pow(1.5)
-) : D2Array<Double>? {
     val n = omod.grid.size
     val totalPop = omod.buildings.sumOf { it.population }
     val relevantODs = getRelevantODs(affectedSensors)
@@ -47,7 +51,7 @@ fun SGGravity.optimizeTMatrix(
         val env = GRBEnv()
         val model = GRBModel(env)
 
-        // Create demand matrix dependent on the variable transition matrix: demand(o, d | M)
+        // Create gurobi expression of the expected trips matrix: E(o, d | Car)
         val expectedTrips = ActivityType.entries.associateWith {
             List(n) {
                 List(n) {
@@ -57,7 +61,7 @@ fun SGGravity.optimizeTMatrix(
         }
 
         // Transition matrix
-        val varTransitionMatrix = List<List<GRBVar>>(n) { o ->
+        val vMatrix = List<List<GRBVar>>(n) { o ->
             model.addVars(
                 DoubleArray(n) { 0.0 },
                 DoubleArray(n) { 1.0 },
@@ -67,14 +71,17 @@ fun SGGravity.optimizeTMatrix(
             ).toList()
         }
 
-        // Ensure that each row of W is a proper probability distribution
+        // Ensure that each row of vMatrix is a proper probability distribution
         for (o in 0 until n) {
             val rowSum = GRBLinExpr()
             for (d in 0 until n) {
-                rowSum.addTerm(1.0, varTransitionMatrix[o][d])
+                rowSum.addTerm(1.0, vMatrix[o][d])
             }
-            model.addConstr(rowSum, GRB.EQUAL, 1.0, "ProbCondition")
+            model.addConstr(rowSum, GRB.EQUAL, 1.0, "PCondition")
         }
+
+        // Temporal trip distribution
+        val tripStartDistr = monteCarloTripStartDistribution(MC_SAMPLES)
 
         // Add expected trips for each destination activity
         for (activity in ActivityType.entries) {
@@ -83,15 +90,12 @@ fun SGGravity.optimizeTMatrix(
                 n,
                 m3rep,
                 expectedTrips[activity]!!,
-                varTransitionMatrix,
+                vMatrix,
                 relevantODs,
-                irrelevantFactorThreshold,
+                iThresh,
                 activity
             )
         }
-
-        // Temporal trip distribution
-        val tripStartDistr = monteCarloTripStartDistribution(MC_SAMPLES)
 
         // Simulated Traffic Counts
         val simCount = mutableMapOf<TrafficSensor, List<GRBLinExpr>>()
@@ -101,13 +105,14 @@ fun SGGravity.optimizeTMatrix(
         for ((o, origin) in omod.grid.withIndex()) {
             for ((d, destination) in omod.grid.withIndex()) {
                 // Temporary variables to avoid GRBLinExpr().multAdd(). multAdd() leads to explosion in memory usage.
-                val demandVars = mutableMapOf<ActivityType, GRBVar> ()
+                val eODA = mutableMapOf<ActivityType, GRBVar> ()
                 for (activity in ActivityType.entries) {
                     val v = model.addVar( 0.0, GRB.INFINITY, 0.0, GRB.CONTINUOUS, "demand")
                     model.addConstr( expectedTrips[activity]!![o][d], GRB.EQUAL, v,"demandEq")
-                    demandVars[activity] = v
+                    eODA[activity] = v
                 }
 
+                // Add expected trips to simulated traffic counts
                 val od = Pair(origin, destination)
                 if (od in affectedSensors) {
                     val affected = affectedSensors[od]!!
@@ -115,7 +120,7 @@ fun SGGravity.optimizeTMatrix(
                         for (t in 0 until T) {
                             for (activity in ActivityType.entries) {
                                 simCount[sensor]!![t]
-                                    .addTerm(totalPop * tripStartDistr[activity]!![t], demandVars[activity]!!)
+                                    .addTerm(totalPop * tripStartDistr[activity]!![t], eODA[activity]!!)
                             }
                         }
                     }
@@ -123,22 +128,23 @@ fun SGGravity.optimizeTMatrix(
             }
         }
 
-        // Objective
+        // Set Objective
         val obj = grbMseObjective(model, sensors, simCount)
         model.setObjective(obj, GRB.MINIMIZE)
 
+        // Solve
         model.optimize()
 
         val success = handleGrbStatus(model)
         if (success) {
             val oval = model[GRB.DoubleAttr.ObjVal]
-            logger.info("Gurobi optimization finished with optimal objective: $oval")
+            logger.info("Optimization (gurobi) finished with optimal objective: $oval")
 
             // Ideal transition matrix
             val result = mk.ones<Double>(omod.grid.size, omod.grid.size)
             for(o in omod.grid.indices) {
                 for (d in omod.grid.indices) {
-                    result[o, d] = varTransitionMatrix[o][d].get(GRB.DoubleAttr.X)
+                    result[o, d] = vMatrix[o][d].get(GRB.DoubleAttr.X)
                 }
             }
             model.dispose()
@@ -154,6 +160,11 @@ fun SGGravity.optimizeTMatrix(
     return null
 }
 
+/**
+ * Term builder for Gurobi.
+ * Used to generate Gurobi Terms from matrix multiplications of the form: AXB,
+ * where X is a matrix filled with variable terms.
+ */
 object GRBLinExprBuilder: TermBuilder<GRBLinExpr, GRBVar> {
     override fun addVar(term: GRBLinExpr, v: GRBVar, coefficient: Double) {
         term.addTerm(coefficient, v)
