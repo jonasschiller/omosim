@@ -78,7 +78,7 @@ class TrafficCountCalibrator(
                         CalibrationOption.MM_MATRIX -> calibrateMatrix(activities)
                     }
                     val finder = omod.destinationFinder as DestinationFinderDefault
-                    CalibrationInfo.write(gravityFile, omod.buildings, finder.locChoiceWeightFuns)
+                    GravityCalibrationStore.write(gravityFile, omod.buildings, finder.locChoiceWeightFuns)
                 }
                 CalibrationType.MODE_CHOICE -> {
                     modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitIndividualMeasurements)

@@ -199,7 +199,7 @@ class Run : CliktCommand() {
         // Apply Calibration
         if (calibration_file != null) {
             val finder = omod.destinationFinder as DestinationFinderDefault
-            CalibrationInfo.read(calibration_file!!, omod.grid, omod.buildings, finder.locChoiceWeightFuns)
+            GravityCalibrationStore.read(calibration_file!!, omod.grid, omod.buildings, finder.locChoiceWeightFuns)
         }
         if (calibration_file_mode_choice != null) {
             omod.tourModeUtilityFn = calibration_file_mode_choice
