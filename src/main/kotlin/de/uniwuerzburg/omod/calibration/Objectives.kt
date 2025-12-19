@@ -10,6 +10,14 @@ import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearTerm
 import de.uniwuerzburg.omod.calibration.differentiablemodel.QuadraticTerm
 import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 
+/**
+ * Objective: sum(m-s)^2
+ *
+ * m: measurement
+ * s: simulated value
+ *
+ * For differentiable model.  @see de.uniwuerzburg.omod.calibration.differentiablemodel
+ */
 fun sseObjective(nVars: Int, sensors: List<TrafficSensor>, simCount: Map<TrafficSensor, List<Term>>) : LinearTerm {
     val obj = LinearTerm(nVars)
     for (sensor in sensors) {
@@ -26,10 +34,19 @@ fun sseObjective(nVars: Int, sensors: List<TrafficSensor>, simCount: Map<Traffic
     return obj
 }
 
+/**
+ * Objective: sum(m-s)^2
+ *
+ * m: measurement
+ * s: simulated value
+ *
+ * For Gurobi.
+ */
 fun grbSseObjective(
     model: GRBModel, sensors: List<TrafficSensor>, simCount: Map<TrafficSensor, List<GRBLinExpr>>
 ) : GRBExpr {
-    val sensorSimCount = List(T) {
+    // Create Gurobi variable for simCount. Necessary for GRBQuadExpr
+    val vSimCount = List(T) {
         model.addVars(
             DoubleArray(sensors.size) { 0.0 },
             null,
@@ -38,13 +55,12 @@ fun grbSseObjective(
             Array(sensors.size) { "" }
         )
     }
-
     for ((i, sensor) in sensors.withIndex()) {
         for (t in 0 until T) {
             model.addConstr(
                 simCount[sensor]!![t],
                 GRB.EQUAL,
-                sensorSimCount[t][i]!!,
+                vSimCount[t][i]!!,
                 "cnteq"
             )
         }
@@ -56,8 +72,8 @@ fun grbSseObjective(
         for (t in 0 until T) {
             // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
             obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
-            obj.addTerm(-2 * sensor.measuredFlow[t], sensorSimCount[t][i])
-            obj.addTerm(1.0, sensorSimCount[t][i], sensorSimCount[t][i])
+            obj.addTerm(-2 * sensor.measuredFlow[t], vSimCount[t][i])
+            obj.addTerm(1.0, vSimCount[t][i], vSimCount[t][i])
         }
     }
     return obj
