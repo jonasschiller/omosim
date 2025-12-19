@@ -9,7 +9,7 @@ import org.locationtech.jts.geom.GeometryFactory
 import java.io.File
 
 /**
- * Zone of the OD-Matrix, i.e. TAZ. Used for calibrating OMOD then an od-file is provided.
+ * Zone of the OD-Matrix, i.e. TAZ. Used for calibrating OMoSim then an od-file is provided.
  * OD-Matrices are defined with a specific origin destination activity relationship.
  * For example, Home -> Work.
  *

@@ -30,7 +30,6 @@ interface AgentFactory {
      * @param zones Possible home locations
      * @param populateBufferArea False: Only place agents in the focus area
      * @param rng Random number generator
-     * @param verbose Print progressbar etc.. Doesn't affect logging.
      * @return Population of agents
      */
     fun createAgents(

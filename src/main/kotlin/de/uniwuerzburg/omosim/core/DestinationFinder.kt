@@ -1,6 +1,9 @@
 package de.uniwuerzburg.omosim.core
 
-import de.uniwuerzburg.omosim.core.models.*
+import de.uniwuerzburg.omosim.core.models.ActivityType
+import de.uniwuerzburg.omosim.core.models.AggLocation
+import de.uniwuerzburg.omosim.core.models.LocationOption
+import de.uniwuerzburg.omosim.core.models.ODZone
 import java.util.*
 
 /**
@@ -25,10 +28,7 @@ interface DestinationFinder {
      * @param activityType Activity type conducted at the destination.
      * @return Probabilistic weights
      */
-    fun getWeights(
-        origin: LocationOption, destinations: List<LocationOption>,
-        activityType: ActivityType, customCellFactors: Map<ActivityType, Map<Cell, Double>>? = null
-    ): List<Double> // TODO remove custom cell factors
+    fun getWeights(origin: LocationOption, destinations: List<LocationOption>, activityType: ActivityType ): List<Double>
 
     /**
      * Determine activity location.
