@@ -366,7 +366,7 @@ class TrafficCountCalibrator(
 
         for (activity in activities) {
             val model = SGGravity(omod).buildModelSimCounts(activity, sensors, affectedSensors)
-            val objective = batchObjSimCounts(activity)
+            val objective = batchObjWSPSA(activity)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = WSPSA.run(
                 x0, objective, measurements, model, Random(),
@@ -440,8 +440,10 @@ class TrafficCountCalibrator(
             flowMSE(flows)
         }
     }
-    private fun batchObjSimCounts(activity: ActivityType): (DoubleArray) -> Pair<Double, DoubleArray> {
-        return { x: DoubleArray ->
+
+    private fun batchObjWSPSA(activity: ActivityType): (DoubleArray) -> Pair<Double, DoubleArray> {
+        return { xTmp: DoubleArray ->
+            val x = (xTmp.toList() + listOf(1.0)).toDoubleArray()
             val dcFunction = finder.locChoiceWeightFuns[activity]!!
             for ((i, cell) in omod.grid.withIndex()) {
                 cell.updateAttractionScaler(dcFunction, x[i])
