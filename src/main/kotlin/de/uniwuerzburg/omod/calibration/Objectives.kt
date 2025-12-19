@@ -10,7 +10,7 @@ import de.uniwuerzburg.omod.calibration.differentiablemodel.LinearTerm
 import de.uniwuerzburg.omod.calibration.differentiablemodel.QuadraticTerm
 import de.uniwuerzburg.omod.calibration.differentiablemodel.Term
 
-fun mseObjective(nVars: Int, sensors: List<TrafficSensor>, simCount: Map<TrafficSensor, List<Term>>) : LinearTerm {
+fun sseObjective(nVars: Int, sensors: List<TrafficSensor>, simCount: Map<TrafficSensor, List<Term>>) : LinearTerm {
     val obj = LinearTerm(nVars)
     for (sensor in sensors) {
         for (t in 0 until T) {
@@ -26,7 +26,7 @@ fun mseObjective(nVars: Int, sensors: List<TrafficSensor>, simCount: Map<Traffic
     return obj
 }
 
-fun grbMseObjective(
+fun grbSseObjective(
     model: GRBModel, sensors: List<TrafficSensor>, simCount: Map<TrafficSensor, List<GRBLinExpr>>
 ) : GRBExpr {
     val sensorSimCount = List(T) {

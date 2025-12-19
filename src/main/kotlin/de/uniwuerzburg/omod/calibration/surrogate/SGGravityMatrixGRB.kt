@@ -5,7 +5,7 @@ import de.uniwuerzburg.omod.calibration.CalibrationConstants.MC_SAMPLES
 import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.TrafficSensor
 import de.uniwuerzburg.omod.calibration.differentiablemodel.TermBuilder
-import de.uniwuerzburg.omod.calibration.grbMseObjective
+import de.uniwuerzburg.omod.calibration.grbSseObjective
 import de.uniwuerzburg.omod.calibration.handleGrbStatus
 import de.uniwuerzburg.omod.calibration.logger
 import de.uniwuerzburg.omod.core.models.ActivityType
@@ -129,7 +129,7 @@ fun SGGravity.optimizeTMatrix(
         }
 
         // Set Objective
-        val obj = grbMseObjective(model, sensors, simCount)
+        val obj = grbSseObjective(model, sensors, simCount)
         model.setObjective(obj, GRB.MINIMIZE)
 
         // Solve

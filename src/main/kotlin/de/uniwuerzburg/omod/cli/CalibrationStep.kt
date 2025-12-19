@@ -11,6 +11,7 @@ class CalibrationStep (
     val activityType: ActivityType?,
     val parameters: Map<String, String>
 ) {
+    // TODO warn about ModeChoice before GRAVITY
     companion object {
         /**
          * Format = TYPE:ALG:ITERATIONS:ACTIVITY?:PARAMS

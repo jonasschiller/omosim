@@ -103,7 +103,7 @@ class TrafficCountCalibrator(
 
         // Create mode choice surrogate model
         val mc = ModeChoiceFast(omod.routingCache)
-        val model = SGModeChoice.build(agents, mc, omod.mainRng, omod, sensors, affectedSensors, objectiveType)
+        val model = ModeChoice.buildModel(agents, mc, omod.mainRng, omod, sensors, affectedSensors, objectiveType)
 
         // Get X0
         val carUtil = mc.tourModeOptions.find { it.mode == Mode.CAR_DRIVER }

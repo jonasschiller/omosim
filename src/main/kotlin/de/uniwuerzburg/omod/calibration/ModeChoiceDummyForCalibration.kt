@@ -7,8 +7,14 @@ import de.uniwuerzburg.omod.core.models.Weekday
 import de.uniwuerzburg.omod.io.json.readJsonFromResource
 import kotlin.math.exp
 
-class ModeChoiceCalibration {
-    val tripModeOptions: Array<ModeUtility> = readJsonFromResource("tripModeUtilitiesCalibration.json")
+/**
+ * TEMPORARY. Trip based mode choice for calibration only.
+ * Is based on the default calibration.
+ *
+ * This version is static and will not be affected by other calibration runs.
+ */
+class ModeChoiceDummyForCalibration {
+    private val tripModeOptions: Array<ModeUtility> = readJsonFromResource("tripModeUtilitiesCalibration.json")
 
     fun utilitiesForCalibration(
         carDistance: Double, agent: MobiAgent, activity: ActivityType, weekday: Weekday

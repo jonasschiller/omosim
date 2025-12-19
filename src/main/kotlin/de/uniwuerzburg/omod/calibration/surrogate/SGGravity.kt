@@ -31,7 +31,7 @@ import kotlin.math.pow
 class SGGravity(
     val omod: Omod
 ) {
-    private val modeChoiceCalibration = ModeChoiceCalibration() // TODO adapt
+    private val modeChoiceDummy = ModeChoiceDummyForCalibration() // TODO adapt
     private val fixActivitiesNotHome = setOf(ActivityType.WORK, ActivityType.SCHOOL)
     private val fixActivities = setOf(ActivityType.HOME) + fixActivitiesNotHome
     private val flexActivities = setOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)
@@ -408,7 +408,7 @@ class SGGravity(
                     for (o in omod.grid.indices) {
                         val distances = finder.routingCache.getDistances(omod.grid[o], omod.grid)
                         for (d in omod.grid.indices) {
-                            val weights = modeChoiceCalibration.utilitiesForCalibration(
+                            val weights = modeChoiceDummy.utilitiesForCalibration(
                                 distances[d].toDouble() / 1000.0, stratumAgent, activity, weekday
                             )
                             val pTrip = weights[0] / weights.sum()
@@ -588,7 +588,7 @@ class SGGravity(
         }
 
         // Objective
-        val obj = mseObjective(model.nVars, sensors, simCount)
+        val obj = sseObjective(model.nVars, sensors, simCount)
 
         model.setRootTerm(obj)
 

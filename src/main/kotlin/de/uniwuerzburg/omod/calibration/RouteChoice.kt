@@ -91,7 +91,7 @@ object RouteChoice {
             }
 
             // Objective
-            val obj = grbMseObjective(model, sensors, simCount)
+            val obj = grbSseObjective(model, sensors, simCount)
             model.setObjective(obj, GRB.MINIMIZE)
 
             // Solve
@@ -183,7 +183,7 @@ object RouteChoice {
         }
 
         // Objective
-        val obj = mseObjective(model.nVars, sensors, simCount)
+        val obj = sseObjective(model.nVars, sensors, simCount)
         model.setRootTerm(obj)
         return model
     }

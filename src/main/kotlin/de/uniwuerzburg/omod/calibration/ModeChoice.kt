@@ -7,40 +7,63 @@ import de.uniwuerzburg.omod.core.Omod
 import de.uniwuerzburg.omod.core.models.*
 import java.util.*
 import kotlin.math.exp
-import kotlin.math.floor
 import kotlin.math.ln
 
+/**
+ * Objectives for mode choice calibration
+ *
+ * FitTotalCarTrips: Calibrate the total number of car trips across all measurements: minimize (sum(M) - sum(S))**2
+ * FitIndividualMeasurements: Calibrate each measurement individually (normal case): minimize (sum(m - s))**2
+ */
 enum class ModeChoiceCalibrationObjective {
     FitTotalCarTrips, FitIndividualMeasurements
 }
 
-object SGModeChoice {
-    fun build(
+/**
+ * Calibrate OMoSim output by adjusting mode choice.
+ *
+ * Optimizes the intercept of the car mode utility such that the objective is minimized.
+ */
+object ModeChoice {
+    /**
+     * Build a differentiable model that computes the objective loss for a given intercept.
+     *
+     * @param agents OMoSim run result
+     * @param mc Mode choice model to calibrate
+     * @param rng Random number generator
+     * @param omod Simulator
+     * @param sensors Sensors with measurements
+     * @param affectedSensors Gives all sensors that are affected by a path option for a certain origin-destination pair
+     * @param objective Type of objective to use @See de.uniwuerzburg.omod.calibration.ModeChoiceCalibrationObjective
+     * @return Differentiable Model
+     */
+    fun buildModel(
         agents: List<MobiAgent>,
         mc: ModeChoiceFast,
         rng: Random,
         omod: Omod,
         sensors: List<TrafficSensor>,
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
-        objectiveType: ModeChoiceCalibrationObjective
+        objective: ModeChoiceCalibrationObjective
     ) : DifferentiableModel {
-        val totalPop = omod.buildings.sumOf { it.population }
-        val model = DifferentiableModel(1)
+        val totalPop = omod.buildings.sumOf { it.population } // TODO
+        val model = DifferentiableModel(1) // Only variable: Intercept of car mode
 
-        // Simulated traffic counts
+        // Initialize simulated traffic counts
         val simCount = mutableMapOf<TrafficSensor, List<LinearTerm>>()
         for (sensor in sensors) {
             simCount[sensor] = List(T) { LinearTerm(model.nVars) }
         }
 
-        // Driver utility model
+        // Utility model for the car driver mode
         val driverUtilityModel = mc.tourModeOptions.first { it.mode == Mode.CAR_DRIVER }
 
+        // Add contribution of each agent and each tour to simulated counts
         for (agent in agents) {
             val aTours = mc.getTours(agent.mobilityDemand.first(), rng)
 
             for (tour in aTours) {
-                // Only do HOME-HOME tours as one block
+                // Only do HOME-HOME tours
                 if (tour.first().fromActivity.type != ActivityType.HOME) { continue }
                 if (tour.last().toActivity.type != ActivityType.HOME) { continue }
 
@@ -59,10 +82,10 @@ object SGModeChoice {
                 val utilityTerm = LinearTerm(model.nVars)
                 val utility = driverUtilityModel.calc(null, carDistance, mainPurpose, agent.carAccess, weekday, agent)
 
-                // Make intercept variable
+                // Create intercept variable
                 val driverUtilityVar = LinearBaseTerm(1)
                 driverUtilityVar.addConstant(utility - driverUtilityModel.intercept)
-                driverUtilityVar.addTerm(0, 1.0) // Variable intercept
+                driverUtilityVar.addTerm(0, 1.0)
                 utilityTerm.addTerm(driverUtilityVar, -1.0)
 
                 // Other mode weights
@@ -78,12 +101,11 @@ object SGModeChoice {
                 normTerm.addTerm(eTerm, 1.0)
                 val pTerm = PowerTerm(model.nVars, normTerm, -1)
 
-                // Get expected origin destination trips
+                // Add expected origin destination trips to sim counts
                 var o = tour.first().fromActivity.location.getAggLoc()!! as Cell
                 for (trip in tour) {
-                    val mod = trip.departureTime.minute + trip.departureTime.hour * 60
-                    val t = floor((mod % 1440.0) / 1440.0 * T).toInt()
                     val d = trip.toActivity.location.getAggLoc()!! as Cell
+                    val t = trip.departureTime.determineTimeSlice()
                     val tripOD = Pair(o, d)
                     if (tripOD in affectedSensors) {
                         for (sensor in affectedSensors[tripOD]!!) {
@@ -96,11 +118,14 @@ object SGModeChoice {
         }
 
         // Objective
-        val objective = when(objectiveType) {
+        val objTerm = when(objective) {
             ModeChoiceCalibrationObjective.FitIndividualMeasurements -> {
-                mseObjective(model.nVars, sensors, simCount)
+                sseObjective(model.nVars, sensors, simCount) // Normal sum of squares objective
             }
             ModeChoiceCalibrationObjective.FitTotalCarTrips -> {
+                // Objective that minimizes the differences between the sum of simulated counts across all
+                // traffic counting stations and the sum of measurements.
+                // Purpose: Calibrate the total car demand in the area
                 var totalMeasured = 0.0
                 val totalSim = LinearTerm(model.nVars)
                 for (sensor in sensors) {
@@ -122,8 +147,7 @@ object SGModeChoice {
                 obj
             }
         }
-
-        model.setRootTerm(objective)
+        model.setRootTerm(objTerm)
         return model
     }
 }
