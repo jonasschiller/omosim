@@ -1,23 +1,19 @@
 package de.uniwuerzburg.omosim.io
 
-import de.uniwuerzburg.omosim.utils.CRSTransformer
 import de.uniwuerzburg.omosim.core.Omosim
 import de.uniwuerzburg.omosim.io.geojson.GeoJsonFeatureCollectionNoProperties
 import de.uniwuerzburg.omosim.io.geojson.GeoJsonGeometryCollection
 import de.uniwuerzburg.omosim.io.geojson.GeoJsonNoProperties
 import de.uniwuerzburg.omosim.io.osm.readOSM
+import de.uniwuerzburg.omosim.utils.CRSTransformer
 import org.junit.jupiter.api.Test
 import org.locationtech.jts.geom.GeometryFactory
 import java.io.File
 
 internal class ReadOSMKtTest {
-    /**
-     * Test the osm.pbf reader
-     */
-    @Test
-    fun readOSMTest() {
+    fun readOSMTestBase(fn: String) {
         val areaString = Omosim::class.java.classLoader.getResource("test_area.geojson")!!.readText(Charsets.UTF_8)
-        val osmFile = File(Omosim::class.java.classLoader.getResource("test.osm.pbf")!!.file)
+        val osmFile = File(Omosim::class.java.classLoader.getResource(fn)!!.file)
         val geometryFactory = GeometryFactory()
 
         val areaColl: GeoJsonNoProperties = jsonHandler.decodeFromString(areaString)
@@ -34,5 +30,28 @@ internal class ReadOSMKtTest {
 
         assert(buildings.sumOf { it.nPlaceOfWorship }.toInt() == 1)
         assert(buildings.size == 5)
+    }
+
+    @Test
+    fun readOSMTest() {
+        readOSMTestBase("test.osm")
+    }
+
+    @Test
+    fun readOSMTestGZ() {
+        readOSMTestBase("test.osm.gz")
+    }
+
+    @Test
+    fun readOSMTestBZ2() {
+        readOSMTestBase("test.osm.bz2")
+    }
+
+    /**
+     * Test the osm.pbf reader
+     */
+    @Test
+    fun readOSMTestPBF() {
+        readOSMTestBase("test.osm.pbf")
     }
 }
