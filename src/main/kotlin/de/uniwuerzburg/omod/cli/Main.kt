@@ -209,8 +209,7 @@ class Run : CliktCommand() {
         calibrationParameter?.let {
             val calibrator = TrafficCountCalibrator(
                 calibrationParameter!!.cal_traffic_count_file,
-                omod,
-                omod.carOwnership
+                omod
             )
 
             //calibrator.hpTune(CalibrationOption.SPSA)

@@ -4,7 +4,6 @@ import de.uniwuerzburg.omod.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omod.calibration.algorithms.*
 import de.uniwuerzburg.omod.calibration.differentiablemodel.DifferentiableModelMultiOut
 import de.uniwuerzburg.omod.calibration.surrogate.*
-import de.uniwuerzburg.omod.core.CarOwnership
 import de.uniwuerzburg.omod.core.DestinationFinderDefault
 import de.uniwuerzburg.omod.core.ModeChoiceFast
 import de.uniwuerzburg.omod.core.Omod
@@ -16,6 +15,11 @@ import java.util.*
 import kotlin.math.floor
 import kotlin.math.pow
 
+/**
+ * Optimization algorithm options
+ *
+ * @see de.uniwuerzburg.omod.calibration.algorithms
+ */
 enum class CalibrationOption {
     MM_LBFGS,
     MM_MINBC,
@@ -26,22 +30,34 @@ enum class CalibrationOption {
     MM_MATRIX,
 }
 
+/**
+ *  Specify what part of the model should be calibrated.
+ *
+ *  GRAVITY: Attraction scaling in the gravity model
+ *  MODE_CHOICE: Car mode intercept in mode choice model
+ *  ROUTE_CHOICE: Route choice between alternatives given by GraphHopper
+ *  EVALUATE: Test the current calibration and print out a summary
+ */
 enum class CalibrationType {
-    GRAVITY, MODE_CHOICE, EVALUATE, ALT_ROUTE
+    GRAVITY, MODE_CHOICE, ROUTE_CHOICE, EVALUATE
 }
 
+/**
+ * Calibrate OMoSim with traffic count data
+ *
+ * @param omod Simulator
+ */
 class TrafficCountCalibrator(
     linkDataFile: File,
-    val omod: Omod,
-    val carOwnership: CarOwnership
+    val omod: Omod
 ) {
-    private val sensors: List<TrafficSensor> = TrafficSensor.readSensorData(linkDataFile, omod)
+    private val sensors: List<TrafficSensor> = TrafficSensor.readSensorData(linkDataFile, omod) // Read traffic count data
     private val finder = omod.destinationFinder as DestinationFinderDefault
     private val affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     private var affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>> = mapOf()
 
     init {
-        T = sensors.first().measuredFlow.size
+        T = sensors.first().measuredFlow.size // Set number of time slices
         if (!sensors.all { it.measuredFlow.size == T }) {
             throw IllegalArgumentException(
                 "Sensor measurement arrays are not uniformly sized!" +
@@ -51,15 +67,26 @@ class TrafficCountCalibrator(
         affectedSensors = TrafficSensor.affectedSensors(sensors, omod)
     }
 
+    /**
+     * Calibration entry point.
+     *
+     * @param gravityCalOut File where to store the calibration result for the GRAVITY step
+     * @param modeChoiceCalOut  File where to store the calibration result for the MODE_CHOICE step
+     * @param option Calibration option to use // TODO
+     * @param activities Activities should be calibrated. Only matters for Gravity calibration
+     * @param iterations Maximum number of iterations
+     * @param steps Calibration steps to be done.
+     */
     fun calibrate(
-        gravityFile: File, modeChoiceCalFile: File, option: CalibrationOption, activities: List<ActivityType>,
-        iterations: Int = 100, parameters: Map<String, String>? = null,
+        gravityCalOut: File,
+        modeChoiceCalOut: File,
+        option: CalibrationOption,
+        activities: List<ActivityType>,
+        iterations: Int = 100,
+        parameters: Map<String, String>? = null,
         steps: List<CalibrationType> = listOf(CalibrationType.GRAVITY, CalibrationType.EVALUATE)
     ) {
-        /*if (modeChoice) {
-            modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitTotalCarTrips)
-            omod.tourModeUtilityFn = modeChoiceCalFile
-        }*/
+        // Complete the steps in the given order
         for (step in steps) {
             when(step) {
                 CalibrationType.GRAVITY -> {
@@ -78,13 +105,13 @@ class TrafficCountCalibrator(
                         CalibrationOption.MM_MATRIX -> calibrateMatrix(activities)
                     }
                     val finder = omod.destinationFinder as DestinationFinderDefault
-                    GravityCalibrationStore.write(gravityFile, omod.buildings, finder.locChoiceWeightFuns)
+                    GravityCalibrationStore.write(gravityCalOut, omod.buildings, finder.locChoiceWeightFuns)
                 }
                 CalibrationType.MODE_CHOICE -> {
-                    modeChoiceCal(modeChoiceCalFile, ModeChoiceCalibrationObjective.FitIndividualMeasurements)
-                    omod.tourModeUtilityFn = modeChoiceCalFile
+                    modeChoiceCal(modeChoiceCalOut, ModeChoiceCalibrationObjective.FitIndividualMeasurements)
+                    omod.tourModeUtilityFn = modeChoiceCalOut
                 }
-                CalibrationType.ALT_ROUTE -> {
+                CalibrationType.ROUTE_CHOICE -> {
                     altRouteCal()
                 }
                 CalibrationType.EVALUATE -> {
