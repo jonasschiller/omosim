@@ -349,7 +349,7 @@ class TrafficCountCalibrator(
 
         for (activity in activities) {
             val model = SGGravity(omod).buildModelSimCounts(activity, sensors, affectedSensors)
-            val objective = metaModelObjSimCounts(model, sensors)
+            val objective = metaModelObjWSPSA(model, sensors)
             val x0 = DoubleArray(omod.grid.size - 1) { 1.0 }
             var d = WSPSA.run(
                 x0, objective, measurements, model, Random(),
@@ -398,13 +398,13 @@ class TrafficCountCalibrator(
             model.evaluate(x)
         }
     }
-    private fun metaModelObjSimCounts(model: DifferentiableModelMultiOut, sensors: List<TrafficSensor>): (DoubleArray) ->
+    private fun metaModelObjWSPSA(model: DifferentiableModelMultiOut, sensors: List<TrafficSensor>): (DoubleArray) ->
         Pair<Double, DoubleArray> {
         return { x: DoubleArray ->
             val simCounts = model.evaluate(x)
 
             val flows = mutableMapOf<TrafficSensor, DoubleArray>()
-            var i =0
+            var i = 0
             for (sensor in sensors) {
                 val sensorCounts = DoubleArray(T) {0.0}
                 for (t in 0 until T) {
