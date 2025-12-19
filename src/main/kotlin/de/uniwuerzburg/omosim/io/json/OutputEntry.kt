@@ -6,7 +6,7 @@ import de.uniwuerzburg.omosim.core.models.Sex
 import kotlinx.serialization.Serializable
 
 /**
- * OMOD result format of on agent
+ * omosim result format of on agent
  */
 @Serializable
 data class OutputEntry (

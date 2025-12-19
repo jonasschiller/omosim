@@ -61,7 +61,7 @@ class ModeChoiceGTFS(
      * @return agents. Now their trips have specified modes.
      */
     override fun doModeChoice(
-        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, verbose: Boolean
+        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, modeSpeedUp: Map<Mode, Double>, verbose: Boolean
     ) : List<MobiAgent> {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
@@ -73,7 +73,7 @@ class ModeChoiceGTFS(
                 for (agent in chunk) {
                     val coroutineRng = Random(mainRng.nextLong())
                     launch(dispatcher) {
-                        doModeChoiceFor(agent, coroutineRng)
+                        doModeChoiceFor(agent, coroutineRng, modeSpeedUp)
                         val done = jobsDone.incrementAndGet()
                         if(verbose) { print("Mode Choice: ${ProgressBar.show(done / totalJobs)}\r") }
                     }
@@ -94,7 +94,7 @@ class ModeChoiceGTFS(
      * @param rng Random number generator
      * @return Tours
      */
-    private fun getTours(diary: Diary, rng: Random) : List<List<TripMCFeatures>> {
+    private fun getTours(diary: Diary, rng: Random, modeSpeedUp: Map<Mode, Double>) : List<List<TripMCFeatures>> {
         val tours = mutableListOf<List<TripMCFeatures>>()
         var currentTour = mutableListOf<TripMCFeatures>()
 
@@ -122,15 +122,19 @@ class ModeChoiceGTFS(
                 // IF trip is from fixed location to same fixed location. Impute a randomly sampled Round-trip.
                 val carDistance = rtDistances[originActivity.type]!!
                 val routes = Mode.entries.filter { it != Mode.UNDEFINED }.associateWith {
-                    Route.getRoundTripRoute(it, carDistance)
+                    val route = Route.getRoundTripRoute(it, carDistance)
+                    route.time /= modeSpeedUp.getOrDefault(it, 1.0)
+                    route
                 }
                 carDistance to routes
             }  else {
                 val routes = Mode.entries.filter { it != Mode.UNDEFINED }.associateWith {
-                    Route.getWithFallback(
+                    val route = Route.getWithFallback(
                         it, originActivity.location, destinationActivity.location,
                         hopper, withPath, departureInstant, ptRouter
                     )
+                    route.time /= modeSpeedUp.getOrDefault(it, 1.0)
+                    route
                 }
                 val carDistance = routes[Mode.CAR_DRIVER]!!.distance
                 carDistance to routes
@@ -165,9 +169,9 @@ class ModeChoiceGTFS(
      * @param agent Agent
      * @param rng Random number generator
      */
-    private fun doModeChoiceFor(agent: MobiAgent, rng: Random) {
+    private fun doModeChoiceFor(agent: MobiAgent, rng: Random, modeSpeedUp: Map<Mode, Double>) {
         for (diary in agent.mobilityDemand) {
-            val tours = getTours(diary, rng)
+            val tours = getTours(diary, rng, modeSpeedUp)
 
             // Tour mode choice
             for (tour in tours) {
@@ -177,7 +181,9 @@ class ModeChoiceGTFS(
 
                 // Aggregate distance and times
                 val carDistance = tour.sumOf { it.carDistance }
-                val times = tourModeOptions.map { m -> tour.sumOf { it.routes[m.mode]!!.time } }.toTypedArray()
+                val times = tourModeOptions.map {
+                    m -> tour.sumOf { it.routes[m.mode]!!.time }
+                }.toTypedArray()
 
                 // Main purpose of tour is defined by the activity with the longest stay time
                 val mainPurpose = tour

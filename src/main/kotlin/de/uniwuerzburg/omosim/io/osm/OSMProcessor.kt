@@ -13,12 +13,34 @@ import org.openstreetmap.osmosis.core.store.SingleClassObjectSerializationFactor
 import org.openstreetmap.osmosis.core.task.v0_6.Sink
 
 /**
- * Enumeration of all OSM map objects used in OMOD
+ * Enumeration of all OSM map objects used in omosim
  */
 enum class MapObjectType {
     BUILDING, OFFICE, SHOP, SCHOOL, UNIVERSITY, KINDER_GARTEN,
     FAST_FOOD, PLACE_OF_WORSHIP, RESTAURANT, CAFE, TOURISM,
     LU_RESIDENTIAL, LU_COMMERCIAL, LU_RETAIL, LU_INDUSTRIAL
+}
+fun determineType(key: String, value: String): MapObjectType? {
+    return when (key) {
+        "building"  -> MapObjectType.BUILDING
+        "office"    -> MapObjectType.OFFICE
+        "shop"      -> MapObjectType.SHOP
+        "tourism"   -> MapObjectType.TOURISM
+        "landuse"   -> getShortLanduseDescription(value)
+        "amenity"   -> {
+            when (value) {
+                "school" -> MapObjectType.SCHOOL
+                "university" -> MapObjectType.UNIVERSITY
+                "restaurant" -> MapObjectType.RESTAURANT
+                "place_of_worship" -> MapObjectType.PLACE_OF_WORSHIP
+                "cafe" -> MapObjectType.CAFE
+                "fast_food" -> MapObjectType.FAST_FOOD
+                "kindergarten" -> MapObjectType.KINDER_GARTEN
+                else -> null
+            }
+        }
+        else -> null
+    }
 }
 
 /**
@@ -34,11 +56,11 @@ class MapObject (
 )
 
 /**
- * Maps OSM landuse tags to OMODs landuse categories
+ * Maps OSM landuse tags to omosims landuse categories
  * @param tag OSM tag
  * @return landuse category
  */
-private fun getShortLanduseDescription(tag: String): MapObjectType? {
+ fun getShortLanduseDescription(tag: String): MapObjectType? {
     return when(tag) {
         "residential"       -> MapObjectType.LU_RESIDENTIAL
         "commercial"        -> MapObjectType.LU_COMMERCIAL
@@ -227,10 +249,20 @@ class OSMProcessor(idTrackerType: IdTrackerType,
             }
             mutInnerRings.removeAll(holes)
 
+            // Stamp holes into polygon
             val holesAsPolygon = holes.map { geometryFactory.createPolygon(it) }.toTypedArray()
             val hole = geometryFactory.createMultiPolygon(holesAsPolygon).union()
+            val punchedGeom = polygon.difference(hole)
 
-            polygons.add ( polygon.difference(hole) as Polygon )
+            when (punchedGeom) {
+                is Polygon -> polygons.add ( punchedGeom )
+                is MultiPolygon -> {
+                    for (i in 0 until punchedGeom.numGeometries){
+                        polygons.add( punchedGeom.getGeometryN(i) as Polygon )
+                    }
+                }
+                else -> continue // Creating lines or points should be impossible
+            }
         }
         val geometry = geometryFactory.createMultiPolygon(polygons.toTypedArray()).union()
 
@@ -289,36 +321,19 @@ class OSMProcessor(idTrackerType: IdTrackerType,
      * @param entity OSM object
      * @return All MapObjectTypes of the object
      */
-    private fun determineTypes(entity: Entity) : List<MapObjectType> {
+    fun determineTypes(entity: Entity) : List<MapObjectType> {
         val rslt = mutableListOf<MapObjectType>()
         for (tag in entity.tags) {
-            val type = when (tag.key) {
-                "building"  -> MapObjectType.BUILDING
-                "office"    -> MapObjectType.OFFICE
-                "shop"      -> MapObjectType.SHOP
-                "tourism"   -> MapObjectType.TOURISM
-                "landuse"   -> getShortLanduseDescription(tag.value) ?: continue
-                "amenity"   -> {
-                    when (tag.value) {
-                        "school" -> MapObjectType.SCHOOL
-                        "university" -> MapObjectType.UNIVERSITY
-                        "restaurant" -> MapObjectType.RESTAURANT
-                        "place_of_worship" -> MapObjectType.PLACE_OF_WORSHIP
-                        "cafe" -> MapObjectType.CAFE
-                        "fast_food" -> MapObjectType.FAST_FOOD
-                        "kindergarten" -> MapObjectType.KINDER_GARTEN
-                        else -> continue
-                    }
-                }
-                else -> continue
+            val type = determineType(tag.key, tag.value)
+            if (type != null) {
+                rslt.add(type)
             }
-            rslt.add(type)
         }
         return rslt
     }
 
     /**
-     * Determine if the OSM object is relevant for OMOD
+     * Determine if the OSM object is relevant for omosim
      *
      * @param entity OSM object
      * @return true -> object is relevant

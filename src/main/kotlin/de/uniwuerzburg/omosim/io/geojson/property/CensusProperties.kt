@@ -1,5 +1,6 @@
-package de.uniwuerzburg.omosim.io.geojson
+package de.uniwuerzburg.omosim.io.geojson.property
 
+import de.uniwuerzburg.omosim.io.geojson.GeoJsonProperties
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -10,6 +11,6 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 @SerialName("CensusEntry")
-data class GeoJsonCensusProperties (
+data class CensusProperties (
     val population: Double
 ) : GeoJsonProperties()

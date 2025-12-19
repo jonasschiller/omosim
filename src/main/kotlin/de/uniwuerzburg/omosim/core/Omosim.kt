@@ -6,10 +6,13 @@ import com.graphhopper.gtfs.PtRouter
 import de.uniwuerzburg.omosim.calibration.ODTTriple
 import de.uniwuerzburg.omosim.core.models.*
 import de.uniwuerzburg.omosim.io.geojson.*
+import de.uniwuerzburg.omosim.io.geojson.property.BuildingProperties
 import de.uniwuerzburg.omosim.io.gtfs.clipGTFSFile
 import de.uniwuerzburg.omosim.io.gtfs.getPublicTransitSimDays
 import de.uniwuerzburg.omosim.io.json.*
+import de.uniwuerzburg.omosim.io.osm.BuildingData
 import de.uniwuerzburg.omosim.io.osm.readOSM
+import de.uniwuerzburg.omosim.io.overture.readOverture
 import de.uniwuerzburg.omosim.io.readCensus
 import de.uniwuerzburg.omosim.routing.*
 import de.uniwuerzburg.omosim.utils.*
@@ -34,7 +37,7 @@ import kotlin.math.floor
 import kotlin.time.TimeSource
 
 /**
- * Open-Street-Maps MObility Demand generator (OMOD)
+ * OMoSim: An Open Mobility Demand Simulator
  * Creates daily activity schedules in the form of activity chains and dwell times.
  *
  * @param areaFile GeoJSON of the focus area
@@ -50,6 +53,7 @@ import kotlin.time.TimeSource
  * @param populateBufferArea Option to populate the buffer area with agents
  * @param distanceCacheSize Maximum size of the routing matrix cache
  * @param populationFile File that defines the distribution of socio-demographic features for the agent population
+ * @param activityGroupFile File that defines the activity chains and their dwell times for the chosen location
  * @param nWorker Number of parallel coroutines that can be executed at the same time.
  * NULL = Number of CPU-Cores available.
  * @param gtfsFile GTFS location (Directory or .zip file)
@@ -59,7 +63,7 @@ class Omosim (
     private val osmFile: File,
     routingMode: RoutingMode = RoutingMode.BEELINE,
     cache: Boolean = true,
-    private val cacheDir: Path = Paths.get("omod_cache/"),
+    private val cacheDir: Path = Paths.get("omosim_cache/"),
     odFile: File? = null,
     gridPrecision: Double = 200.0,
     seed: Long? = null,
@@ -68,9 +72,12 @@ class Omosim (
     val populateBufferArea: Boolean = true,
     val distanceCacheSize: Long = 400e6.toLong(),
     populationFile: File? = null,
+    activityGroupFile: File? = null,
     nWorker: Int? = null,
     private val gtfsFile: File? = null,
-    carOwnershipOption: CarOwnershipOption = CarOwnershipOption.FIX
+    overtureRelease: String? = null,
+    carOwnershipOption: CarOwnershipOption = CarOwnershipOption.FIX,
+    private val modeSpeedUp: Map<Mode, Double> = mapOf()
 ) {
     @Suppress("MemberVisibilityCanBePrivate")
     val kdTree: KdTree
@@ -108,7 +115,11 @@ class Omosim (
         }
 
         // Load activity chain data
-        val activityGroups: List<ActivityGroup> = readJsonFromResource("ActivityGroups.json")
+        val activityGroups: List<ActivityGroup> = if (activityGroupFile !=null){
+            readJson(activityGroupFile)
+        } else {
+            readJsonFromResource("ActivityGroups.json")
+        }
 
         // Load distance distributions
         val mutLocChoiceFuns: MutableMap<ActivityType, LocationChoiceDCWeightFun> =
@@ -135,10 +146,11 @@ class Omosim (
         val utmArea = utmFocusArea.buffer(bufferRadius).convexHull()
         fullArea = transformer.toLatLon(utmArea)
 
-        // Get spatial data
+        // Get map data
+        val mapDataSource = if (overtureRelease != null) MapDataSource.OVERTURE else MapDataSource.OSM
         buildings = getBuildings(
             focusArea, fullArea, osmFile, bufferRadius,  transformer,
-            geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns
+            geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
         )
 
         // Create KD-Tree for faster access
@@ -206,13 +218,13 @@ class Omosim (
         // Agent factory
         agentFactory = AgentFactoryDefault(destinationFinder, carOwnership, popStrata, dispatcher)
 
-        logger.get()?.info("Initializing OMOD took: ${timeSource.markNow() - timestampStartInit}")
+        logger.get()?.info("Initializing omosim took: ${timeSource.markNow() - timestampStartInit}")
     }
 
     // Factories
     companion object {
         /**
-         * Create OMOD object with default parameters
+         * Create omosim object with default parameters
          *
          * @param areaFile GeoJSON of the focus area
          * @param osmFile osm.pbf file that covers at least the focus area and buffer area
@@ -243,7 +255,8 @@ class Omosim (
                              osmFile: File, bufferRadius: Double = 0.0,
                              transformer: CRSTransformer, geometryFactory: GeometryFactory,
                              censusFile: File?, cacheDir: Path, cache: Boolean,
-                             locChoiceWeightFuns: Map<ActivityType, LocationChoiceDCWeightFun>
+                             locChoiceWeightFuns: Map<ActivityType, LocationChoiceDCWeightFun>,
+                             mapType: MapDataSource = MapDataSource.OSM, nWorker:Int?
     ) : List<Building> {
         // Is cached?
         val bound = focusArea.envelopeInternal
@@ -256,25 +269,30 @@ class Omosim (
         )
 
         // Check cache
-        val collection: GeoJsonFeatureCollection =  if (cache and cachePath.toFile().exists()) {
+        val collection: GeoJsonFeatureCollection<BuildingProperties> =  if (cache and cachePath.toFile().exists()) {
             readJsonStream(cachePath)
         } else {
             // Load data
-            var osmBuildings = readOSM(focusArea, fullArea, osmFile, geometryFactory, transformer)
+            var buildings: List<BuildingData> = when(mapType) {
+                MapDataSource.OVERTURE -> readOverture(
+                    focusArea, fullArea, geometryFactory, transformer, nWorker, cacheDir
+                )
+                MapDataSource.OSM -> readOSM(focusArea, fullArea, osmFile, geometryFactory, transformer)
+            }
 
             // Add census data if available
             if (censusFile != null) {
-                osmBuildings = readCensus(osmBuildings, transformer, geometryFactory, censusFile, mainRng)
+                buildings = readCensus(buildings, transformer, geometryFactory, censusFile, mainRng)
             }
 
             // Convert to GeoJSON
             val collection = GeoJsonFeatureCollection(
-                features = osmBuildings.map {
+                features = buildings.map {
                     val center = it.geometry.centroid
                     val coords = transformer.toLatLon(center).coordinate
                     val geometry = GeoJsonPoint(listOf(coords.y, coords.x))
 
-                    val properties = GeoJsonBuildingProperties(
+                    val properties = BuildingProperties(
                         osm_id = it.osm_id,
                         in_focus_area = it.inFocusArea,
                         area = it.area,
@@ -571,7 +589,7 @@ class Omosim (
             ModeChoiceOption.CAR_ONLY -> {
                 setupHopper()
                 val modeChoice = ModeChoiceCarOnly(hopper!!, withPath)
-                modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
+                modeChoice.doModeChoice(agents, mainRng, dispatcher, modeSpeedUp, verbose)
             }
             ModeChoiceOption.GTFS -> {
                 setupHopper()
@@ -582,14 +600,14 @@ class Omosim (
                         gtfsComponents!!.ptSimDays, gtfsComponents!!.timeZone,
                         withPath, tourModeUtilityFn, tripModeUtilityFn
                     )
-                    modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
+                    modeChoice.doModeChoice(agents, mainRng, dispatcher, modeSpeedUp, verbose)
                 } finally {
                     gtfsComponents!!.gtfsHopper.close()
                 }
             }
             ModeChoiceOption.FAST -> {
                 val modeChoice = ModeChoiceFast(routingCache, tourModeUtilityFn, tripModeUtilityFn)
-                modeChoice.doModeChoice(agents, mainRng, dispatcher, verbose)
+                modeChoice.doModeChoice(agents, mainRng, dispatcher, modeSpeedUp, verbose)
 
             }
         }
@@ -601,24 +619,38 @@ class Omosim (
         return  agents
     }
 
+    /**
+     * Choose alternative route according to route choice calibration.
+     *
+     * @param agents Agents with mode choice step completed
+     * @return Agents with alternative routes selected
+     */
     fun altRouteSelection(agents: List<MobiAgent>) : List<MobiAgent> {
-        val calT = altPercentages.maxOf { (k, v) -> k.t } + 1
+        // Determine number of time slices of calibration
+        val T = altPercentages.maxOf { (k, v) -> k.t } + 1
+
+        // Get alternatives and choose according to calibration
         val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, _, _ ->
+            // Determine origin-destination-time triple
             val mod = departureTime.minute + departureTime.hour * 60
-            val t = floor((mod % 1440.0) / 1440.0 * calT).toInt()
+            val t = floor((mod % 1440.0) / 1440.0 * T).toInt()
             val od = Pair(
                 originActivity.location.getAggLoc()!! as RealLocation,
                 destinationActivity.location.getAggLoc()!! as RealLocation
             )
-            val key = ODTTriple(od.first, od.second, t)
-            if ((trip.mode == Mode.CAR_DRIVER) && (key in altPercentages)){
+            val odt = ODTTriple(od.first, od.second, t)
+
+            // For all car trips
+            if ((trip.mode == Mode.CAR_DRIVER) && (odt in altPercentages)){
+                // Find alternatives
                 val response = routeAltCar(
                     originActivity.location.getAggLoc()!! as RealLocation,
                     destinationActivity.location.getAggLoc()!! as RealLocation,
                     hopper!!
                 )
+                // Choose route according to calibration
                 if (!response.hasErrors()) {
-                    val probs = altPercentages[key]!!
+                    val probs = altPercentages[odt]!!
                     val distr = createCumDist(probs.toDoubleArray())
                     val path = response.all[sampleCumDist(distr, this.mainRng)]
 
@@ -632,8 +664,6 @@ class Omosim (
                 }
             }
         }
-
-        // Alt trip selection
         for (agent in agents) {
            for (diary in agent.mobilityDemand) {
                 diary.visitTrips(visitor)

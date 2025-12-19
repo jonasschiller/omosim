@@ -1,6 +1,7 @@
 package de.uniwuerzburg.omosim.io
 
 import de.uniwuerzburg.omosim.io.geojson.*
+import de.uniwuerzburg.omosim.io.geojson.property.CensusProperties
 import de.uniwuerzburg.omosim.io.json.readJsonStream
 import de.uniwuerzburg.omosim.io.osm.BuildingData
 import de.uniwuerzburg.omosim.utils.CRSTransformer
@@ -33,13 +34,13 @@ fun readCensus(
         buildingsTree.insert(building.geometry.envelopeInternal, building)
     }
 
-    val censusData: GeoJsonFeatureCollection = readJsonStream(censusFile)
+    val censusData: GeoJsonFeatureCollection<CensusProperties> = readJsonStream(censusFile)
 
     for (censusEntree in censusData.features) {
-        var population = (censusEntree.properties as GeoJsonCensusProperties).population
+        var population = censusEntree.properties.population
         if (population <= 0) { continue }
 
-        val censusZone = transformer.toModelCRS( censusEntree.geometry.toJTS(geometryFactory) )
+        val censusZone = transformer.tomosimelCRS( censusEntree.geometry.toJTS(geometryFactory) )
 
         val intersectingBuildings = buildingsTree.query(censusZone.envelopeInternal)
             .map { it as BuildingData }

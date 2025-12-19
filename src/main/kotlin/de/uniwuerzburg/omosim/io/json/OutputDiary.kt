@@ -4,7 +4,7 @@ import de.uniwuerzburg.omosim.core.models.Weekday
 import kotlinx.serialization.Serializable
 
 /**
- * OMOD result format of o day
+ * omosim result format of o day
  */
 @Serializable
 data class OutputDiary (

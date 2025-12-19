@@ -9,7 +9,7 @@ import java.io.File
  * Reads GeoJson file. Will only use geo-information.
  * Throws away property entries.
  *
- * If the property entries are required use de.uniwuerzburg.omod.io.json.ReadJson
+ * If the property entries are required use de.uniwuerzburg.omosim.io.json.ReadJson
  */
 fun readGeoJsonGeom(areaFile: File, geometryFactory: GeometryFactory): Geometry {
     val areaColl: GeoJsonNoProperties = readJson(areaFile)

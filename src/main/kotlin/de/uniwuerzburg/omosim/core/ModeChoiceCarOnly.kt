@@ -31,7 +31,7 @@ class ModeChoiceCarOnly(
      * @return agents. Now their trips have specified modes.
      */
     override fun doModeChoice(
-        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, verbose: Boolean
+        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, modeSpeedUp: Map<Mode, Double>, verbose: Boolean
     ) : List<MobiAgent> {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
@@ -44,7 +44,7 @@ class ModeChoiceCarOnly(
                     val coroutineRng = Random(mainRng.nextLong())
                     launch(dispatcher) {
                         for (diary in agent.mobilityDemand) {
-                            tripsToCar(diary, coroutineRng)
+                            tripsToCar(diary, coroutineRng, modeSpeedUp)
                         }
                         val done = jobsDone.incrementAndGet()
                         if (verbose) { print("Mode Choice: ${ProgressBar.show(done / totalJobs)}\r") }
@@ -63,7 +63,7 @@ class ModeChoiceCarOnly(
      * @param diary Mobility pattern on a day
      * @param rng Random number generator used in the thread.
      */
-    private fun tripsToCar(diary: Diary, rng: Random) {
+    private fun tripsToCar(diary: Diary, rng: Random, modeSpeedUp: Map<Mode, Double>) {
         val visitor = {
                 trip: Trip, originActivity: Activity, destinationActivity: Activity,
                 _: LocalTime, _: Weekday, _: Boolean ->
@@ -86,7 +86,7 @@ class ModeChoiceCarOnly(
             }
 
             trip.mode = Mode.CAR_DRIVER
-            trip.time = route.time
+            trip.time = route.time / modeSpeedUp.getOrDefault(Mode.CAR_DRIVER, 1.0)
             trip.distance = route.distance
             trip.lats = route.lats
             trip.lons = route.lons

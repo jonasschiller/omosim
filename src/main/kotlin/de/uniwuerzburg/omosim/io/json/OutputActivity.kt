@@ -5,7 +5,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * OMOD result format of on activity
+ * omosim result format of on activity
  */
 @Serializable
 @SerialName("Activity")

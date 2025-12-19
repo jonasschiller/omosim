@@ -52,7 +52,7 @@ class ModeChoiceFast(
      * @return agents. Now their trips have specified modes.
      */
     override fun doModeChoice(
-        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, verbose: Boolean
+        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, modeSpeedUp: Map<Mode, Double>, verbose: Boolean
     ) : List<MobiAgent> {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()

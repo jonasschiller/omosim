@@ -1,6 +1,7 @@
 package de.uniwuerzburg.omosim.core
 
 import de.uniwuerzburg.omosim.core.models.MobiAgent
+import de.uniwuerzburg.omosim.core.models.Mode
 import kotlinx.coroutines.CoroutineDispatcher
 import java.util.*
 
@@ -18,6 +19,6 @@ interface ModeChoice {
      * @return agents. Now their trips have specified modes.
      */
     fun doModeChoice(
-        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, verbose: Boolean = true
+        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, modeSpeedUp: Map<Mode, Double>, verbose: Boolean = true
     ) : List<MobiAgent>
 }

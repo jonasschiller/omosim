@@ -1,6 +1,7 @@
 package de.uniwuerzburg.omosim.core
 
 import de.uniwuerzburg.omosim.core.models.*
+import de.uniwuerzburg.omosim.io.geojson.property.BuildingProperties
 import de.uniwuerzburg.omosim.io.geojson.GeoJsonFeatureCollection
 import de.uniwuerzburg.omosim.io.json.readJson
 import de.uniwuerzburg.omosim.io.json.readJsonFromResource
@@ -34,7 +35,7 @@ class AgentFactoryDefaultTest {
 
         // Get buildings
         val buildingFile = File(Omosim::class.java.classLoader.getResource("testBuildings.geojson")!!.file)
-        val collection: GeoJsonFeatureCollection = readJson(buildingFile)
+        val collection: GeoJsonFeatureCollection<BuildingProperties> = readJson(buildingFile)
         val buildings =  Building.fromGeoJson(
             collection, GeometryFactory(), CRSTransformer( 11.630883577905143 ), locChoiceWeightFuns
         )
@@ -82,7 +83,7 @@ class AgentFactoryDefaultTest {
 
         // Get buildings
         val buildingFile = File(Omosim::class.java.classLoader.getResource("testBuildings.geojson")!!.file)
-        val collection: GeoJsonFeatureCollection = readJson(buildingFile)
+        val collection: GeoJsonFeatureCollection<BuildingProperties> = readJson(buildingFile)
         val buildings =  Building.fromGeoJson(
             collection, GeometryFactory(), CRSTransformer( 11.630883577905143 ), locChoiceWeightFuns
         )
@@ -120,7 +121,7 @@ class AgentFactoryDefaultTest {
 
         // Get buildings
         val buildingFile = File(Omosim::class.java.classLoader.getResource("testBuildings.geojson")!!.file)
-        val collection: GeoJsonFeatureCollection = readJson(buildingFile)
+        val collection: GeoJsonFeatureCollection<BuildingProperties> = readJson(buildingFile)
         val buildings =  Building.fromGeoJson(
             collection, GeometryFactory(), CRSTransformer( 11.630883577905143 ), locChoiceWeightFuns
         )
