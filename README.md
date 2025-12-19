@@ -1,6 +1,6 @@
-# OMOD (OpenStreetMap Mobility Demand Generator)
+# OMoSim: An Open Mobility Demand Simulator
 
-OMOD is a tool that creates synthetic mobility demand based on OpenStreetMap data
+Omosim (formerly known as OMOD) is a tool that creates synthetic mobility demand based on OpenStreetMap data
 for a user-defined location.
 The generated demand describes what an agent *plans* to do on a given day
 in the form of daily activity diaries.
@@ -8,67 +8,72 @@ in the form of daily activity diaries.
 Default output format (see [JsonExample.json](doc/outputFormats/JsonExample.json)):
 
 ```
-[
-    {
-        "id": 0,                          // ID of the agent/person
-        "homogenousGroup": "UNDEFINED",   // Options: WORKING, NON_WORKING, PUPIL_STUDENT, UNDEFINED
-        "mobilityGroup": "UNDEFINED",     // Options: CAR_USER, CAR_MIXED, NOT_CAR, UNDEFINED
-        "age": null,                      // Int?
-        "sex": "UNDEFINED",               // Options:  MALE, FEMALE, UNDEFINED
-        "carAccess": false,               // Boolean
-        "mobilityDemand": [               // Generated mobility demand
-            {
-                "day": 0,                 // Zero indexed day number
-                "dayType": "UNDEFINED",   // Options: MO, TU, WE, TH, FR, SA, SU, HO, UNDEFINED; HO = Holiday
-                "plan": [                 // Mobility plan for a given day. Activities - Trip - Activity - ... - Activity
-                    {
-                        "type": "Activity",                    // Either "Activity" or "Trip"
-                        "legID": 0,                            // Index in the daily plan (count continues for both activities and trips)
-                        "activityType": "HOME",                // Options: HOME, WORK, SCHOOL, SHOPPING, OTHER
-                        "startTime": "00:00",                  
-                        "stayTimeMinute": 346.3270257434699,   // Time spent at location. Unit: Minutes. Always Null for the last activity: means "until end of day"
-                        "lat": 49.770390415910654,             // Latitude
-                        "lon": 9.926447964597246,              // Longitude
-                        "dummyLoc": false,                     // Placeholder for calibration: currently always false
-                        "inFocusArea": true                    // Is that location inside the area defined by the GeoJson?
-                    },
-                    {
-                        "type": "Trip",
-                        "legID": 1,
-                        "mode": "BICYCLE",                        // Transport mode of trip. Options: CAR_DRIVER, CAR_PASSENGER, PUBLIC_TRANSIT, BICYCLE, FOOT, UNDEFINED
-                        "startTime": "05:46",                  
-                        "distanceKilometer": 5.9415048636329315,  // Trip distance. Unit: Kilometer
-                        "timeMinute": 21.0,                       // Trip duration. Unit: Minute
-                        "lats": [ 49.7704712, 49.7714712, 49.77499469890436 ],  // Trip path coordinates. Only returned when --return_path_coords y 
-                        "lons": [ 9.9266363, 9.9264601, 9.874013608000029]
-                        ]
-                    },
-                    {
-                        "type": "Activity",
-                        "legID": 2,
-                        "activityType": "WORK",
-                        "startTime": "06:07",
-                        "stayTimeMinute": 553.6428611125708,
-                        "lat": 49.77492197538944,
-                        "lon": 9.873904883397765,
-                        "dummyLoc": false,
-                        "inFocusArea": false
-                    },
-                    ...
-                ]
-            },
-            ...
-        ]
+{
+    "runParameters": {
+        ...
     },
-    ...
-]
+    "agents": [
+       {
+           "id": 0,                          // ID of the agent/person
+           "homogenousGroup": "UNDEFINED",   // Options: WORKING, NON_WORKING, PUPIL_STUDENT, UNDEFINED
+           "mobilityGroup": "UNDEFINED",     // Options: CAR_USER, CAR_MIXED, NOT_CAR, UNDEFINED
+           "age": null,                      // Int?
+           "sex": "UNDEFINED",               // Options:  MALE, FEMALE, UNDEFINED
+           "carAccess": false,               // Boolean
+           "mobilityDemand": [               // Generated mobility demand
+               {
+                   "day": 0,                 // Zero indexed day number
+                   "dayType": "UNDEFINED",   // Options: MO, TU, WE, TH, FR, SA, SU, HO, UNDEFINED; HO = Holiday
+                   "plan": [                 // Mobility plan for a given day. Activities - Trip - Activity - ... - Activity
+                       {
+                           "type": "Activity",                    // Either "Activity" or "Trip"
+                           "legID": 0,                            // Index in the daily plan (count continues for both activities and trips)
+                           "activityType": "HOME",                // Options: HOME, WORK, SCHOOL, SHOPPING, OTHER
+                           "startTime": "00:00",                  
+                           "stayTimeMinute": 346.3270257434699,   // Time spent at location. Unit: Minutes. Always Null for the last activity: means "until end of day"
+                           "lat": 49.770390415910654,             // Latitude
+                           "lon": 9.926447964597246,              // Longitude
+                           "dummyLoc": false,                     // Placeholder for calibration: currently always false
+                           "inFocusArea": true                    // Is that location inside the area defined by the GeoJson?
+                       },
+                       {
+                           "type": "Trip",
+                           "legID": 1,
+                           "mode": "BICYCLE",                        // Transport mode of trip. Options: CAR_DRIVER, CAR_PASSENGER, PUBLIC_TRANSIT, BICYCLE, FOOT, UNDEFINED
+                           "startTime": "05:46",                  
+                           "distanceKilometer": 5.9415048636329315,  // Trip distance. Unit: Kilometer
+                           "timeMinute": 21.0,                       // Trip duration. Unit: Minute
+                           "lats": [ 49.7704712, 49.7714712, 49.77499469890436 ],  // Trip path coordinates. Only returned when --return_path_coords y 
+                           "lons": [ 9.9266363, 9.9264601, 9.874013608000029]
+                           ]
+                       },
+                       {
+                           "type": "Activity",
+                           "legID": 2,
+                           "activityType": "WORK",
+                           "startTime": "06:07",
+                           "stayTimeMinute": 553.6428611125708,
+                           "lat": 49.77492197538944,
+                           "lon": 9.873904883397765,
+                           "dummyLoc": false,
+                           "inFocusArea": false
+                       },
+                       ...
+                   ]
+               },
+               ...
+           ]
+       },
+       ...
+    ]
+}
 ```
 
 Other possible output formats are [MATSim population .xml files](doc/outputFormats/MATSimExample.xml) and
 [SQLite](doc/outputFormats/SQLiteStructure.md).
 The output format is inferred from the given output file extension.
 
-Technically, OMOD will run for any location on Earth.
+Technically, Omosim will run for any location on Earth.
 However, we calibrated the model using data from the German national household travel survey
 (https://www.mobilitaet-in-deutschland.de/publikationen2017.html).
 Therefore, the model's performance outside of Germany,
@@ -77,29 +82,42 @@ is uncertain.
 Additionally, the region must be mapped reasonably well in OpenStreetMap.
 Good mapping information about the location and size of buildings, land use zones, and the road network is especially important.
 Census information of the region is not required but helpful;
-see python_tools/format_zensus2011.py for an example of how to correctly format census data for OMOD.
+see python_tools/format_zensus2011.py for an example of how to correctly format census data for Omosim.
 
-The methodology behind the demand generation process is explained in the publication [OMOD: An open-source tool for creating disaggregated mobility demand based on OpenStreetMap](https://doi.org/10.1016/j.compenvurbsys.2023.102029).
+With Version 2.2 you can now also use [Overture Maps](https://overturemaps.org) instead of OSM for building and POI data,
+which is more complete in certain parts of the world (e.g., South Korea).
+
+Publications:
+- The methodology behind the demand generation process is explained in the publication [OMOD: An open-source tool for creating disaggregated mobility demand based on OpenStreetMap](https://doi.org/10.1016/j.compenvurbsys.2023.102029)
+- The methodology behind the mode choice model is explained in the publication [Transport Mode Choice for Disaggregated Mobility Demand Generation](https://ieeexplore.ieee.org/abstract/document/11003939)
 
 ## Get Started
 
 You need Java 17 or a later version.
 
-1. Download the latest release of OMOD (see *Releases* on the right)
+1. Download the latest release of Omosim (see *Releases* on the right)
 2. Download OSM data of the region you are interested in as an osm.pbf.The file can cover a larger area than the area of interest, but too large files slow down initialization. Recommended download site: https://download.geofabrik.de/
 3. Get a GeoJson of the region you want to simulate. This region must be covered by the osm.pbf file. With https://geojson.io, you can easily create a geojson of an arbitrary region. Geojsons for administrative areas can be obtained quickly with https://polygons.openstreetmap.fr/.
-4. Run OMOD:
+4. Run Omosim:
 
    ```
-   java -jar omod-2.0.18-all.jar Path/to/GeoJson Path/to/osm.pbf 
+   java -jar omosim-2.2.1-all.jar Path/to/GeoJson Path/to/osm.pbf 
    ```
 
 There are multiple optional cli arguments, such as the number of agents, the number of days, or the population definition.
 See all [cli options here](#CLI-Options) or run --help.
 
+## Visualization
+
+A visualization tool for Omosim is available at: https://github.com/L-Strobel/omosim-visualizer
+
+<p align="center">
+   <img src="doc/images/omosim_vis_far.png" width="1000" alt="omosim Visualization Würzburg Far"/>
+</p>
+
 ## Routing Mode
 
-OMOD determines the destination choice of agents based on a gravity model.
+Omosim determines the destination choice of agents based on a gravity model.
 The necessary distances from A to B can be calculated with the
 routing mode GraphHopper and Beeline.
 The first calculates the distance by car using the open-source router GraphHopper
@@ -186,7 +204,7 @@ First, add the jar to your classpath.
 Basic example:
 
 ```java
-import de.uniwuerzburg.omosim.core.Omod;
+import de.uniwuerzburg.omosim.core.Omosim;
 import de.uniwuerzburg.omosim.core.models.MobiAgent;
 import de.uniwuerzburg.omosim.core.models.Diary;
 import de.uniwuerzburg.omosim.core.models.Weekday;
@@ -198,107 +216,133 @@ import java.io.File;
 import java.util.List;
 
 class App {
-    public static void main(String[] args) {
-        File areaFile = new File("Path/to/GeoJson");
-        File osmFile = new File("Path/to/osm.pbf");
-
-        // Create a simulator
-        Omod omod = Omod.Companion.defaultFactory(areaFile, osmFile);
-
-        // Run for 1000 agents, an undefined start day, and 1 day
-        List<MobiAgent> agents = omod.run(1000, Weekday.UNDEFINED, 1);
-
-        // Do something with the result. E.g. get conducted activities 
-        List<ActivityType> activities = new LinkedList<ActivityType>();
-        for (MobiAgent agent : agents) {
-            for (Diary diary : agent.getMobilityDemand()) {
-                for (Activity activity : diary.getActivities()) {
-                    activities.add(activity.getType());
-                }
+   public static void main (String[] args) {
+      File areaFile = new File("Path/to/GeoJson");
+      File osmFile = new File("Path/to/osm.pbf");
+   
+      // Create a simulator
+      Omosim omosim = Omosim.Companion.defaultFactory(areaFile, osmFile);
+   
+      // Run for 1000 agents, an undefined start day, and 1 day
+      List<MobiAgent> agents = omosim.run(1000, Weekday.UNDEFINED, 1);
+   
+      // Do something with the result. E.g. get conducted activities 
+      List<ActivityType> activities = new LinkedList<ActivityType>();
+      for (MobiAgent agent : agents) {
+         for (Diary diary : agent.getMobilityDemand()) {
+            for (Activity activity : diary.getActivities()) {
+                activities.add(activity.getType());
             }
-        }
-    }
+         }
+      }
+   }
 }
 ```
 
 ## CLI Options
 
 ```
-  --n_agents=<int>          Number of agents to simulate. If
-                            populate_buffer_area = y, additional agents are
-                            created to populate the buffer area.
-  --share_pop=<float>       Share of the population to simulate. 0.0 = 0%, 1.0
-                            = 100% If populate_buffer_area = y, additional
-                            agents are created to populate the buffer area.
-  --n_days=<int>            Number of days to simulate
+Usage: run [<options>] <area_geojson> <osm_file>
+
+Options:
+  --n_agents=<int>              Number of agents to simulate. If
+                                populate_buffer_area = y, additional agents are
+                                created to populate the buffer area.
+  --share_pop=<float>           Share of the population to simulate. 0.0 = 0%,
+                                1.0 = 100% If populate_buffer_area = y,
+                                additional agents are created to populate the
+                                buffer area.
+  --n_days=<int>                Number of days to simulate
   --start_wd=(MO|TU|WE|TH|FR|SA|SU|HO|UNDEFINED)
-                            First weekday to simulate. If the value is set to
-                            UNDEFINED, all simulated days will be UNDEFINED.
-  --out=<path>              Output file. The output format is inferred from the
-                            ending: '.json' -> Json, '.xml'-> MATSim, '.db'->
-                            SQLite
+                                First weekday to simulate. If the value is set
+                                to UNDEFINED, all simulated days will be
+                                UNDEFINED.
+  --out=<path>                  Output file. The output format is inferred from
+                                the ending: '.json' -> Json, '.xml'-> MATSim,
+                                '.db'-> SQLite
   --routing_mode=(GRAPHHOPPER|BEELINE)
-                            Distance calculation method for destination choice.
-                            Either euclidean distance (BEELINE) or routed
-                            distance by car (GRAPHHOPPER)
-  --od=<path>               [Experimental] Path to an OD-Matrix in GeoJSON
-                            format. The matrix is used to further calibrate the
-                            model to the area using k-factors.
-  --census=<path>           Path to population data in GeoJSON format. For an
-                            example of how to create such a file see
-                            python_tools/format_zensus2011.py. Should cover the
-                            entire area, but can cover more.
-  --grid_precision=<float>  Allowed average distance between a focus area
-                            building and its corresponding TAZ center. The
-                            default is 150m and suitable in most cases.In the
-                            buffer area the allowed distance increases
-                            quadratically with distance. Unit: meters
-  --buffer=<float>          Distance by which the focus area (defined by
-                            GeoJSON) is buffered in order to account for
-                            traffic generated by the surrounding. Unit: meters
-  --seed=<int>              RNG seed.
-  --cache_dir=<path>        Cache directory
+                                Distance calculation method for destination
+                                choice. Either euclidean distance (BEELINE) or
+                                routed distance by car (GRAPHHOPPER)
+  --od=<path>                   [Experimental] Path to an OD-Matrix in GeoJSON
+                                format. The matrix is used to further calibrate
+                                the model to the area using k-factors.
+  --census=<path>               Path to population data in GeoJSON format. For
+                                an example of how to create such a file see
+                                python_tools/format_zensus2011.py. Should cover
+                                the entire area, but can cover more.
+  --grid_precision=<float>      Allowed average distance between a focus area
+                                building and its corresponding TAZ center. The
+                                default is 150m and suitable in most cases.In
+                                the buffer area the allowed distance increases
+                                quadratically with distance. Unit: meters
+  --buffer=<float>              Distance by which the focus area (defined by
+                                GeoJSON) is buffered in order to account for
+                                traffic generated by the surrounding. Unit:
+                                meters
+  --seed=<int>                  RNG seed.
+  --cache_dir=<path>            Cache directory
   --populate_buffer_area=true|false
-                            Determines if home locations of agents can be in
-                            the buffer area (so outside of the focus area). If
-                            set to 'y' additional agents will be created so
-                            that the proportion of agents in and outside the
-                            focus area is the same as in the census data. The
-                            focus area will always be populated by n_agents
-                            agents.
+                                Determines if home locations of agents can be
+                                in the buffer area (so outside of the focus
+                                area). If set to 'y' additional agents will be
+                                created so that the proportion of agents in and
+                                outside the focus area is the same as in the
+                                census data. The focus area will always be
+                                populated by n_agents agents.
   --distance_matrix_cache_size=<int>
-                            Maximum number of entries of the distance matrix to
-                            precompute (only if routing_mode is GRAPHHOPPER). A
-                            high value will lead to high RAM usage and long
-                            initialization times but overall significant speed
-                            gains. The default value will use approximately 8
-                            GB RAM at maximum.
+                                Maximum number of entries of the distance
+                                matrix to precompute (only if routing_mode is
+                                GRAPHHOPPER). A high value will lead to high
+                                RAM usage and long initialization times but
+                                overall significant speed gains. The default
+                                value will use approximately 8 GB RAM at
+                                maximum.
   --mode_choice=(NONE|CAR_ONLY|GTFS)
-                            Type of mode choice. NONE: Returns trips with
-                            undefined modes.GTFS: Uses a logit model with
-                            public transit as an option
+                                Type of mode choice. NONE: Returns trips with
+                                undefined modes.GTFS: Uses a logit model with
+                                public transit as an option
   --return_path_coords=true|false
-                            Whether lat/lon coordinates of chosen trip paths
-                            are returned.Paths only exist for trips with
-                            defined modes and within the focus area + buffer.
-  --population_file=<path>  Path to file that describes the socio-demographic
-                            makeup of the population. Must be formatted like
-                            omod/src/main/resources/Population.json.
-  --n_worker=<int>          Number of parallel coroutines that can be executed
-                            at the same time. Default: Number of CPU-Cores
-                            available.
-  --gtfs_file=<path>        Path to an General Transit Feed Specification
-                            (GTFS) for the area. Required for public transit
-                            routing,for example if public transit is an option
-                            in mode choice.Must be a .zip file or a directory
-                            (see https://gtfs.org/).Recommended download
-                            platform for Germany: https://gtfs.de/
-  -h, --help                Show this message and exit
+                                Whether lat/lon coordinates of chosen trip
+                                paths are returned.Paths only exist for trips
+                                with defined modes and within the focus area +
+                                buffer.
+  --population_file=<path>      Path to file that describes the
+                                socio-demographic makeup of the population.
+                                Must be formatted like
+                                omosim/src/main/resources/Population.json.
+  --activity_group_file=<path>  Path to file that describes the activity chains
+                                for each population group and the dwell-time
+                                distribution for the each chain. Must be
+                                formatted like
+                                omosim/src/main/resources/ActivityGroup.json
+  --n_worker=<int>              Number of parallel coroutines that can be
+                                executed at the same time. Default: Number of
+                                CPU-Cores available.
+  --gtfs_file=<path>            Path to an General Transit Feed Specification
+                                (GTFS) for the area. Required for public
+                                transit routing,for example if public transit
+                                is an option in mode choice. Must be a .zip
+                                file or a directory (see https://gtfs.org/).
+                                Recommended download platform for Germany:
+                                https://gtfs.de/
+  --mapdata_overture=<text>     Use overture map data instead of OSM for
+                                buildings and POIs. Usage: --mapdata_overture
+                                RELEASE. Where RELEASE is a valid overture
+                                release. For an introduction to Overture Maps
+                                see https://overturemaps.org/
+  --matsim_output_crs=<text>    CRS of MatSIM output. Must be a code understood
+                                by org.geotools.referencing.CRS.decode().
+  --mode_speed_up=<value>       Value: MODE=FACTOR. Multiply the travel time of
+                                each trip of the mode by the factor.Example:
+                                CAR_DRIVER=0.3, will slow down car travel
+                                durations by 70%.
+  -h, --help                    Show this message and exit
 ```
 
 ## Documentation
 
-An API reference is available at: https://L-Strobel.github.io/omod
+An API reference is available at: https://L-Strobel.github.io/omosim
 
 ## Acknowledgment
 

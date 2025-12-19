@@ -1,5 +1,5 @@
 
-rootProject.name = "omod"
+rootProject.name = "omosim"
 
 pluginManagement {
     repositories {
