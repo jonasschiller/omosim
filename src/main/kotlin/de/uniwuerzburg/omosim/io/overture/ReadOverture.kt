@@ -158,7 +158,7 @@ fun readOverture(
     // Get buildings
     val buildings = geoBuildings.features
         .mapIndexedNotNull { index, feature ->
-            val geom = transformer.tomosimelCRS(feature.geometry.toJTS(factory = geometryFactory))
+            val geom = transformer.toModelCRS(feature.geometry.toJTS(factory = geometryFactory))
             if (geom.area > 10) BuildingData(index.toLong(), geom) else null
         }
         .toMutableList()
@@ -172,7 +172,7 @@ fun readOverture(
     placesFeatures.forEach { point ->
         val types = determineTypes(point, tagsDict)
         if (types.isNotEmpty()) {
-            val geom = transformer.tomosimelCRS(point.geometry.toJTS(factory = geometryFactory))
+            val geom = transformer.toModelCRS(point.geometry.toJTS(factory = geometryFactory))
             types.forEach { type ->
                 val extraInfo = MapObject(idCounter++, type, geom)
                 extraInfoTree.insert(geom.envelopeInternal, extraInfo)
@@ -182,7 +182,7 @@ fun readOverture(
 
     geoLandUse.features.forEach { point ->
         val type=getShortLanduseDescription(point.properties.landUseClass)
-        val geom = transformer.tomosimelCRS(point.geometry.toJTS(geometryFactory))
+        val geom = transformer.toModelCRS(point.geometry.toJTS(geometryFactory))
         if (type != null) {
             val extraInfo = MapObject(idCounter++, type, geom)
             extraInfoTree.insert(geom.envelopeInternal, extraInfo)

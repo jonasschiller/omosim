@@ -12,9 +12,11 @@ import de.uniwuerzburg.omosim.core.DestinationFinderDefault
 import de.uniwuerzburg.omosim.core.Omosim
 import de.uniwuerzburg.omosim.core.logger
 import de.uniwuerzburg.omosim.core.models.ActivityType
+import de.uniwuerzburg.omosim.core.models.Mode
 import de.uniwuerzburg.omosim.core.models.ModeChoiceOption
 import de.uniwuerzburg.omosim.core.models.Weekday
 import de.uniwuerzburg.omosim.io.formatOutput
+import de.uniwuerzburg.omosim.io.json.writeJSONOutput
 import de.uniwuerzburg.omosim.io.matsim.writeMatSim
 import de.uniwuerzburg.omosim.io.sqlite.writeSQLite
 import de.uniwuerzburg.omosim.routing.RoutingMode
@@ -29,11 +31,18 @@ sealed interface AgentNumberDefinition
 
 class FixedAgentNumber(
     val value: Int
-) : AgentNumberDefinition
+) : AgentNumberDefinition {
+    override fun toString(): String {
+        return this.value.toString()
+    }
+}
 class ShareOfPop (
     val value: Double
-) : AgentNumberDefinition
-
+) : AgentNumberDefinition {
+    override fun toString(): String {
+        return this.value.toString()
+    }
+}
 
 class CalibrationOptions : OptionGroup (
     help = "Calibration parameters."
@@ -124,7 +133,7 @@ class Run : CliktCommand() {
     ).double().default(0.0)
     private val seed by option(help = "RNG seed.").long()
     private val cache_dir by option(help = "Cache directory")
-        .path(canBeDir = true, canBeFile = false).default(Paths.get("omod_cache/"))
+        .path(canBeDir = true, canBeFile = false).default(Paths.get("omosim_cache/"))
     private val populate_buffer_area by option(
         help = "Determines if home locations of agents can be in the buffer area (so outside of the focus area). " +
                "If set to 'y' additional agents will be created so that the proportion of agents in and " +
@@ -147,7 +156,11 @@ class Run : CliktCommand() {
     ).boolean().default(false)
     private val population_file by option(
         help="Path to file that describes the socio-demographic makeup of the population. " +
-             "Must be formatted like omod/src/main/resources/Population.json."
+             "Must be formatted like omosim/src/main/resources/Population.json."
+    ).file(mustExist = true, mustBeReadable = true)
+    private val activity_group_file by option(
+        help="Path to file that describes the activity chains for each population group and the dwell-time distribution for the each chain. " +
+        "Must be formatted like omosim/src/main/resources/ActivityGroup.json"
     ).file(mustExist = true, mustBeReadable = true)
     private val n_worker by option(
         help="Number of parallel coroutines that can be executed at the same time. " +
@@ -157,9 +170,24 @@ class Run : CliktCommand() {
         help = "Path to an General Transit Feed Specification (GTFS) for the area. " +
                "Required for public transit routing," +
                "for example if public transit is an option in mode choice. " +
-               "Must be a .zip file or a directory (see https://gtfs.org/)." +
+               "Must be a .zip file or a directory (see https://gtfs.org/). " +
                "Recommended download platform for Germany: https://gtfs.de/"
     ).file(mustExist = true, mustBeReadable = true)
+    private val mapdata_overture by option(
+        help = "Use overture map data instead of OSM for buildings and POIs. " +
+               "Usage: --mapdata_overture RELEASE. Where RELEASE is a valid overture release. " +
+               "For an introduction to Overture Maps see https://overturemaps.org/"
+    )
+    private val matsim_output_crs by option(
+        help = "CRS of MatSIM output. Must be a code understood by org.geotools.referencing.CRS.decode()."
+    ).default("EPSG:4326")
+    private val mode_speed_up by option(
+        help = "Value: MODE=FACTOR. Multiply the travel time of each trip of the mode by the factor." +
+               "Example: CAR_DRIVER=0.3, will slow down car travel durations by 70%."
+    ).splitPair()
+     .convert { (first, second) -> Mode.valueOf(first.uppercase()) to second.toDouble() }
+     .multiple()
+     .toMap()
     private val calibrationParameter by CalibrationOptions().cooccurring()
     private val calibration_file by option(
         help = "Calibration input file to use for regular run." +
@@ -179,10 +207,11 @@ class Run : CliktCommand() {
         if ((gtfs_file == null) && (mode_choice == ModeChoiceOption.GTFS)) {
             throw Exception(
                 "Mode choice includes public transit as option but no GTFS file is provided." +
-                "Add a gtfs file with --gtfs_file")
+                "Add a gtfs file with --gtfs_file"
+            )
         }
 
-        // Init OMOD
+        // Init omosim
         val omosim = Omosim(
             area_geojson, osm_file,
             routingMode = routing_mode,
@@ -192,8 +221,11 @@ class Run : CliktCommand() {
             populateBufferArea = populate_buffer_area,
             distanceCacheSize = distance_matrix_cache_size,
             populationFile = population_file,
+            activityGroupFile = activity_group_file,
             nWorker = n_worker,
-            gtfsFile = gtfs_file
+            gtfsFile = gtfs_file,
+            overtureRelease = mapdata_overture,
+            modeSpeedUp = mode_speed_up
         )
 
         // Apply Calibration
@@ -244,21 +276,31 @@ class Run : CliktCommand() {
         // Mode Choice
         omosim.doModeChoice(agents, mode_choice, return_path_coords, verbose = true)
 
+        // Format run parameters:
+        val runParameters = mutableMapOf<String, String>()
+        for (arg in this.registeredArguments()) {
+            val sArg = arg.toString().split("=")
+            runParameters[sArg.first()] = sArg.drop(1).joinToString("")
+        }
+        for (opt in this.registeredOptions()) {
+            if (opt.toString().contains("=")) {
+                val sOpt = opt.toString().split("=")
+                runParameters[sOpt.first()] = sOpt.drop(1).joinToString("")
+            }
+        }
+
         // Store output
         logger.get()?.info("Saving results...")
         val success: Boolean
         when (out.extension) {
             "json" -> {
-                FileOutputStream(out).use { f ->
-                    Json.encodeToStream( agents.map { formatOutput(it) }, f)
-                }
-                success = true
+                success = writeJSONOutput(agents.map { formatOutput(it) }, out, runParameters)
             }
             "db" -> {
-                success = writeSQLite(agents.map { formatOutput(it) }, out)
+                success = writeSQLite(agents.map { formatOutput(it) }, out, runParameters)
             }
             "xml" -> {
-                success = writeMatSim(agents.map { formatOutput(it) }, out, n_days)
+                success = writeMatSim(agents.map { formatOutput(it) }, out, n_days, matsim_output_crs, runParameters)
             }
             else -> {
                 logger.get()?.info(
@@ -267,10 +309,7 @@ class Run : CliktCommand() {
                     "Falling back to JSON"
                 )
                 val newOut = File(out.parent, out.nameWithoutExtension + ".json")
-                FileOutputStream(newOut).use { f ->
-                    Json.encodeToStream( agents.map { formatOutput(it) }, f)
-                }
-                success = true
+                success = writeJSONOutput(agents.map { formatOutput(it) }, newOut, runParameters)
             }
         }
         if (success) {

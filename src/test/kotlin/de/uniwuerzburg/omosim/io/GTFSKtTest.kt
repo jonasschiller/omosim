@@ -25,7 +25,7 @@ class GTFSKtTest {
 
         val outputBaseDir = File("$tmpDirName/test-output").apply { mkdirs() }
         val actualClippedFolder = File(outputBaseDir, "clippedGTFS")
-        clipGTFSTest(input, expectedFolder, outputBaseDir,actualClippedFolder, bbox_germany_small)
+        clipGTFSTest(input, expectedFolder, outputBaseDir, actualClippedFolder, bbox_germany_small)
     }
 
     @Test
@@ -34,7 +34,7 @@ class GTFSKtTest {
         val expectedFolder = File(javaClass.getResource("/clippedGTFSKoreaSmall")!!.toURI())
         val outputBaseDir = File("$tmpDirName/test-output").apply { mkdirs() }
         val actualClippedFolder = File(outputBaseDir, "clippedGTFS")
-        clipGTFSTest(input, expectedFolder, outputBaseDir,actualClippedFolder, bbox_korea_small)
+        clipGTFSTest(input, expectedFolder, outputBaseDir, actualClippedFolder, bbox_korea_small)
     }
 
     fun clipGTFSTest(input: Path, expectedFolder: File, outputBaseDir: File, actualClippedFolder: File, bbBox: Envelope) {

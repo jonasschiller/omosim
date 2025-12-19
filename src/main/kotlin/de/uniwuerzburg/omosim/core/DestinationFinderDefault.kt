@@ -17,6 +17,8 @@ class DestinationFinderDefault(
     private var firstOrderCFactors: Map<ActivityType, Map<ODZone, Double>> = mapOf()
     private var secondOrderCFactors: Map<Pair<ActivityType, ActivityType>, Map<Pair<ODZone, ODZone>, Double>> = mapOf()
 
+    // Transition matrix that overwrites gravity models on the aggregated level.
+    // Currently only used for the experimental de.uniwuerzburg.omosim.calibration.surrogate.SGGravity.optimizeTMatrix()
     val forcedTransitionMatrix = mutableMapOf<ActivityType, Map<Cell, DoubleArray>>()
 
     /**

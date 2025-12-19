@@ -2,7 +2,7 @@ package de.uniwuerzburg.omosim.calibration
 
 import de.uniwuerzburg.omosim.core.Omosim
 import de.uniwuerzburg.omosim.core.models.RealLocation
-import de.uniwuerzburg.omosim.routing.routeAltCar
+import de.uniwuerzburg.omosim.routing.routeCarAlternatives
 import de.uniwuerzburg.omosim.routing.routeWith
 import de.uniwuerzburg.omosim.utils.CRSTransformer
 import kotlinx.coroutines.flow.channelFlow
@@ -149,7 +149,7 @@ class TrafficSensor(
                     for (origin in omosim.grid) {
                         launch {
                             for (destination in omosim.grid) {
-                                val response = routeAltCar(origin, destination, omosim.hopper!!)
+                                val response = routeCarAlternatives(origin, destination, omosim.hopper!!)
                                 val thisAffected = mutableListOf<List<TrafficSensor>>()
 
                                 for (path in response.all) {

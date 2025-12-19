@@ -40,7 +40,7 @@ fun readCensus(
         var population = censusEntree.properties.population
         if (population <= 0) { continue }
 
-        val censusZone = transformer.tomosimelCRS( censusEntree.geometry.toJTS(geometryFactory) )
+        val censusZone = transformer.toModelCRS(censusEntree.geometry.toJTS(geometryFactory) )
 
         val intersectingBuildings = buildingsTree.query(censusZone.envelopeInternal)
             .map { it as BuildingData }

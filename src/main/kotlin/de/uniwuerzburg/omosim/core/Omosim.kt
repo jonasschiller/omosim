@@ -643,7 +643,7 @@ class Omosim (
             // For all car trips
             if ((trip.mode == Mode.CAR_DRIVER) && (odt in altPercentages)){
                 // Find alternatives
-                val response = routeAltCar(
+                val response = routeCarAlternatives(
                     originActivity.location.getAggLoc()!! as RealLocation,
                     destinationActivity.location.getAggLoc()!! as RealLocation,
                     hopper!!

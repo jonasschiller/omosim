@@ -49,7 +49,15 @@ fun routeWith (profile: String, origin: RealLocation, destination: RealLocation,
     return hopper.route(req)
 }
 
-fun routeAltCar (origin: RealLocation, destination: RealLocation, hopper: GraphHopper) : GHResponse {
+/**
+ * Determine the best car path and several alternatives between two locations.
+ *
+ * @param origin Location A
+ * @param destination Location B
+ * @param hopper GraphHopper object
+ * @return GHResponse (Wrapper around the best routes)
+ */
+fun routeCarAlternatives (origin: RealLocation, destination: RealLocation, hopper: GraphHopper) : GHResponse {
     val req = GHRequest(
         origin.latlonCoord.x,
         origin.latlonCoord.y,

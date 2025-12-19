@@ -22,7 +22,7 @@ class CarOwnershipFixedProbability(
         return if ((agent.age != null) && (agent.age < minDrivingAge)){
             0.0
         } else {
-            stratum.carOwnership
+           stratum.carOwnership
         }
     }
 }

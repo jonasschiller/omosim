@@ -54,7 +54,7 @@ sealed class LocationChoiceDCWeightFun {
     abstract val coeffIndustrialUnits: Double
 
     @Transient
-    var id: Int = IDDispenser.next()
+    val id: Int = IDDispenser.next()
 
     /**
      * Calculates the natural logarithm of the deterrence function given the distance from the origin.
@@ -138,9 +138,6 @@ sealed class LocationChoiceDCWeightFun {
                 coeffTourismUnits * properties.number_tourism +
                 coeffBuildingUnits * 1
     }
-
-    abstract fun getCalibrationPosition() : Array<Double>
-    abstract fun createCopyFromCalibrationPosition(position: Array<Double>) : LocationChoiceDCWeightFun
 }
 
 /**
@@ -182,14 +179,6 @@ object ByPopulation: LocationChoiceDCWeightFun () {
     override fun calcFor(destination: RealLocation, distance: Double): Double {
         throw NotImplementedError()
     }
-
-    override fun getCalibrationPosition(): Array<Double> {
-       return arrayOf()
-    }
-
-    override fun createCopyFromCalibrationPosition(position: Array<Double>) : ByPopulation {
-        return this
-    }
 }
 
 /**
@@ -230,64 +219,6 @@ class PureAttraction (
 
     override fun calcFor(destination: RealLocation, distance: Double): Double {
         throw NotImplementedError()
-    }
-
-    override fun getCalibrationPosition() : Array<Double> {
-        val x = arrayOf(
-            coeffResidentialArea,
-            coeffCommercialArea,
-            coeffRetailArea,
-            coeffIndustrialArea,
-            coeffOfficeArea,
-            coeffShopArea,
-            coeffSchoolArea,
-            coeffUniversityArea,
-            coeffOtherArea,
-            coeffOfficeUnits,
-            coeffShopUnits,
-            coeffSchoolUnits,
-            coeffUniUnits,
-            coeffPlaceOfWorshipUnits,
-            coeffCafeUnits,
-            coeffFastFoodUnits,
-            coeffKinderGartenUnits,
-            coeffTourismUnits,
-            coeffBuildingUnits,
-            coeffResidentialUnits,
-            coeffCommercialUnits,
-            coeffRetailUnits,
-            coeffIndustrialUnits,
-        )
-        return x
-    }
-
-    override fun createCopyFromCalibrationPosition(position: Array<Double>) : PureAttraction {
-        val copy = PureAttraction(
-            position[0],
-            position[1],
-            position[2],
-            position[3],
-            position[4],
-            position[5],
-            position[6],
-            position[7],
-            position[8],
-            position[9],
-            position[10],
-            position[11],
-            position[12],
-            position[13],
-            position[14],
-            position[15],
-            position[16],
-            position[17],
-            position[18],
-            position[19],
-            position[20],
-            position[21],
-            position[22],
-        )
-        return copy
     }
 }
 
@@ -331,66 +262,6 @@ class LogNormDCUtil (
 
     override fun deterrenceFunction(distance: Double) : Double {
         return coeff0 * ln(distance) * ln(distance) + coeff1 * ln(distance)
-    }
-
-    override fun getCalibrationPosition() : Array<Double> {
-        val x = arrayOf(
-            coeffResidentialArea,
-            coeffCommercialArea,
-            coeffRetailArea,
-            coeffIndustrialArea,
-            coeffOfficeArea,
-            coeffShopArea,
-            coeffSchoolArea,
-            coeffUniversityArea,
-            coeffOtherArea,
-            coeffOfficeUnits,
-            coeffShopUnits,
-            coeffSchoolUnits,
-            coeffUniUnits,
-            coeffPlaceOfWorshipUnits,
-            coeffCafeUnits,
-            coeffFastFoodUnits,
-            coeffKinderGartenUnits,
-            coeffTourismUnits,
-            coeffBuildingUnits,
-            coeffResidentialUnits,
-            coeffCommercialUnits,
-            coeffRetailUnits,
-            coeffIndustrialUnits,
-        )
-        return x
-    }
-
-    override fun createCopyFromCalibrationPosition(position: Array<Double>) : LogNormDCUtil {
-        val copy = LogNormDCUtil(
-            position[0],
-            position[1],
-            position[2],
-            position[3],
-            position[4],
-            position[5],
-            position[6],
-            position[7],
-            position[8],
-            position[9],
-            position[10],
-            position[11],
-            position[12],
-            position[13],
-            position[14],
-            position[15],
-            position[16],
-            position[17],
-            position[18],
-            position[19],
-            position[20],
-            position[21],
-            position[22],
-            this.coeff0,
-            this.coeff1
-        )
-        return copy
     }
 }
 
@@ -463,67 +334,6 @@ class LogNormPowerDCUtil (
             super.calcFor(destination, distance)
         }
     }
-
-    override fun getCalibrationPosition() : Array<Double> {
-        val x = arrayOf(
-            coeffResidentialArea,
-            coeffCommercialArea,
-            coeffRetailArea,
-            coeffIndustrialArea,
-            coeffOfficeArea,
-            coeffShopArea,
-            coeffSchoolArea,
-            coeffUniversityArea,
-            coeffOtherArea,
-            coeffOfficeUnits,
-            coeffShopUnits,
-            coeffSchoolUnits,
-            coeffUniUnits,
-            coeffPlaceOfWorshipUnits,
-            coeffCafeUnits,
-            coeffFastFoodUnits,
-            coeffKinderGartenUnits,
-            coeffTourismUnits,
-            coeffBuildingUnits,
-            coeffResidentialUnits,
-            coeffCommercialUnits,
-            coeffRetailUnits,
-            coeffIndustrialUnits,
-        )
-        return x
-    }
-
-    override fun createCopyFromCalibrationPosition(position: Array<Double>) : LogNormPowerDCUtil {
-        val copy = LogNormPowerDCUtil(
-            position[0],
-            position[1],
-            position[2],
-            position[3],
-            position[4],
-            position[5],
-            position[6],
-            position[7],
-            position[8],
-            position[9],
-            position[10],
-            position[11],
-            position[12],
-            position[13],
-            position[14],
-            position[15],
-            position[16],
-            position[17],
-            position[18],
-            position[19],
-            position[20],
-            position[21],
-            position[22],
-            this.coeff0,
-            this.coeff1,
-            this.coeff2
-        )
-        return copy
-    }
 }
 
 /**
@@ -560,75 +370,11 @@ data class CombinedDCUtil(
     override val coeffRetailUnits: Double,
     override val coeffIndustrialUnits: Double,
     // For deterrence function
-    private var coeff0: Double,
+    private val coeff0: Double,
     private val coeff1: Double,
 ) : LocationChoiceDCWeightFun( ) {
 
     override fun deterrenceFunction(distance: Double) : Double {
         return coeff0 * distance  + coeff1 * ln(distance)
-    }
-
-    fun changeCoeff0(to: Double) {
-        coeff0 = to
-    }
-
-    override fun getCalibrationPosition() : Array<Double> {
-        val x = arrayOf(
-            coeffResidentialArea,
-            coeffCommercialArea,
-            coeffRetailArea,
-            coeffIndustrialArea,
-            coeffOfficeArea,
-            coeffShopArea,
-            coeffSchoolArea,
-            coeffUniversityArea,
-            coeffOtherArea,
-            coeffOfficeUnits,
-            coeffShopUnits,
-            coeffSchoolUnits,
-            coeffUniUnits,
-            coeffPlaceOfWorshipUnits,
-            coeffCafeUnits,
-            coeffFastFoodUnits,
-            coeffKinderGartenUnits,
-            coeffTourismUnits,
-            coeffBuildingUnits,
-            coeffResidentialUnits,
-            coeffCommercialUnits,
-            coeffRetailUnits,
-            coeffIndustrialUnits,
-        )
-        return x
-    }
-
-    override fun createCopyFromCalibrationPosition(position: Array<Double>) : CombinedDCUtil {
-        val copy = CombinedDCUtil(
-            position[0],
-            position[1],
-            position[2],
-            position[3],
-            position[4],
-            position[5],
-            position[6],
-            position[7],
-            position[8],
-            position[9],
-            position[10],
-            position[11],
-            position[12],
-            position[13],
-            position[14],
-            position[15],
-            position[16],
-            position[17],
-            position[18],
-            position[19],
-            position[20],
-            position[21],
-            position[22],
-            this.coeff0,
-            this.coeff1
-        )
-        return copy
     }
 }

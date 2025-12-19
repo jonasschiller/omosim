@@ -29,7 +29,7 @@ fun readOSM (focusArea: Geometry, fullArea: Geometry, osmFile: File,
     val extraInfoTree = HPRtree()
     while (mapObjects.isNotEmpty()) {
         val mapObject = mapObjects.removeLast()
-        val geom = transformer.tomosimelCRS(mapObject.geometry)
+        val geom = transformer.toModelCRS(mapObject.geometry)
         if (mapObject.type == MapObjectType.BUILDING) {
             buildings.add ( BuildingData(mapObject.id, geom) )
         } else {
