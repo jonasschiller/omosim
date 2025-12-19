@@ -3,4 +3,4 @@ package de.uniwuerzburg.omosim.calibration
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-val logger: Logger = LoggerFactory.getLogger("de.uniwuerzburg.omod.calibration")
+val logger: Logger = LoggerFactory.getLogger("de.uniwuerzburg.omosim.calibration")

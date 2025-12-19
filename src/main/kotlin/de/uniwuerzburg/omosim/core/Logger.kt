@@ -17,4 +17,4 @@ class PausableLogger(
     }
 }
 
-val logger: PausableLogger = PausableLogger( LoggerFactory.getLogger("de.uniwuerzburg.omod.core") )
+val logger: PausableLogger = PausableLogger( LoggerFactory.getLogger("de.uniwuerzburg.omosim.core") )

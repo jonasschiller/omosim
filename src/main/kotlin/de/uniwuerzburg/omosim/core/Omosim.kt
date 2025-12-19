@@ -218,7 +218,7 @@ class Omosim (
         // Agent factory
         agentFactory = AgentFactoryDefault(destinationFinder, carOwnership, popStrata, dispatcher)
 
-        logger.get()?.info("Initializing omosim took: ${timeSource.markNow() - timestampStartInit}")
+        logger.get()?.info("Initializing OMoSim took: ${timeSource.markNow() - timestampStartInit}")
     }
 
     // Factories

@@ -1,6 +1,6 @@
 plugins {
-    kotlin("jvm") version "2.1.20"
-    kotlin("plugin.serialization") version "1.+"
+    kotlin("jvm") version "2.2.0"
+    kotlin("plugin.serialization") version "2.2.0"
     id("com.gradleup.shadow") version "8.+"
     id("java")
     id("org.jetbrains.dokka") version "2.0.+"
@@ -15,7 +15,7 @@ allOpen {
 }
 
 group = "de.uniwuerzburg.omosim"
-version = "2.0.39-calibration-hotfix"
+version = "2.3.0"
 
 repositories {
     mavenLocal()
@@ -32,8 +32,8 @@ dependencies {
     implementation(files("libs/alglib-java/alglib406free.jar"))
     implementation("org.geotools:gt-epsg-hsql:31.+")
     implementation("org.geotools:gt-main:31.+")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.+")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.+")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("org.locationtech.jts:jts-core:1.+")
     implementation("org.apache.commons:commons-math3:3.+")
     implementation("com.github.ajalt.clikt:clikt:4.+")
@@ -50,7 +50,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:multik-core:0.2.3")
     implementation("org.jetbrains.kotlinx:multik-default:0.2.3")
     implementation("com.gurobi:gurobi:11.0.2")
-    implementation("com.github.haifengl:smile-core:4.4.0") // TODO needs Java 21
+    implementation("com.github.haifengl:smile-core:4.4.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.+")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("org.jetbrains.kotlinx:kotlinx-benchmark-runtime:0.4.13")

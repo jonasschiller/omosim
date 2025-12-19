@@ -69,7 +69,7 @@ class SGGravity(
         val (model, tstSimCounts) = buildDiffModel(activityType, sensors, affectedSensors)
 
         // DEBUG CODE // TODO DELETE
-        println(activityType)
+        /*println(activityType)
         println("Evaluate Matrix Rep")
         debugEval(generateMarkovChainRep(activityType), sensors, affectedSensors)
         println("Evaluate Graph")
@@ -77,7 +77,7 @@ class SGGravity(
             val sum = tstSimCounts[sensor]!!.map { it.evaluate(DoubleArray(omosim.grid.size - 1) { 1.0 }) }.sum()
             val measured = sensor.measuredFlow.sum()
             println("${sensor.name} \t | $measured\t|$sum ")
-        }
+        }*/
         // DEBUG ENDS
         return model
     }
