@@ -53,7 +53,7 @@ data class ODZone (
                     name = properties.origin,
                     originActivity = properties.origin_activity,
                     destinationActivity = properties.destination_activity,
-                    geometry = transformer.tomosimelCRS(it.geometry.toJTS(factory))
+                    geometry = transformer.toModelCRS(it.geometry.toJTS(factory))
                 )
             }
 

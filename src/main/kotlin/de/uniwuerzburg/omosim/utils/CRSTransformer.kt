@@ -44,7 +44,7 @@ class CRSTransformer (
      *
      * @param geometry Geometry to convert
      */
-    fun tomosimelCRS(geometry: Geometry) : Geometry {
+    fun toModelCRS(geometry: Geometry) : Geometry {
         return JTS.transform(geometry, transformerToUTM)
     }
 

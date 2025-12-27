@@ -142,7 +142,7 @@ class Omosim (
         transformer = CRSTransformer( center.coordinate.y )
 
         // Add buffer to area
-        val utmFocusArea = transformer.tomosimelCRS(focusArea)
+        val utmFocusArea = transformer.toModelCRS(focusArea)
         val utmArea = utmFocusArea.buffer(bufferRadius).convexHull()
         fullArea = transformer.toLatLon(utmArea)
 

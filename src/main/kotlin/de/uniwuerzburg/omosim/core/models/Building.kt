@@ -52,7 +52,7 @@ class Building  (
                         dcFunctions: Map<ActivityType, LocationChoiceDCWeightFun>): List<Building> {
             return collection.features.map {
                 val properties = it.properties
-                val point = transformer.tomosimelCRS( it.geometry.toJTS(geometryFactory) ).centroid
+                val point = transformer.toModelCRS( it.geometry.toJTS(geometryFactory) ).centroid
 
                 val attractions = dcFunctions.map { (_, v) -> v.id to v.calcAttraction(properties)}
                     .toMap().toMutableMap()
