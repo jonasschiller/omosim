@@ -8,6 +8,7 @@ object MinBc {
     private const val NAME = "MinBc"
 
     object Defaults {
+        const val iterations = 100
         const val lb = 1e-3
         const val ub = 1e3
     }
@@ -15,13 +16,12 @@ object MinBc {
     fun run (
         model: DifferentiableModel,
         x0: DoubleArray,
-        iterations: Int = 100,
         parameters: Map<String, String>? = null,
     ) : DoubleArray {
         return run(
             model,
             x0,
-            iterations,
+            iterations = parameters?.get("iterations")?.toIntOrNull() ?: Defaults.iterations,
             lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
             ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub
         )
@@ -30,7 +30,7 @@ object MinBc {
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
-        iterations: Int = 100,
+        iterations: Int = Defaults.iterations,
         lb: Double = Defaults.lb,
         ub: Double = Defaults.ub
     ) : DoubleArray {

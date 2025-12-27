@@ -10,6 +10,7 @@ object WSPSA {
     private const val NAME = "WSPSA"
 
     object Defaults {
+        const val iterations = 10000
         const val lb = 1e-3
         const val ub = 1e3
         const val a0 = 300.0
@@ -25,7 +26,6 @@ object WSPSA {
         measurements: List<Double>,
         model: DifferentiableModelMultiOut,
         rng: Random,
-        iterations: Int = 10000,
         parameters: Map<String, String>? = null,
     ) : DoubleArray {
         return run(
@@ -34,7 +34,7 @@ object WSPSA {
             measurements = measurements,
             model = model,
             rng = rng,
-            iterations = iterations,
+            iterations = parameters?.get("iterations")?.toIntOrNull() ?: Defaults.iterations,
             lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
             ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
             a0 = parameters?.get("a0")?.toDoubleOrNull() ?: Defaults.a0,
@@ -51,7 +51,7 @@ object WSPSA {
         measurements: List<Double>,
         model: DifferentiableModelMultiOut,
         rng: Random,
-        iterations: Int = 1000,
+        iterations: Int = Defaults.iterations,
         lb: Double = Defaults.lb,
         ub: Double = Defaults.ub,
         a0: Double = Defaults.a0,

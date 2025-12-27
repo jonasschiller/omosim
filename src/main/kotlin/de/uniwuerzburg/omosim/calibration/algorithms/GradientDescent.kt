@@ -7,6 +7,7 @@ object GradientDescent {
     private const val NAME = "GradientDescent"
 
     object Defaults {
+        const val iterations = 1000
         const val lr0 = 1.0e-8
         const val lb = 1e-3
         const val ub = 1e3
@@ -15,13 +16,12 @@ object GradientDescent {
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
-        iterations: Int = 1000,
         parameters: Map<String, String>? = null
     ) : DoubleArray {
         return run(
             model,
             x0,
-            iterations,
+            iterations = parameters?.get("iterations")?.toIntOrNull() ?: Defaults.iterations,
             lr0 = parameters?.get("lr0")?.toDoubleOrNull() ?: Defaults.lr0,
             lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
             ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub
@@ -31,7 +31,7 @@ object GradientDescent {
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
-        iterations: Int = 1000,
+        iterations: Int = Defaults.iterations,
         lr0: Double = Defaults.lr0,
         lb: Double = Defaults.lb,
         ub: Double = Defaults.ub

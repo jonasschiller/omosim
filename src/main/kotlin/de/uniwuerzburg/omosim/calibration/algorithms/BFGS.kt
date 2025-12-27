@@ -8,6 +8,7 @@ object BFGS {
     private const val NAME = "BFGS"
 
     object Defaults {
+        const val iterations = 100
         const val m = 5
         const val gTol = 1e-5
         const val lb = 1e-3
@@ -17,13 +18,12 @@ object BFGS {
     fun run (
         model: DifferentiableModel,
         x0: DoubleArray,
-        iterations: Int = 100,
         parameters: Map<String, String>? = null,
     ) : DoubleArray {
         return run(
             model,
             x0,
-            iterations,
+            iterations = parameters?.get("iterations")?.toIntOrNull() ?: Defaults.iterations,
             lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
             ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
             m = parameters?.get("m")?.toIntOrNull() ?: Defaults.m,
@@ -34,7 +34,7 @@ object BFGS {
     fun run(
         model: DifferentiableModel,
         x0: DoubleArray,
-        iterations: Int = 100,
+        iterations: Int = Defaults.iterations,
         lb: Double = Defaults.lb,
         ub: Double = Defaults.ub,
         m: Int = Defaults.m,

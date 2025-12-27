@@ -11,6 +11,7 @@ object PSO {
     private const val NAME = "PSO"
 
     object Defaults {
+        const val iterations = 1000
         const val lb = 1e-3
         const val ub = 1e3
         const val nParticles = 20
@@ -25,7 +26,6 @@ object PSO {
         nDimensions: Int,
         objective: (DoubleArray) -> Double,
         rng: Random,
-        iterations: Int = 1000,
         nWorker: Int? = null,
         parameters: Map<String, String>? = null,
     ) : DoubleArray {
@@ -33,7 +33,7 @@ object PSO {
             nDimensions,
             objective,
             rng,
-            iterations,
+            iterations = parameters?.get("iterations")?.toIntOrNull() ?: Defaults.iterations,
             nWorker,
             lb = parameters?.get("lb")?.toDoubleOrNull() ?: Defaults.lb,
             ub = parameters?.get("ub")?.toDoubleOrNull() ?: Defaults.ub,
@@ -50,7 +50,7 @@ object PSO {
         nDimensions: Int,
         objective: (DoubleArray) -> Double,
         rng: Random,
-        iterations: Int = 1000,
+        iterations: Int = Defaults.iterations,
         nWorker: Int? = null,
         lb: Double = Defaults.lb,
         ub: Double = Defaults.ub,
