@@ -16,7 +16,7 @@ fun inFocusArea(buildings:List<BuildingData>, focusArea: Geometry,
         buildingsTree.insert(building.geometry.envelopeInternal, building)
     }
 
-    val utmFocusArea = transformer.tomosimelCRS(focusArea)
+    val utmFocusArea = transformer.toModelCRS(focusArea)
     fastCovers(
         utmFocusArea, listOf(10000.0, 5000.0, 1000.0), geometryFactory,
         ifNot = { },

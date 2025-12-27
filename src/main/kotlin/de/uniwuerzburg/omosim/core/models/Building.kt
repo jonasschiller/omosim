@@ -27,12 +27,14 @@ class Building  (
     override val latlonCoord: Coordinate,
     override var odZone: ODZone?,
     override val inFocusArea: Boolean,
-    override val attractions: Map<Int, Double>,
+    override var attractions: MutableMap<Int, Double>,
     override val population: Double,
     val point: Point,
-    var cell: Cell? = null
+    var cell: Cell? = null,
+    val osmProperties: BuildingProperties
 ) : RealLocation, Clusterable {
     override val avgDistanceToSelf = 0.0
+    val attractionScaler: MutableMap<Int, Double> = mutableMapOf() // For calibration
 
     companion object {
         /**
@@ -52,7 +54,8 @@ class Building  (
                 val properties = it.properties
                 val point = transformer.tomosimelCRS( it.geometry.toJTS(geometryFactory) ).centroid
 
-                val attractions = dcFunctions.map { (_, v) -> v.id to v.calcAttraction(properties)}.toMap()
+                val attractions = dcFunctions.map { (_, v) -> v.id to v.calcAttraction(properties)}
+                    .toMap().toMutableMap()
 
                 Building(
                     osmID = properties.osm_id,
@@ -62,10 +65,22 @@ class Building  (
                     attractions = attractions,
                     population = properties.population ?: 0.0,
                     odZone = null,
-                    point = point
+                    point = point,
+                    osmProperties = properties
                 )
             }
         }
+    }
+
+    override fun recalculateAttractions(dcFunctions: List<LocationChoiceDCWeightFun>) {
+        for (v in dcFunctions) {
+            attractions[v.id] = v.calcAttraction(osmProperties) * (attractionScaler[v.id] ?: 1.0)
+        }
+    }
+
+    override fun updateAttractionScaler(dcFunction: LocationChoiceDCWeightFun, value: Double) {
+        attractionScaler[dcFunction.id] = value
+        recalculateAttractions(listOf(dcFunction))
     }
 
     override fun getPoint(): DoubleArray {

@@ -4,18 +4,22 @@ import de.uniwuerzburg.omosim.core.models.*
 import de.uniwuerzburg.omosim.routing.RoutingCache
 import de.uniwuerzburg.omosim.utils.createCumDist
 import de.uniwuerzburg.omosim.utils.sampleCumDist
-import java.util.Random
+import java.util.*
 
 /**
  * Gravity model based destination finder.
  */
 class DestinationFinderDefault(
-    private val routingCache: RoutingCache,
-    private val locChoiceWeightFuns: Map<ActivityType, LocationChoiceDCWeightFun>,
+    val routingCache: RoutingCache,
+    var locChoiceWeightFuns: MutableMap<ActivityType, LocationChoiceDCWeightFun>,
 ) : DestinationFinder {
     private var calibrated = false
     private var firstOrderCFactors: Map<ActivityType, Map<ODZone, Double>> = mapOf()
     private var secondOrderCFactors: Map<Pair<ActivityType, ActivityType>, Map<Pair<ODZone, ODZone>, Double>> = mapOf()
+
+    // Transition matrix that overwrites gravity models on the aggregated level.
+    // Currently only used for the experimental de.uniwuerzburg.omosim.calibration.surrogate.SGGravity.optimizeTMatrix()
+    val forcedTransitionMatrix = mutableMapOf<ActivityType, Map<Cell, DoubleArray>>()
 
     /**
      * Determine the probabilistic weight that a location is a destination given an origin and activity type
@@ -158,8 +162,16 @@ class DestinationFinderDefault(
         activityType: ActivityType, rng: Random
     ) : LocationOption {
         // Get agg zone (might be cell or dummy is node)
-        val aggCumDist = getDistr(origin, destinations, activityType)
-        val aggZone = destinations[sampleCumDist(aggCumDist, rng)]
+        val fMatrix = forcedTransitionMatrix[activityType]
+        val aggZone = if ((fMatrix != null) && (destinations.size == fMatrix.size)) {
+            // Use forced transition matrix
+            val distr = createCumDist(fMatrix[origin]!!)
+            destinations[sampleCumDist(distr, rng)]
+        } else {
+            // Normal case
+            val aggCumDist = getDistr(origin, destinations, activityType)
+            destinations[sampleCumDist(aggCumDist, rng)]
+        }
 
         // Get fine-grained location
         val destination = if (aggZone is Cell) {
@@ -196,7 +208,7 @@ class DestinationFinderDefault(
         {"Scaling origins is only implemented for fixed locations"}
 
         val factors = mutableMapOf<ODZone, Double>()
-        val omosimProbs = calcomosimProbsAsMap(zones, activity)
+        val omosimProbs = calcOMoSimProbsAsMap(zones, activity)
         val omosimWeights = mutableMapOf<ODZone, Double>()
         val odWeights = mutableMapOf<ODZone, Double>()
 
@@ -211,11 +223,11 @@ class DestinationFinderDefault(
             }
         }
 
-        val weightSumomosim = omosimWeights.values.sum()
+        val weightSumOMoSim = omosimWeights.values.sum()
         val weightSumOD = odWeights.values.sum()
 
         // Calibration failed!
-        if ((weightSumomosim <= 0) || (weightSumOD <= 0)){
+        if ((weightSumOMoSim <= 0) || (weightSumOD <= 0)){
             throw Exception("Calculation of first order calibration factors failed! " +
                     "Possible causes: OD-Matrix has negative values, " +
                     "OD-Matrix does not intersect focus area, ... \n" +
@@ -225,7 +237,7 @@ class DestinationFinderDefault(
 
         for (odZone in odZones) {
             // Normalize
-            val omosimProb = omosimWeights[odZone]!! / weightSumomosim
+            val omosimProb = omosimWeights[odZone]!! / weightSumOMoSim
             val odProb = odWeights[odZone]!! / weightSumOD
             factors[odZone] = if (omosimProb <= 0) { // Can't calibrate with k-factor if omosim prob is 0 %
                 0.0
@@ -253,7 +265,7 @@ class DestinationFinderDefault(
         }
 
         val factors = mutableMapOf<Pair<ODZone, ODZone>, Double>()
-        val priorProbs = calcomosimProbsAsMap(zones, activities.first)
+        val priorProbs = calcOMoSimProbsAsMap(zones, activities.first)
 
         for (originOdZone in odZones) {
             val omosimWeights = odZones.associateWith { 0.0 } as MutableMap<ODZone, Double>
@@ -278,18 +290,18 @@ class DestinationFinderDefault(
                 }
             }
 
-            val weightSumomosim = omosimWeights.values.sum()
+            val weightSumOMoSim = omosimWeights.values.sum()
             val weightSumOD = odWeights.values.sum()
 
             // Transitions from origin are impossible. Leave unadjusted. Factor should never be used.
-            if ((weightSumomosim <= 0) || (weightSumOD <= 0)){
+            if ((weightSumOMoSim <= 0) || (weightSumOD <= 0)){
                 for (destOdZone in originOdZone.destinations.map { it.first }) {
                     factors[Pair(originOdZone, destOdZone)] = 1.0
                 }
             } else {
                 for (destOdZone in odZones) {
                     // Normalize
-                    val omosimProb = omosimWeights[destOdZone]!! / weightSumomosim
+                    val omosimProb = omosimWeights[destOdZone]!! / weightSumOMoSim
                     val odProb = odWeights[destOdZone]!! / weightSumOD
 
                     // Can't calibrate with k-factor if omosim prob is 0 %
@@ -306,7 +318,7 @@ class DestinationFinderDefault(
 
     /**
      * Calculate probability that an activity of type x happens at certain location for all locations.
-     * Used to compare omosims od probabilities with that of the od-file.
+     * Used to compare OMoSims od probabilities with that of the od-file.
      * Possible activity types are: HOME and WORK
      *
      * P(Location | HOME) = Distribution used for Home location assignment
@@ -315,7 +327,7 @@ class DestinationFinderDefault(
      * @param activityType The activity type x
      * @return Probability that an activity of type x happens at certain location for all locations
      */
-    private fun calcomosimProbs(zones: List<AggLocation>, activityType: ActivityType) : DoubleArray {
+    private fun calcOMoSimProbs(zones: List<AggLocation>, activityType: ActivityType) : DoubleArray {
         require(activityType in listOf(ActivityType.HOME, ActivityType.WORK))
         {"Flexible locations are not  yet supported for k-Factor calibration!"}
         // Home distribution
@@ -339,10 +351,10 @@ class DestinationFinderDefault(
     }
 
     /**
-     * Wrapper for calcomosimProbs that returns a map instead of an array.
+     * Wrapper for calcOMoSimProbs that returns a map instead of an array.
      */
-    private fun calcomosimProbsAsMap(zones: List<AggLocation>, activityType: ActivityType) : Map<LocationOption, Double> {
-        val probs = calcomosimProbs(zones, activityType)
+    private fun calcOMoSimProbsAsMap(zones: List<AggLocation>, activityType: ActivityType) : Map<LocationOption, Double> {
+        val probs = calcOMoSimProbs(zones, activityType)
         val map = mutableMapOf<LocationOption, Double>()
         for (i in zones.indices) {
             map[zones[i]] = probs[i]

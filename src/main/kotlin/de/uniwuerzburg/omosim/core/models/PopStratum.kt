@@ -111,6 +111,32 @@ class PopStratum (
         return SocioDemFeatureSet(hom, mob, age, sex)
     }
 
+    fun iterateOptions() = iterator {
+        val aZipped = age.limits.zip(age.shares)
+        val ageGroup = aZipped.sortedBy { it.first }
+
+        for ((hom, pHom) in homogenousGroup) {
+            for ((mob, pMob) in mobilityGroup) {
+                for ((s, pSex) in sex) {
+                    // Undefined age
+                    val uSet = SocioDemFeatureSet(hom, mob, null, s)
+                    val uP = pHom * pMob * pSex * age.UNDEFINED
+                    yield(Pair(uSet, uP))
+
+                    // Defined age
+                    var ageLb = 0
+                    for((ageUb, pAge) in ageGroup) {
+                        val a = (ageUb - ageLb) / 2
+                        ageLb = ageUb
+                        val set = SocioDemFeatureSet(hom, mob, a, s)
+                        val p = pHom * pMob * pSex * pAge
+                        yield(Pair(set, p))
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * Demographics of group.
      * The limits and shares define a histogram.

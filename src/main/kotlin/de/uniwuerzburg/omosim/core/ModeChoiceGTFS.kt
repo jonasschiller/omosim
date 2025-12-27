@@ -3,6 +3,7 @@ package de.uniwuerzburg.omosim.core
 import com.graphhopper.GraphHopper
 import com.graphhopper.gtfs.PtRouter
 import de.uniwuerzburg.omosim.core.models.*
+import de.uniwuerzburg.omosim.io.json.readJson
 import de.uniwuerzburg.omosim.io.json.readJsonFromResource
 import de.uniwuerzburg.omosim.routing.*
 import de.uniwuerzburg.omosim.utils.ProgressBar
@@ -11,6 +12,7 @@ import de.uniwuerzburg.omosim.utils.sampleCumDist
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 import java.util.*
@@ -34,10 +36,20 @@ class ModeChoiceGTFS(
     private val ptRouter: PtRouter,
     private val ptSimDays: Map<Weekday, LocalDate>,
     private val timeZone: TimeZone,
-    private val withPath: Boolean
+    private val withPath: Boolean,
+    tourModeUtilityFn: File? = null,
+    tripModeUtilityFn: File? = null
 ) : ModeChoice {
-    private val tourModeOptions: Array<ModeUtility> = readJsonFromResource("tourModeUtilities.json")
-    private val tripModeOptions: Array<ModeUtility> = readJsonFromResource("tripModeUtilities.json")
+    val tourModeOptions: Array<ModeUtility> = if (tourModeUtilityFn != null) {
+        readJson(tourModeUtilityFn)
+    } else {
+        readJsonFromResource("tourModeUtilities.json")
+    }
+    val tripModeOptions: Array<ModeUtility> = if (tripModeUtilityFn != null) {
+        readJson(tripModeUtilityFn)
+    } else {
+        readJsonFromResource("tripModeUtilities.json")
+    }
 
     /**
      * Determine the mode of each trip and calculate the distance and time.
@@ -45,10 +57,11 @@ class ModeChoiceGTFS(
      * @param agents Agents with trips (usually the trips have an UNDEFINED mode at this point)
      * @param mainRng Random number generator of the main thread
      * @param dispatcher Coroutine dispatcher used for concurrency
+     * @param verbose Print progressbar etc.. Doesn't affect logging.
      * @return agents. Now their trips have specified modes.
      */
     override fun doModeChoice(
-        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, modeSpeedUp: Map<Mode, Double>
+        agents: List<MobiAgent>, mainRng: Random, dispatcher: CoroutineDispatcher, modeSpeedUp: Map<Mode, Double>, verbose: Boolean
     ) : List<MobiAgent> {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
@@ -60,15 +73,15 @@ class ModeChoiceGTFS(
                 for (agent in chunk) {
                     val coroutineRng = Random(mainRng.nextLong())
                     launch(dispatcher) {
-                        domosimeChoiceFor(agent, coroutineRng, modeSpeedUp)
+                        doModeChoiceFor(agent, coroutineRng, modeSpeedUp)
                         val done = jobsDone.incrementAndGet()
-                        print("Mode Choice: ${ProgressBar.show(done / totalJobs)}\r")
+                        if(verbose) { print("Mode Choice: ${ProgressBar.show(done / totalJobs)}\r") }
                     }
                 }
             }
         }
-        println("Mode Choice: " + ProgressBar.done())
-        logger.info("Mode Choice took: ${timeSource.markNow() - timestampStartInit}")
+        if(verbose) { println("Mode Choice: " + ProgressBar.done()) }
+        logger.get()?.info("Mode Choice took: ${timeSource.markNow() - timestampStartInit}")
         return agents
     }
 
@@ -156,7 +169,7 @@ class ModeChoiceGTFS(
      * @param agent Agent
      * @param rng Random number generator
      */
-    private fun domosimeChoiceFor(agent: MobiAgent, rng: Random, modeSpeedUp: Map<Mode, Double>) {
+    private fun doModeChoiceFor(agent: MobiAgent, rng: Random, modeSpeedUp: Map<Mode, Double>) {
         for (diary in agent.mobilityDemand) {
             val tours = getTours(diary, rng, modeSpeedUp)
 

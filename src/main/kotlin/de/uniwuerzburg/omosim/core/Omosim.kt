@@ -3,6 +3,7 @@ package de.uniwuerzburg.omosim.core
 import com.graphhopper.GraphHopper
 import com.graphhopper.gtfs.GraphHopperGtfs
 import com.graphhopper.gtfs.PtRouter
+import de.uniwuerzburg.omosim.calibration.ODTTriple
 import de.uniwuerzburg.omosim.core.models.*
 import de.uniwuerzburg.omosim.io.geojson.*
 import de.uniwuerzburg.omosim.io.geojson.property.BuildingProperties
@@ -13,13 +14,8 @@ import de.uniwuerzburg.omosim.io.osm.BuildingData
 import de.uniwuerzburg.omosim.io.osm.readOSM
 import de.uniwuerzburg.omosim.io.overture.readOverture
 import de.uniwuerzburg.omosim.io.readCensus
-import de.uniwuerzburg.omosim.routing.RoutingCache
-import de.uniwuerzburg.omosim.routing.RoutingMode
-import de.uniwuerzburg.omosim.routing.createGraphHopper
-import de.uniwuerzburg.omosim.routing.createGraphHopperGTFS
-import de.uniwuerzburg.omosim.utils.CRSTransformer
-import de.uniwuerzburg.omosim.utils.ProgressBar
-import de.uniwuerzburg.omosim.utils.fastCovers
+import de.uniwuerzburg.omosim.routing.*
+import de.uniwuerzburg.omosim.utils.*
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,10 +33,11 @@ import java.time.LocalDate
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.exists
+import kotlin.math.floor
 import kotlin.time.TimeSource
 
 /**
- * Open-Street-Maps MObility Demand generator (omosim)
+ * OMoSim: An Open Mobility Demand Simulator
  * Creates daily activity schedules in the form of activity chains and dwell times.
  *
  * @param areaFile GeoJSON of the focus area
@@ -61,7 +58,7 @@ import kotlin.time.TimeSource
  * NULL = Number of CPU-Cores available.
  * @param gtfsFile GTFS location (Directory or .zip file)
  */
-class Omosim(
+class Omosim (
     areaFile: File,
     private val osmFile: File,
     routingMode: RoutingMode = RoutingMode.BEELINE,
@@ -72,7 +69,7 @@ class Omosim(
     seed: Long? = null,
     bufferRadius: Double = 0.0,
     censusFile: File? = null,
-    private val populateBufferArea: Boolean = true,
+    val populateBufferArea: Boolean = true,
     val distanceCacheSize: Long = 400e6.toLong(),
     populationFile: File? = null,
     activityGroupFile: File? = null,
@@ -86,26 +83,32 @@ class Omosim(
     val kdTree: KdTree
     @Suppress("MemberVisibilityCanBePrivate")
     val buildings: List<Building>
-    private var hopper: GraphHopper?
-    private val grid: List<Cell>
+    var hopper: GraphHopper?
+    val grid: List<Cell>
     private val zones: List<AggLocation> // Grid + DummyLocations for commuting locations
-    private val activityGenerator: ActivityGenerator
-    private val mainRng: Random = if (seed != null) Random(seed) else Random()
+    val activityGenerator: ActivityGenerator
+    val mainRng: Random = if (seed != null) Random(seed) else Random()
     val transformer: CRSTransformer
-    private val routingCache: RoutingCache
+    val routingCache: RoutingCache
     private var censusAvailable = false
-    private val dispatcher = if (nWorker != null) Dispatchers.Default.limitedParallelism(nWorker) else Dispatchers.Default
-    private val destinationFinder: DestinationFinder
+    val dispatcher = if (nWorker != null) Dispatchers.Default.limitedParallelism(nWorker) else Dispatchers.Default
+    val destinationFinder: DestinationFinder
     private val agentFactory: AgentFactory
     private var gtfsComponents: GTFSComponents? = null
     private val focusArea: Geometry
     private val fullArea: Geometry
+    val popStrata: List<PopStratum>
+    val carOwnership: CarOwnership
+    var tourModeUtilityFn: File? = null
+    var tripModeUtilityFn: File? = null
+    var altPercentages: Map<ODTTriple, List<Double>> = mapOf()
+
     init {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
 
         // Load population distribution
-        val popStrata: List<PopStratum> = if (populationFile != null) {
+        popStrata = if (populationFile != null) {
             readJson(populationFile)
         } else {
             readJsonFromResource("Population.json")
@@ -184,11 +187,11 @@ class Omosim(
         activityGenerator = ActivityGeneratorDefault(activityGroups)
 
         // Destination finder
-        destinationFinder = DestinationFinderDefault(routingCache, locChoiceWeightFuns)
+        destinationFinder = DestinationFinderDefault(routingCache, locChoiceWeightFuns.toMutableMap())
 
         // Calibration
         if (odFile != null) {
-            logger.info("Calibrating with OD-Matrix...")
+            logger.get()?.info("Calibrating with OD-Matrix...")
             // Read OD-Matrix that is used for calibration
             val odZones = ODZone.readODMatrix(odFile, geometryFactory, transformer)
             // Add TAZ to buildings and cells
@@ -196,13 +199,13 @@ class Omosim(
             zones = grid + dummyZones
             // Get calibration factors based on OD-Matrix
             destinationFinder.calibrate(zones, odZones)
-            logger.info("Calibration done!")
+            logger.get()?.info("Calibration done!")
         } else {
             zones = grid
         }
 
         // Car Ownership
-        val carOwnership = when (carOwnershipOption) {
+        carOwnership = when (carOwnershipOption) {
             CarOwnershipOption.FIX -> {
                 CarOwnershipFixedProbability(17)
             }
@@ -215,7 +218,7 @@ class Omosim(
         // Agent factory
         agentFactory = AgentFactoryDefault(destinationFinder, carOwnership, popStrata, dispatcher)
 
-        logger.info("Initializing omosim took: ${timeSource.markNow() - timestampStartInit}")
+        logger.get()?.info("Initializing OMoSim took: ${timeSource.markNow() - timestampStartInit}")
     }
 
     // Factories
@@ -429,7 +432,7 @@ class Omosim(
             ActivityType.SCHOOL -> agent.school
             else -> throw Exception("Start must be either Home, Work, School, or coordinates must be given. Agent: ${agent.id}")
         }
-        return getActivitySchedule(agent, rng, weekday, from, location )
+        return getActivitySchedule(agent, rng, weekday, from, location)
     }
 
     /**
@@ -459,11 +462,16 @@ class Omosim(
      * @param n_agents Number of agents
      * @param start_wd Weekday of the first simulated day
      * @param n_days Number of consecutive days to simulate
+     * @param verbose Print progressbar etc.. Doesn't affect logging.
      * @return List of agents each with an activity schedules for every simulated day
      */
-    fun run(n_agents: Int, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1) : List<MobiAgent> {
+    fun run(
+        n_agents: Int, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1, verbose: Boolean = true
+    ) : List<MobiAgent> {
+        logger.on = verbose
+
         val agents = agentFactory.createAgents(n_agents, zones, populateBufferArea, mainRng)
-        return run(agents, start_wd, n_days)
+        return run(agents, start_wd, n_days, verbose)
     }
 
     /**
@@ -472,17 +480,21 @@ class Omosim(
      * @param shareOfPop Share of population to simulate
      * @param start_wd Weekday of the first simulated day
      * @param n_days Number of consecutive days to simulate
+     * @param verbose Print progressbar etc.. Doesn't affect logging.
      * @return List of agents each with an activity schedules for every simulated day
      */
-    fun run(shareOfPop: Double, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1) : List<MobiAgent> {
+    fun run(
+        shareOfPop: Double, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1, verbose: Boolean = true
+    ) : List<MobiAgent> {
         if (!censusAvailable) {
             throw Exception(
                 "Agent population is supposed to be based on the population but no census file is provided." +
                         "Consider adding a census file with --census or use --n_agents instead.")
         }
+        logger.on = verbose
 
         val agents = agentFactory.createAgents(shareOfPop, zones, populateBufferArea, mainRng)
-        return run(agents, start_wd, n_days)
+        return run(agents, start_wd, n_days, verbose)
     }
 
     /**
@@ -494,7 +506,14 @@ class Omosim(
      * @return List of agents each with an activity schedules for every simulated day
      */
     @Suppress("MemberVisibilityCanBePrivate")
-    fun run(agents: List<MobiAgent>, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1) : List<MobiAgent> {
+    fun run(
+        agents: List<MobiAgent>,
+        start_wd: Weekday = Weekday.UNDEFINED,
+        n_days: Int = 1,
+        verbose: Boolean = true
+    ) : List<MobiAgent> {
+        logger.on = verbose
+
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
         val jobsDone = AtomicInteger()
@@ -507,14 +526,15 @@ class Omosim(
                     launch(dispatcher) {
                         runAgent(agent, start_wd, n_days, coroutineRng)
                         val done = jobsDone.incrementAndGet()
-                        print("Activity generation: ${ProgressBar.show(done / totalJobs)}\r")
+
+                        if (verbose) { print("Activity generation: ${ProgressBar.show(done / totalJobs)}\r") }
                     }
                 }
             }
         }
-        println("Activity generation: " + ProgressBar.done())
+        if (verbose) { println("Activity generation: " + ProgressBar.done()) }
         routingCache.toOOMCache() // Save routing cache
-        logger.info("Activity generation took: ${timeSource.markNow() - timestampStartInit}")
+        logger.get()?.info("Activity generation took: ${timeSource.markNow() - timestampStartInit}")
         return agents
     }
 
@@ -560,15 +580,16 @@ class Omosim(
      * @return agents. Now their trips have specified modes.
      */
     fun doModeChoice(
-        agents: List<MobiAgent>, modeChoiceOption: ModeChoiceOption, withPath: Boolean
+        agents: List<MobiAgent>, modeChoiceOption: ModeChoiceOption, withPath: Boolean, verbose: Boolean
     ) : List<MobiAgent> {
+        logger.on = verbose
+
         when (modeChoiceOption) {
-            ModeChoiceOption.NONE -> { return agents } // Do nothing
+            ModeChoiceOption.NONE -> { } // Do nothing
             ModeChoiceOption.CAR_ONLY -> {
                 setupHopper()
                 val modeChoice = ModeChoiceCarOnly(hopper!!, withPath)
-                modeChoice.doModeChoice(agents, mainRng, dispatcher, modeSpeedUp)
-                return agents
+                modeChoice.doModeChoice(agents, mainRng, dispatcher, modeSpeedUp, verbose)
             }
             ModeChoiceOption.GTFS -> {
                 setupHopper()
@@ -577,15 +598,78 @@ class Omosim(
                     val modeChoice = ModeChoiceGTFS(
                         hopper!!, gtfsComponents!!.ptRouter,
                         gtfsComponents!!.ptSimDays, gtfsComponents!!.timeZone,
-                        withPath
+                        withPath, tourModeUtilityFn, tripModeUtilityFn
                     )
-                    modeChoice.doModeChoice(agents, mainRng, dispatcher, modeSpeedUp)
-                    return agents
+                    modeChoice.doModeChoice(agents, mainRng, dispatcher, modeSpeedUp, verbose)
                 } finally {
                     gtfsComponents!!.gtfsHopper.close()
                 }
             }
+            ModeChoiceOption.FAST -> {
+                val modeChoice = ModeChoiceFast(routingCache, tourModeUtilityFn, tripModeUtilityFn)
+                modeChoice.doModeChoice(agents, mainRng, dispatcher, modeSpeedUp, verbose)
+
+            }
         }
+
+        // Alternative route selection
+        if (withPath and altPercentages.isNotEmpty()) {
+            altRouteSelection(agents)
+        }
+        return  agents
+    }
+
+    /**
+     * Choose alternative route according to route choice calibration.
+     *
+     * @param agents Agents with mode choice step completed
+     * @return Agents with alternative routes selected
+     */
+    private fun altRouteSelection(agents: List<MobiAgent>) : List<MobiAgent> {
+        // Determine number of time slices of calibration
+        val T = altPercentages.maxOf { (k, v) -> k.t } + 1
+
+        // Get alternatives and choose according to calibration
+        val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, _, _ ->
+            // Determine origin-destination-time triple
+            val mod = departureTime.minute + departureTime.hour * 60
+            val t = floor((mod % 1440.0) / 1440.0 * T).toInt()
+            val od = Pair(
+                originActivity.location.getAggLoc()!! as RealLocation,
+                destinationActivity.location.getAggLoc()!! as RealLocation
+            )
+            val odt = ODTTriple(od.first, od.second, t)
+
+            // For all car trips
+            if ((trip.mode == Mode.CAR_DRIVER) && (odt in altPercentages)){
+                // Find alternatives
+                val response = routeCarAlternatives(
+                    originActivity.location.getAggLoc()!! as RealLocation,
+                    destinationActivity.location.getAggLoc()!! as RealLocation,
+                    hopper!!
+                )
+                // Choose route according to calibration
+                if (!response.hasErrors()) {
+                    val probs = altPercentages[odt]!!
+                    val distr = createCumDist(probs.toDoubleArray())
+                    val path = response.all[sampleCumDist(distr, this.mainRng)]
+
+                    val (lats, lons) = Pair(
+                        path.points.map { it.lat },
+                        path.points.map { it.lon }
+                    )
+
+                    trip.lats = lats
+                    trip.lons = lons
+                }
+            }
+        }
+        for (agent in agents) {
+           for (diary in agent.mobilityDemand) {
+                diary.visitTrips(visitor)
+            }
+        }
+        return agents
     }
 
     /**

@@ -5,11 +5,17 @@ plugins {
     id("java")
     id("org.jetbrains.dokka") version "2.0.+"
     id("maven-publish")
+    id("org.jetbrains.kotlinx.benchmark") version "0.4.13"
+    kotlin("plugin.allopen") version "2.0.20"
     application
 }
 
+allOpen {
+    annotation("org.openjdk.jmh.annotations.State")
+}
+
 group = "de.uniwuerzburg.omosim"
-version = "2.2.2"
+version = "2.3.0"
 
 repositories {
     mavenLocal()
@@ -23,6 +29,7 @@ repositories {
 }
 
 dependencies {
+    implementation(files("libs/alglib-java/alglib406free.jar"))
     implementation("org.geotools:gt-epsg-hsql:31.+")
     implementation("org.geotools:gt-main:31.+")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
@@ -40,21 +47,41 @@ dependencies {
     implementation("org.duckdb:duckdb_jdbc:1.1.1")
     implementation("us.dustinj.timezonemap:timezonemap:4.+")
     implementation("org.xerial:sqlite-jdbc:3.+")
+    implementation("org.jetbrains.kotlinx:multik-core:0.2.3")
+    implementation("org.jetbrains.kotlinx:multik-default:0.2.3")
+    implementation("com.gurobi:gurobi:11.0.2")
+    implementation("com.github.haifengl:smile-core:4.4.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.+")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    implementation("org.jetbrains.kotlinx:kotlinx-benchmark-runtime:0.4.13")
+
+}
+
+benchmark {
+    targets {
+        register("benchmark")
+    }
 }
 
 tasks.test {
     useJUnitPlatform()
 }
 
+sourceSets {
+    create("benchmark")
+}
+
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
+    target {
+        compilations.getByName("benchmark")
+            .associateWith(compilations.getByName("main"))
+    }
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 }
 
 tasks.shadowJar {
@@ -70,5 +97,5 @@ publishing {
 }
 
 application {
-    mainClass.set("de.uniwuerzburg.omosim.MainKt")
+    mainClass.set("de.uniwuerzburg.omosim.cli.MainKt")
 }

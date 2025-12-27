@@ -13,6 +13,7 @@ import com.graphhopper.routing.util.TraversalMode
 import com.graphhopper.routing.weighting.Weighting
 import com.graphhopper.storage.index.Snap
 import com.graphhopper.util.PMap
+import com.graphhopper.util.Parameters
 import de.uniwuerzburg.omosim.core.models.LocationOption
 import de.uniwuerzburg.omosim.core.models.RealLocation
 import java.time.Instant
@@ -45,6 +46,25 @@ fun routeWith (profile: String, origin: RealLocation, destination: RealLocation,
         destination.latlonCoord.y
     )
     req.profile = profile
+    return hopper.route(req)
+}
+
+/**
+ * Determine the best car path and several alternatives between two locations.
+ *
+ * @param origin Location A
+ * @param destination Location B
+ * @param hopper GraphHopper object
+ * @return GHResponse (Wrapper around the best routes)
+ */
+fun routeCarAlternatives (origin: RealLocation, destination: RealLocation, hopper: GraphHopper) : GHResponse {
+    val req = GHRequest(
+        origin.latlonCoord.x,
+        origin.latlonCoord.y,
+        destination.latlonCoord.x,
+        destination.latlonCoord.y
+    ).setAlgorithm(Parameters.Algorithms.ALT_ROUTE)
+    req.profile = "car"
     return hopper.route(req)
 }
 

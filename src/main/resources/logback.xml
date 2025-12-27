@@ -16,5 +16,8 @@
     <logger name="de.uniwuerzburg.omosim.routing" level="INFO">
         <appender-ref ref="STDOUT" />
     </logger>
+    <logger name="de.uniwuerzburg.omosim.calibration" level="DEBUG">
+        <appender-ref ref="STDOUT" />
+    </logger>
     <root level="off" />
 </configuration>

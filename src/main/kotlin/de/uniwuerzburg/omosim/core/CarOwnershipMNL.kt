@@ -17,18 +17,22 @@ class CarOwnershipMNL(
     private val minDrivingAge: Int
 ) : CarOwnership {
     override fun determine(agent: MobiAgent, stratum: PopStratum, rng: Random) : Boolean {
+        return rng.nextDouble() < probability(agent, stratum)
+    }
+
+    override fun probability(agent: MobiAgent, stratum: PopStratum): Double {
         return if ((agent.age != null) && (agent.age < minDrivingAge)) {
-            false
+            0.0
         } else {
-            sampleOwnership( agent.homogenousGroup, agent.mobilityGroup, agent.ageGrp, rng )
+            pOwnership( agent.homogenousGroup, agent.mobilityGroup, agent.ageGrp )
         }
     }
 
-    private fun sampleOwnership(
-        homogenousGroup: HomogeneousGrp, mobilityGroup: MobilityGrp, age: AgeGrp, rng: Random
-    ) : Boolean {
+    private fun pOwnership(
+        homogenousGroup: HomogeneousGrp, mobilityGroup: MobilityGrp, age: AgeGrp
+    ) : Double {
         val utility = carOwnershipUtility.calc( homogenousGroup, mobilityGroup, age )
         val p = 1 / (1 + exp(-utility))
-        return rng.nextDouble() < p
+        return p
     }
 }

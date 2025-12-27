@@ -62,7 +62,7 @@ class CRSTransformer (
         parameters.parameter("false_easting").setValue(500000.0)
         parameters.parameter("false_northing").setValue(0.0)
 
-        val properties = Collections.singletonMap<String, Any>("name", "omosim-Model-CRS")
+        val properties = Collections.singletonMap<String, Any>("name", "OMoSim-Model-CRS")
         val conversion = DefaultCoordinateOperationFactory()
             .createDefiningConversion(properties, TransverseMercator.Provider(), parameters)
         return factories.crsFactory.createProjectedCRS(properties, geoCRS, conversion, cartCS)

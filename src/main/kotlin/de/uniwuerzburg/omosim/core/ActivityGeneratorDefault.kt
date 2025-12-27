@@ -91,7 +91,7 @@ class ActivityGeneratorDefault (activityGroups: List<ActivityGroup>): ActivityGe
      *
      * @return probability distribution over possible activity chains
      */
-    private fun getChain(weekday: Weekday, homogenousGroup: HomogeneousGrp, mobilityGroup: MobilityGrp, age: AgeGrp,
+    fun getChain(weekday: Weekday, homogenousGroup: HomogeneousGrp, mobilityGroup: MobilityGrp, age: AgeGrp,
                  from: ActivityType): ChainData {
         require(from == ActivityType.HOME || from == ActivityType.OTHER) {
             "Chain starts at $from. This is not allowed."
@@ -120,7 +120,7 @@ class ActivityGeneratorDefault (activityGroups: List<ActivityGroup>): ActivityGe
      *
      * @return gaussian mixture of the dwell times
      */
-    private fun getMixture(weekday: Weekday, homogenousGroup: HomogeneousGrp, mobilityGroup: MobilityGrp, age: AgeGrp,
+    fun getMixture(weekday: Weekday, homogenousGroup: HomogeneousGrp, mobilityGroup: MobilityGrp, age: AgeGrp,
                    chain: List<ActivityType>) : Mixture {
         val from = chain.first()
 
@@ -176,8 +176,9 @@ class ActivityGeneratorDefault (activityGroups: List<ActivityGroup>): ActivityGe
      *
      * @param activityChains list of all possible activity chains
      */
-    private class ChainData(activityChains: List<ActivityChain>) {
+    class ChainData(activityChains: List<ActivityChain>) {
         val chains: List<List<ActivityType>> = activityChains.map { it.chain }
+        val weights: DoubleArray = activityChains.map { it.weight }.toDoubleArray()
         val distr: DoubleArray = createCumDist(activityChains.map { it.weight }.toDoubleArray())
         val mixtures: Map<List<ActivityType>, Mixture?> = activityChains.associateBy(
             { i -> i.chain},
@@ -199,7 +200,7 @@ class ActivityGeneratorDefault (activityGroups: List<ActivityGroup>): ActivityGe
     /**
      * Gaussian mixture
      */
-    private class Mixture(
+    class Mixture(
         val distr: DoubleArray,
         val means: List<DoubleArray>,
         val covariances: List<Array<DoubleArray>>

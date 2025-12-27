@@ -1,7 +1,7 @@
 package de.uniwuerzburg.omosim.core.models
 
 /**
- * Day types supported by omosim
+ * Day types supported by OMoSim
  */
 enum class Weekday {
     MO, TU, WE, TH, FR, SA, SU, HO, UNDEFINED;

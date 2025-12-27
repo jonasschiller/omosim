@@ -3,9 +3,11 @@ bin/
 __pycache__/
 out/
 out.json
+omod_cache/
 omosim_cache/
 .idea/
 debugOut/
 .gradle/
 regional_inputs/
 .kotlin/
+libs/
