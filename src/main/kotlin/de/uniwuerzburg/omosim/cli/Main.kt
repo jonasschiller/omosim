@@ -1,5 +1,3 @@
-@file:Suppress("PropertyName")
-
 package de.uniwuerzburg.omosim.cli
 
 import com.github.ajalt.clikt.core.CliktCommand
@@ -197,7 +195,6 @@ class Run : CliktCommand() {
         help = ""
     ).file(mustExist = true, mustBeReadable = true)
 
-    @OptIn(ExperimentalSerializationApi::class)
     override fun run() {
         if ((census == null) && (agentNumberDefinition is ShareOfPop)) {
             throw Exception(

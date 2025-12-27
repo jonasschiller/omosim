@@ -91,7 +91,7 @@ class ActivityGeneratorDefault (activityGroups: List<ActivityGroup>): ActivityGe
      *
      * @return probability distribution over possible activity chains
      */
-     fun getChain(weekday: Weekday, homogenousGroup: HomogeneousGrp, mobilityGroup: MobilityGrp, age: AgeGrp,
+    fun getChain(weekday: Weekday, homogenousGroup: HomogeneousGrp, mobilityGroup: MobilityGrp, age: AgeGrp,
                  from: ActivityType): ChainData {
         require(from == ActivityType.HOME || from == ActivityType.OTHER) {
             "Chain starts at $from. This is not allowed."

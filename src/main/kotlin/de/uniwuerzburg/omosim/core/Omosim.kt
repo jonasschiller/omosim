@@ -625,7 +625,7 @@ class Omosim (
      * @param agents Agents with mode choice step completed
      * @return Agents with alternative routes selected
      */
-    fun altRouteSelection(agents: List<MobiAgent>) : List<MobiAgent> {
+    private fun altRouteSelection(agents: List<MobiAgent>) : List<MobiAgent> {
         // Determine number of time slices of calibration
         val T = altPercentages.maxOf { (k, v) -> k.t } + 1
 
