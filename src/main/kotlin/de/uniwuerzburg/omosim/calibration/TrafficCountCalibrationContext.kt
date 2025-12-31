@@ -53,6 +53,11 @@ class TrafficCountCalibrationContext(
         modeChoiceCalOut: File,
         steps: List<CalibrationStep>
     ) {
+        // If alternative routes need to be computed
+        if (CalibrationType.ROUTE_CHOICE in steps.map { it.type }) {
+            affectedAltSensors = TrafficSensor.altAffectedSensors(sensors, omosim)
+        }
+
         // Complete the steps in the given order
         for ((i, step) in steps.withIndex()) {
             when(step.type) {
@@ -67,7 +72,7 @@ class TrafficCountCalibrationContext(
                     omosim.tourModeUtilityFn = modeChoiceCalOut
                 }
                 CalibrationType.ROUTE_CHOICE -> {
-                    altRouteCal()
+                    RouteChoice(this).calibrate()
                 }
                 CalibrationType.EVALUATE -> {
                     evaluate(0.1)
@@ -75,19 +80,6 @@ class TrafficCountCalibrationContext(
                 null -> { logger.warn("Calibration step $i skipped. Step type is null.") }
             }
         }
-    }
-
-    private fun altRouteCal() {
-        omosim.mainRng.setSeed(0) // Seed impact low with 100% of agents
-
-        // Run Simulation
-        val agents = omosim.run(0.1, verbose = false)
-        omosim.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
-
-        affectedAltSensors = TrafficSensor.altAffectedSensors(sensors, omosim)
-
-        // Mode Choice
-        omosim.altPercentages = RouteChoice.optimize(agents, omosim, sensors, affectedAltSensors)
     }
 
     fun evaluate(sharePop: Double) {

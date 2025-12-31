@@ -27,25 +27,37 @@ data class ODTTriple(
  * The result are multiple probability vector p - one for each o-d pair - that give the probability that each path
  * is selected by an agent.
  * By default, the agents will always choose the first result p = (1.0, 0.0, 0.0, ...).
+ *
+ * @param context Calibration context to use. Includes a Simulator (OMoSim) and the traffic count data.
  */
-object RouteChoice {
+class RouteChoice(
+    private val context: TrafficCountCalibrationContext
+) {
+    /**
+     * Calibrate route choice.
+     */
+    fun calibrate() {
+        context.omosim.mainRng.setSeed(0) // Seed impact low with 100% of agents
+
+        // Run Simulation
+        val agents =  context.omosim.run(0.1, verbose = false)
+        context.omosim.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
+
+        // Route Choice
+        context.omosim.altPercentages = optimize(agents)
+    }
+
     /**
      * Find the optimal p with Gurobi.
      *
      * @param agents OMoSim run result
-     * @param omosim Simulator
-     * @param sensors Sensors with measurements
-     * @param affectedAltSensors Gives all sensors that are affected by a path option for a certain origin-destination pair
      * @return Optimal p for each trip possibility
      */
-    fun optimize(
-        agents: List<MobiAgent>,
-        omosim: Omosim,
-        sensors: List<TrafficSensor>,
-        affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>>
+    private fun optimize(
+        agents: List<MobiAgent>
     ) : Map<ODTTriple, List<Double>> {
         logger.info("Starting route choice calibration with gurobi.")
-        val odtCounts = getODTCounts(agents, omosim)
+        val odtCounts = getODTCounts(agents, context.omosim)
 
         try {
             // Setup
@@ -54,13 +66,13 @@ object RouteChoice {
 
             // Initialize simulated traffic counts
             val simCount = mutableMapOf<TrafficSensor, List<GRBLinExpr>>()
-            for (sensor in sensors) {
+            for (sensor in context.sensors) {
                 simCount[sensor] = List(T) { GRBLinExpr() }
             }
 
             // Add contribution of each odt to simulated counts
             val result = mutableMapOf<ODTTriple, MutableList<GRBVar>>()
-            for ((od, alternatives) in affectedAltSensors.entries) {
+            for ((od, alternatives) in context.affectedAltSensors.entries) {
                 for (t in 0 until T) {
                     val odt = ODTTriple(od.first, od.second, t)
                     if (odt in odtCounts) {
@@ -91,7 +103,7 @@ object RouteChoice {
             }
 
             // Objective
-            val obj = grbSseObjective(model, sensors, simCount)
+            val obj = grbSseObjective(model, context.sensors, simCount)
             model.setObjective(obj, GRB.MINIMIZE)
 
             // Solve
@@ -118,17 +130,14 @@ object RouteChoice {
      * Build a differentiable model that computes the sum-of-square loss for a given p.
      *
      * @param agents OMoSim run result
-     * @param omosim Simulator
-     * @param sensors Sensors with measurements
      * @param affectedAltSensors Gives all sensors that are affected by a path option for a certain origin-destination pair
      * @return Differentiable Model
      */
-    fun buildModel(
-        agents: List<MobiAgent>, omosim: Omosim,
-        sensors: List<TrafficSensor>,
+    private fun buildModel(
+        agents: List<MobiAgent>,
         affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>>
     ) : DifferentiableModel {
-        val odtCounts = getODTCounts(agents, omosim)
+        val odtCounts = getODTCounts(agents, context.omosim)
 
         // Setup. Initialize differentiable model
         var nVar = 0
@@ -144,7 +153,7 @@ object RouteChoice {
 
         // Initialize simulated traffic counts
         val simCount = mutableMapOf<TrafficSensor, List<LinearTerm>>()
-        for (sensor in sensors) {
+        for (sensor in context.sensors) {
             simCount[sensor] = List(T) { LinearTerm(model.nVars) }
         }
 
@@ -183,7 +192,7 @@ object RouteChoice {
         }
 
         // Objective
-        val obj = sseObjective(model.nVars, sensors, simCount)
+        val obj = sseObjective(model.nVars, context.sensors, simCount)
         model.setRootTerm(obj)
         return model
     }
