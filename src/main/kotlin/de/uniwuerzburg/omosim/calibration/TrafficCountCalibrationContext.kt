@@ -1,15 +1,12 @@
 package de.uniwuerzburg.omosim.calibration
 
 import de.uniwuerzburg.omosim.calibration.CalibrationConstants.T
-import de.uniwuerzburg.omosim.calibration.algorithms.*
 import de.uniwuerzburg.omosim.cli.CalibrationStep
 import de.uniwuerzburg.omosim.core.DestinationFinderDefault
-import de.uniwuerzburg.omosim.core.ModeChoiceFast
 import de.uniwuerzburg.omosim.core.Omosim
 import de.uniwuerzburg.omosim.core.models.*
 import de.uniwuerzburg.omosim.io.json.writeJson
 import java.io.File
-import kotlin.math.floor
 import kotlin.math.pow
 
 /**
@@ -82,85 +79,103 @@ class TrafficCountCalibrationContext(
         }
     }
 
+    /**
+     * Evaluate the current calibration with simulation runs and print the result to the standard output.
+     *
+     * @param sharePop Share of population to use.
+     */
     fun evaluate(sharePop: Double) {
+        // Get calibrated run
         val finder = omosim.destinationFinder as DestinationFinderDefault
-        val flowCal = runBatch(sharePop)
+        val simCal = runBatch(sharePop)
 
         // Clear calibration
         for (activity in ActivityType.entries) {
             val dcFunction = finder.locChoiceWeightFuns[activity]!!
             for (cell in omosim.grid) {
-                cell.updateAttractionScaler(dcFunction, 1.0)
+                cell.updateAttractionScaler(dcFunction, 1.0) // Gravity: attraction values
             }
         }
-        finder.forcedTransitionMatrix.clear()
-        omosim.tourModeUtilityFn = null
-        omosim.altPercentages = mapOf()
+        finder.forcedTransitionMatrix.clear() // Gravity: transition matrix
+        omosim.tourModeUtilityFn = null // Mode choice
+        omosim.altPercentages = mapOf() // Route choice
 
         // Run uncalibrated
-        val flowBase = runBatch(sharePop)
+        val simBase = runBatch(sharePop)
 
-        // Calculate Loss
-        var mseSim = 0.0
-        var mseSimBase = 0.0
-        for (sensor in sensors) {
-            for ( t in 0 until T) {
-                mseSim += (flowCal[sensor]!![t] - sensor.measuredFlow[t]).pow(2)
-                mseSimBase += (flowBase[sensor]!![t] - sensor.measuredFlow[t]).pow(2)
-            }
-        }
+        // Calculate MSE
+        val mseCal  = mse(simCal)
+        val mseBase = mse(simBase)
 
         // Print table
-        println("_".repeat(20*4 + 5*3))
-        println("${"Sensor".padEnd(20)} | \t" +
-                "${"T".padEnd(20)} | \t" +
-                "${"Flow Simulated".padEnd(20)} | \t" +
-                "${"Flow Simulated Base".padEnd(20)} | \t" +
-                "Flow Measured".padEnd(20)
+        val wCell = 15
+        println("EVALUATION RESULT:")
+
+        // Header
+        println("_".repeat(wCell*5 + 4*3))
+        println("${"Sensor".padEnd(wCell)} | " +
+                "${"T".padEnd(wCell)} | " +
+                "${"Sim. Calibrated".padEnd(wCell)} | " +
+                "${"Sim. Base".padEnd(wCell)} | " +
+                "Measured".padEnd(wCell)
         )
-        printTabHLine()
-        println(" ".repeat(20) +
-                " | \t" + " ".repeat(20) +
-                " | \t" + "%.2f e6".format(mseSim/sensors.size / 1e6).padEnd(20)  +
-                " | \t" + "%.2f e6".format(mseSimBase/sensors.size / 1e6).padEnd(20)  +
-                " | \t" + " ".repeat(20)
+        printTabHLine(wCell)
+
+        // MSE Result
+        println(" ".repeat(wCell) +
+                " | " + " ".repeat(wCell) +
+                " | " + "%.4g".format(mseCal).padStart(wCell)  +
+                " | " + "%.4g".format(mseBase).padStart(wCell)  +
+                " | " + " ".repeat(wCell)
         )
-        printTabHLine()
+        printTabHLine(wCell)
+
         // Measurement vs Simulated
-        for ((i, flow) in flowCal.values.withIndex()) {
+        for (sensor in sensors) {
+            // Print results for aggregated time windows
             for (seg in listOf(Pair(0, T))) {
-                var optVal = 0.0
-                var baseVal = 0.0
-                var mVal = 0.0
+                // Sum over time window
+                var cal = 0.0
+                var base = 0.0
+                var measurement = 0.0
                 for (t in seg.first until seg.second) {
-                    optVal += flow[t]
-                    baseVal += flowBase[sensors[i]]!![t]
-                    mVal += sensors[i].measuredFlow[t]
+                    cal += simCal[sensor]!![t]
+                    base += simBase[sensor]!![t]
+                    measurement += sensor.measuredFlow[t]
                 }
+
                 println(
-                    "${sensors[i].name.padEnd(20)} | \t" +
-                    "${(seg.first.toString() + "-" + seg.second).padEnd(20)} | \t" +
-                    "${optVal.toString().padEnd(20)} | \t" +
-                    "${baseVal.toString().padEnd(20)} | \t" +
-                    mVal.toString().padEnd(20)
+                    "${sensor.name.padEnd(wCell)} | " +
+                    "${(seg.first.toString() + "-" + seg.second).padEnd(wCell)} | " +
+                    "%.2f".format(cal).padStart(wCell) + " | " +
+                    "%.2f".format(base).padStart(wCell) + " | " +
+                    "%.2f".format(measurement).padStart(wCell)
                 )
             }
         }
     }
 
-    private fun printTabHLine() {
+    @Suppress("SameParameterValue")
+    private fun printTabHLine(wCell: Int) {
         println(
-            "_".repeat(20) +
-            " | \t" + "_".repeat(20)  +
-            " | \t" + "_".repeat(20)  +
-            " | \t" + "_".repeat(20)  +
-            " | \t" + "_".repeat(20)
+            "_".repeat(wCell) +
+            " | " + "_".repeat(wCell)  +
+            " | " + "_".repeat(wCell)  +
+            " | " + "_".repeat(wCell)  +
+            " | " + "_".repeat(wCell)
         )
     }
 
-   @Suppress("SameParameterValue")
-   fun runBatch(sharePop: Double) : Map<TrafficSensor, DoubleArray> {
-       val fullPopulation = omosim.buildings.sumOf { it.population }
+    /**
+     * Simulate a sample of the population and return the simulated traffic counts.
+     * The result is scaled up to the entire simulation.
+     *
+     * @param sharePop Share of population to use.
+     * @return Simulated traffic counts at each traffic sensor.
+     */
+    @Suppress("SameParameterValue")
+    fun runBatch(sharePop: Double) : Map<TrafficSensor, DoubleArray> {
+       val fullPopulation = omosim.buildings.sumOf { it.population } // TODO
 
        // Ensure results are deterministic
        omosim.mainRng.setSeed(0)
@@ -172,59 +187,79 @@ class TrafficCountCalibrationContext(
        // Determine counts at sensors
        val simCount = sensors.associateWith { Array(T) {0.0} }.toMutableMap()
        val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, _, _ ->
-           val mod = departureTime.minute + departureTime.hour * 60
-           val t = floor((mod % 1440.0) / 1440.0 * T).toInt()
+           val t = departureTime.determineTimeSlice()
 
            if (trip.mode == Mode.CAR_DRIVER) {
-               if ((originActivity.location.getAggLoc() is Cell) and (destinationActivity.location.getAggLoc() is Cell)) {
-                   val od = Pair(originActivity.location.getAggLoc() as Cell, destinationActivity.location.getAggLoc() as Cell)
+               val origin = originActivity.location.getAggLoc()
+               val destination = destinationActivity.location.getAggLoc()
 
-                   if (od in affectedSensors) {
-                       val key = ODTTriple(od.first, od.second, t)
-                       if (key in omosim.altPercentages) {
-                           val p = omosim.altPercentages[key]!!
+               // Check if trip is from a real location to a real location.
+               // Always true if no legacy calibration was applied.
+               if ((origin is Cell) and (destination is Cell)) {
+                   val od = Pair(origin as Cell, destination as Cell)
+                   val odt = ODTTriple(od.first, od.second, t)
+
+                   if (odt in omosim.altPercentages) {
+                       // With route choice calibration
+                       if (od in affectedAltSensors) {
+                           val p = omosim.altPercentages[odt]!!
                            for ((i, alternative) in affectedAltSensors[od]!!.withIndex()) {
                                for (sensor in alternative) {
-                                   val arr = simCount[sensor]!!
-                                   arr[t] = arr[t] + p[i]
+                                 simCount[sensor]!![t] += simCount[sensor]!![t] + p[i] // Add traffic
                                }
                            }
-                       } else {
+                       }
+                   } else {
+                       // Case without route choice calibration
+                       if (od in affectedSensors) {
                            val sensors = affectedSensors[od]!!
                            for (sensor in sensors) {
-                               val arr = simCount[sensor]!!
-
-                               arr[t] = arr[t] + 1
+                               simCount[sensor]!![t] = simCount[sensor]!![t] + 1 // Add traffic
                            }
                        }
                    }
                }
            }
        }
-
        for (agent in agents) {
            agent.mobilityDemand.first().visitTrips(visitor)
        }
 
-       // Aggregate demand to sensors
-       val allFlows = sensors.associateWith { DoubleArray(T) {0.0} }.toMutableMap()
+       // Scale traffic to total population
+       val scaledSimCount = sensors.associateWith { DoubleArray(T) {0.0} }.toMutableMap()
        for (sensor in sensors) {
            for (t in 0 until T) {
-               val simFlow = simCount[sensor]!![t] * fullPopulation / agents.size
-               allFlows[sensor]!![t] = simFlow
+               scaledSimCount[sensor]!![t] = simCount[sensor]!![t] * fullPopulation / agents.size
            }
        }
-       return allFlows
-   }
+       return scaledSimCount
+    }
 
-    fun flowMSE(flowCal: Map<TrafficSensor, DoubleArray>) : Double {
-        var mse = 0.0
+    /**
+     * Compute the mean square error between simulation and measurements across all sensors and time steps.
+     *
+     * @param simCount Simulated traffic at sensor and time step
+     * @return Mean squared error
+     */
+    @Suppress("MemberVisibilityCanBePrivate")
+    fun mse(simCount: Map<TrafficSensor, DoubleArray>) : Double {
+        return sse(simCount) / (sensors.size * T)
+    }
+
+    /**
+     * Compute the sum of squares error between simulation and measurements across all sensors and time steps.
+     *
+     * @param simCount Simulated traffic at sensor and time step
+     * @return Sum of squares error
+     */
+    fun sse(simCount: Map<TrafficSensor, DoubleArray>) : Double {
+        var sse = 0.0
         for (sensor in sensors) {
-            for ( t in 0 until T) {
-                mse += (flowCal[sensor]!![t] - sensor.measuredFlow[t]).pow(2)
+            for (t in 0 until T) {
+                sse += (simCount[sensor]!![t] - sensor.measuredFlow[t]).pow(2)
             }
         }
-        return mse
+        return sse
     }
 }
 

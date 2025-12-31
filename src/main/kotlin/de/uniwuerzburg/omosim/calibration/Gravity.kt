@@ -290,9 +290,7 @@ class Gravity(
                     }
                     flows[sensor] = sensorCounts
                 }
-                context.flowMSE(flows)
-
-                Pair(context.flowMSE(flows), simCounts)
+                Pair(context.sse(flows), simCounts)
             }
         }
 
@@ -310,7 +308,7 @@ class Gravity(
                     }
                 }
                 val flows = context.runBatch(0.1)
-                context.flowMSE(flows)
+                context.sse(flows)
             }
         }
 
@@ -326,7 +324,7 @@ class Gravity(
                     cell.updateAttractionScaler(dcFunction, x[i])
                 }
                 val flows = context.runBatch(0.1)
-                context.flowMSE(flows)
+                context.sse(flows)
             }
         }
         /**
@@ -345,7 +343,7 @@ class Gravity(
                     cell.updateAttractionScaler(dcFunction, x[i])
                 }
                 val flows = context.runBatch(0.1)
-                context.flowMSE(flows)
+                context.sse(flows)
 
                 val countsFlat = mutableListOf<Double>()
                 for (sensor in context.sensors) {
@@ -354,7 +352,7 @@ class Gravity(
                     }
                 }
 
-                Pair(context.flowMSE(flows), countsFlat.toDoubleArray())
+                Pair(context.sse(flows), countsFlat.toDoubleArray())
             }
         }
     }
