@@ -13,15 +13,19 @@ import kotlin.math.floor
 import kotlin.math.pow
 
 /**
- * Calibrate OMoSim with traffic count data // TODO stores calibration context
+ * Entry point for calibration.
  *
+ * Context for OMoSim calibration. Stores the simulator to calibrate in addition to the traffic count data to be used
+ * as the reference.
+ *
+ * @param trafficCountDataFile File containing the traffic count data.
  * @param omosim Simulator
  */
 class TrafficCountCalibrationContext(
-    linkDataFile: File,
+    trafficCountDataFile: File,
     val omosim: Omosim
 ) {
-    val sensors: List<TrafficSensor> = TrafficSensor.readSensorData(linkDataFile, omosim) // Read traffic count data
+    val sensors: List<TrafficSensor> = TrafficSensor.readSensorData(trafficCountDataFile, omosim)
     val finder = omosim.destinationFinder as DestinationFinderDefault
     val affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     var affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>> = mapOf()
@@ -58,7 +62,8 @@ class TrafficCountCalibrationContext(
                     GravityCalibrationStore.write(gravityCalOut, omosim.buildings, finder.locChoiceWeightFuns)
                 }
                 CalibrationType.MODE_CHOICE -> {
-                    modeChoiceCal(modeChoiceCalOut, ModeChoiceCalibrationObjective.FitIndividualMeasurements)
+                    val mcResult = ModeChoice(this).calibrate(ModeChoiceCalibrationObjective.FitIndividualMeasurements)
+                    writeJson(mcResult, modeChoiceCalOut)
                     omosim.tourModeUtilityFn = modeChoiceCalOut
                 }
                 CalibrationType.ROUTE_CHOICE -> {
@@ -70,29 +75,6 @@ class TrafficCountCalibrationContext(
                 null -> { logger.warn("Calibration step $i skipped. Step type is null.") }
             }
         }
-    }
-
-    private fun modeChoiceCal(calFile: File, objectiveType: ModeChoiceCalibrationObjective) {
-        omosim.mainRng.setSeed(0) // Seed impact low with 100% of agents
-
-        // Run Simulation
-        val agents = omosim.run(0.1, verbose = false)
-        omosim.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
-
-        // Create mode choice surrogate model
-        val mc = ModeChoiceFast(omosim.routingCache)
-        val model = ModeChoice.buildModel(agents, mc, omosim.mainRng, omosim, sensors, affectedSensors, objectiveType)
-
-        // Get X0
-        val carUtil = mc.tourModeOptions.find { it.mode == Mode.CAR_DRIVER }
-        val x0 = doubleArrayOf(carUtil!!.intercept)
-
-        // Optimize
-        val x = BFGS.run(model, x0, lb=-50.0, ub=50.0)
-
-        // Store calibration
-        carUtil.intercept = x[0]
-        writeJson(mc.tourModeOptions, calFile)
     }
 
     private fun altRouteCal() {

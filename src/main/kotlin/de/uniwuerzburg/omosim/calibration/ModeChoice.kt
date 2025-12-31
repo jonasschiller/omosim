@@ -1,9 +1,10 @@
 package de.uniwuerzburg.omosim.calibration
 
 import de.uniwuerzburg.omosim.calibration.CalibrationConstants.T
+import de.uniwuerzburg.omosim.calibration.algorithms.BFGS
 import de.uniwuerzburg.omosim.calibration.differentiablemodel.*
 import de.uniwuerzburg.omosim.core.ModeChoiceFast
-import de.uniwuerzburg.omosim.core.Omosim
+import de.uniwuerzburg.omosim.core.ModeUtility
 import de.uniwuerzburg.omosim.core.models.*
 import java.util.*
 import kotlin.math.exp
@@ -23,35 +24,59 @@ enum class ModeChoiceCalibrationObjective {
  * Calibrate OMoSim output by adjusting mode choice.
  *
  * Optimizes the intercept of the car mode utility such that the objective is minimized.
+ *
+ * @param context Calibration context to use. Includes a Simulator (OMoSim) and the traffic count data.
  */
-object ModeChoice {
+class ModeChoice(
+    private val context: TrafficCountCalibrationContext
+) {
+    /**
+     * Calibrate mode choice.
+     */
+    fun calibrate(objective: ModeChoiceCalibrationObjective) : Array<ModeUtility> {
+        context.omosim.mainRng.setSeed(0) // Seed impact low with 100% of agents
+
+        // Run Simulation
+        val agents = context.omosim.run(0.1, verbose = false)
+        context.omosim.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
+
+        // Create mode choice surrogate model
+        val mc = ModeChoiceFast(context.omosim.routingCache)
+        val model = buildModel(agents, mc, context.omosim.mainRng, objective)
+
+        // Get X0
+        val carUtil = mc.tourModeOptions.find { it.mode == Mode.CAR_DRIVER }
+        val x0 = doubleArrayOf(carUtil!!.intercept)
+
+        // Optimize
+        val x = BFGS.run(model, x0, lb=-50.0, ub=50.0)
+
+        // Store calibration
+        carUtil.intercept = x[0]
+        return mc.tourModeOptions
+    }
+
     /**
      * Build a differentiable model that computes the objective loss for a given intercept.
      *
      * @param agents OMoSim run result
      * @param mc Mode choice model to calibrate
      * @param rng Random number generator
-     * @param omosim Simulator
-     * @param sensors Sensors with measurements
-     * @param affectedSensors Gives all sensors that are affected by a path option for a certain origin-destination pair
      * @param objective Type of objective to use @See de.uniwuerzburg.omod.calibration.ModeChoiceCalibrationObjective
      * @return Differentiable Model
      */
-    fun buildModel(
+    private fun buildModel(
         agents: List<MobiAgent>,
         mc: ModeChoiceFast,
         rng: Random,
-        omosim: Omosim,
-        sensors: List<TrafficSensor>,
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
         objective: ModeChoiceCalibrationObjective
     ) : DifferentiableModel {
-        val totalPop = omosim.buildings.sumOf { it.population } // TODO
+        val totalPop = context.omosim.buildings.sumOf { it.population } // TODO
         val model = DifferentiableModel(1) // Only variable: Intercept of car mode
 
         // Initialize simulated traffic counts
         val simCount = mutableMapOf<TrafficSensor, List<LinearTerm>>()
-        for (sensor in sensors) {
+        for (sensor in context.sensors) {
             simCount[sensor] = List(T) { LinearTerm(model.nVars) }
         }
 
@@ -107,8 +132,8 @@ object ModeChoice {
                     val d = trip.toActivity.location.getAggLoc()!! as Cell
                     val t = trip.departureTime.determineTimeSlice()
                     val tripOD = Pair(o, d)
-                    if (tripOD in affectedSensors) {
-                        for (sensor in affectedSensors[tripOD]!!) {
+                    if (tripOD in context.affectedSensors) {
+                        for (sensor in context.affectedSensors[tripOD]!!) {
                             simCount[sensor]!![t].addTerm(pTerm, totalPop / agents.size)
                         }
                     }
@@ -120,7 +145,7 @@ object ModeChoice {
         // Objective
         val objTerm = when(objective) {
             ModeChoiceCalibrationObjective.FitIndividualMeasurements -> {
-                sseObjective(model.nVars, sensors, simCount) // Normal sum of squares objective
+                sseObjective(model.nVars, context.sensors, simCount) // Normal sum of squares objective
             }
             ModeChoiceCalibrationObjective.FitTotalCarTrips -> {
                 // Objective that minimizes the differences between the sum of simulated counts across all
@@ -128,7 +153,7 @@ object ModeChoice {
                 // Purpose: Calibrate the total car demand in the area
                 var totalMeasured = 0.0
                 val totalSim = LinearTerm(model.nVars)
-                for (sensor in sensors) {
+                for (sensor in context.sensors) {
                     for (t in 0 until T) {
                         totalSim.addTerm(simCount[sensor]!![t], 1.0)
                         totalMeasured += sensor.measuredFlow[t]
