@@ -51,7 +51,7 @@ class CalibrationOptions : OptionGroup (
                "Example: GRAVITY:MM_PSO:OTHER,WORK:iterations=1000:lb=0.2"
     ).convert{ CalibrationStep.fromCLIString(it) }.multiple(
         default = listOf(
-            CalibrationStep(CalibrationType.GRAVITY, CalibrationAlgorithm.MM_PSO, listOf(ActivityType.OTHER), mapOf()),
+            CalibrationStep(CalibrationType.GRAVITY, CalibrationAlgorithm.SM_PSO, listOf(ActivityType.OTHER), mapOf()),
             CalibrationStep(CalibrationType.EVALUATE, null, listOf(),  mapOf())
         )
     )
@@ -247,7 +247,7 @@ class Run : CliktCommand() {
             val modeChoiceOut = Paths.get(calDir.toString(), "mode_choice.json").toFile()
 
             // Calibrate
-            val calibrator = TrafficCountCalibrator(
+            val calibrator = TrafficCountCalibrationContext(
                 calibrationParameters!!.calibration_traffic_count_file,
                 omosim
             )
