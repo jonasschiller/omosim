@@ -39,13 +39,13 @@ fun clipGTFSFile(bbBox: Envelope, gtfsPath: Path, cacheDir: Path, dispatcher: Co
     Files.createDirectories(Paths.get(cacheDir.toString(),"clippedGTFS"))
 
     // Clip Stops
-    var stops = filterGTFSFile(
+    val stops = filterGTFSFile(
         inputStreams["stops.txt"]!!,
         Paths.get(cacheDir.toString(),"clippedGTFS/stops.txt"),
         listOf("stop_id"),
         BBFilter(bbBox),
         dispatcher
-    ).first()
+    ).first().toMutableSet()
 
     // Get trips
     val trips = filterGTFSFile(
@@ -61,7 +61,7 @@ fun clipGTFSFile(bbBox: Envelope, gtfsPath: Path, cacheDir: Path, dispatcher: Co
     inputStreams = loadInputStreams(gtfsPath)
 
     // Filter stop times
-    stops = filterGTFSFile(
+    stops += filterGTFSFile(
         inputStreams["stop_times.txt"]!!,
         Paths.get(cacheDir.toString(), "clippedGTFS/stop_times.txt"),
         listOf("stop_id"),

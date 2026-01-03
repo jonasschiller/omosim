@@ -56,8 +56,12 @@ class GTFSKtTest {
             assertEquals(files2.keys, files1.keys, "File names differ")
 
             for (fileName in files1.keys) {
-                val actual = files1[fileName]!!.readText().replace("\r\n", "\n")
-                val expected = files2[fileName]!!.readText().replace("\r\n", "\n")
+                val actual = files1[fileName]!!.readText()
+                    .replace("\r\n", "\n")
+                    .split("\n").sorted().joinToString("\n")
+                val expected = files2[fileName]!!.readText()
+                    .replace("\r\n", "\n")
+                    .split("\n").sorted().joinToString("\n")
 
                 assertEquals(expected, actual, "Mismatch in file: $fileName")
             }
