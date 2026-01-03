@@ -16,7 +16,6 @@ import org.jetbrains.kotlinx.multik.ndarray.data.asDNArray
 import org.jetbrains.kotlinx.multik.ndarray.data.get
 import org.jetbrains.kotlinx.multik.ndarray.data.set
 import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
-import org.jetbrains.kotlinx.multik.ndarray.operations.plus
 import org.jetbrains.kotlinx.multik.ndarray.operations.plusAssign
 import org.jetbrains.kotlinx.multik.ndarray.operations.times
 import org.locationtech.jts.geom.Coordinate
@@ -60,19 +59,7 @@ class SGGravity(
     fun buildModelSSE(
         activityType: ActivityType
     ): DifferentiableModel {
-        val (model, tstSimCounts) = buildDiffModel(activityType)
-
-        // DEBUG CODE // TODO DELETE
-        /*println(activityType)
-        println("Evaluate Matrix Rep")
-        debugEval(generateMarkovChainRep(activityType), sensors, affectedSensors)
-        println("Evaluate Graph")
-        for (sensor in sensors) {
-            val sum = tstSimCounts[sensor]!!.map { it.evaluate(DoubleArray(omosim.grid.size - 1) { 1.0 }) }.sum()
-            val measured = sensor.measuredFlow.sum()
-            println("${sensor.name} \t | $measured\t|$sum ")
-        }*/
-        // DEBUG ENDS
+        val (model, _) = buildDiffModel(activityType)
         return model
     }
 
@@ -739,135 +726,6 @@ class SGGravity(
             }
         }
     }
-
-    // ========== DEBUG CODE ================= // TODO Delete
-    private fun getExpectedCountPerAgent(mrep: SGCompactMatrixRep) : D2Array<Double> {
-        // Result: Expected trip count on each od-paid of one agent on one day
-        val expectedCountPerAgent = mk.zeros<Double>(context.omosim.grid.size, context.omosim.grid.size)
-
-        val varTMatrix = mrep.tMatrices[mrep.vActivity]!!
-
-        // Flex
-        for (flexActivity in listOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)) {
-            val transitionActivity = if (flexActivity == ActivityType.BUSINESS) {
-                ActivityType.OTHER
-            } else {
-                flexActivity
-            }
-            val carP = mrep.pCar[transitionActivity]!!
-            val fix = mrep.mPriorCnst[flexActivity]!!
-
-            val dep = if (mrep.vActivity in fixActivitiesNotHome) {
-                mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[flexActivity]!!)
-            } else if (flexActivity == mrep.vActivity) {
-                mk.zeros<Double>(context.omosim.grid.size, context.omosim.grid.size)
-            } else {
-                mrep.mPriorVar[flexActivity]!!.dot(varTMatrix)
-            }
-            val total = mk.ones<Double>(context.omosim.grid.size).expandDims(0).asDNArray()
-                .asD2Array().dot(dep.plus(fix))
-                .diagonal().dot(mrep.tMatrices[transitionActivity]!!)
-            expectedCountPerAgent.plusAssign(total.times(carP))
-        }
-
-        // Home
-        for (fixActivity in listOf(ActivityType.HOME)) {
-            val carP = mrep.pCar[fixActivity]!!
-
-            val dep = if (mrep.vActivity in fixActivitiesNotHome) {
-                mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[fixActivity]!!)
-            } else {
-                mrep.mPriorVar[fixActivity]!!.dot(varTMatrix)
-            }
-            val fix = mrep.mPriorCnst[fixActivity]!!
-            val total = dep.plus(fix).transpose()
-
-            expectedCountPerAgent.plusAssign(total.times(carP))
-        }
-
-        // School
-        for (fixActivity in listOf(ActivityType.SCHOOL)) {
-            val carP = mrep.pCar[fixActivity]!!
-            val fix = mrep.mPriorCnst[fixActivity]!!
-
-            if (mrep.vActivity == ActivityType.SCHOOL) {
-                val schoolProbs = mrep.h.dot( mrep.tMatrices[ActivityType.SCHOOL]!! )
-                val dep = schoolProbs.diagonal().dot( mrep.mPriorVar[fixActivity]!! ).transpose()
-                val total = dep.plus( fix.transpose().dot( mrep.tMatrices[fixActivity]!!) )
-                expectedCountPerAgent.plusAssign(total.times(carP))
-            } else {
-                val dep = if (mrep.vActivity in fixActivitiesNotHome) {
-                    mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[fixActivity]!!)
-                } else {
-                    mrep.mPriorVar[fixActivity]!!.dot(varTMatrix)
-                }
-                val total = dep.plus(fix).transpose().dot(mrep.tMatrices[fixActivity]!!)
-                expectedCountPerAgent.plusAssign(total.times(carP))
-            }
-        }
-
-        // Work
-        for (fixActivity in listOf(ActivityType.WORK)) {
-            val carP = mrep.pCar[fixActivity]!!
-            val fix = mrep.mPriorCnst[fixActivity]!!
-
-            if (mrep.vActivity == ActivityType.WORK) {
-                val workProbs = mrep.h.dot( mrep.tMatrices[ActivityType.WORK]!! )
-                val dep = workProbs.diagonal().dot( mrep.mPriorVar[fixActivity]!! ).transpose()
-                val total = dep.plus( fix.transpose().dot( mrep.tMatrices[fixActivity]!!) )
-                expectedCountPerAgent.plusAssign(total.times(carP))
-            } else {
-                val dep = if (mrep.vActivity in fixActivitiesNotHome) {
-                    mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[fixActivity]!!)
-                } else {
-                    mrep.mPriorVar[fixActivity]!!.dot(varTMatrix)
-                }
-                val total = dep.plus(fix).transpose().dot(mrep.tMatrices[fixActivity]!!)
-                expectedCountPerAgent.plusAssign(total.times(carP))
-            }
-        }
-
-        return expectedCountPerAgent
-    }
-
-    private fun debugEval(
-        mrep: SGCompactMatrixRep,
-        sensors: List<TrafficSensor>,
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
-    ) {
-        val expected = getExpectedCountPerAgent(mrep)
-
-        val simCount = sensors.associateWith { 0.0 }.toMutableMap()
-        for ((o, origin) in context.omosim.grid.withIndex()) {
-            for ((d, destination) in context.omosim.grid.withIndex()) {
-                val odPair = Pair(origin, destination)
-                if (odPair in affectedSensors) {
-                    val affected = affectedSensors[odPair]!!
-                    for (sensor in affected) {
-
-                        simCount[sensor] = simCount[sensor]!! + expected[o,d] * context.totalPopulation
-                    }
-                }
-            }
-        }
-        var mse = 0.0
-        val allFlows = mutableMapOf<TrafficSensor, Double>()
-        for (sensor in sensors) {
-            val simFlow = simCount[sensor]!!
-            mse += (sensor.measuredFlow.sum() - simFlow).pow(2)
-
-            allFlows[sensor] = simFlow
-        }
-        mse /= sensors.size
-
-        println("MSE: $mse")
-        println("------------------------------")
-        println("Sensor | \t Flow OMOD | \t Flow Measured")
-        for ((i, flow) in simCount.values.withIndex()) {
-            println("${sensors[i].name} | \t $flow | \t ${sensors[i].measuredFlow.sum()}")
-        }
-    }
-    // ========== DEBUG CODE ENDS =================
 }
 
 
