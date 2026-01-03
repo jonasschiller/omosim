@@ -198,7 +198,7 @@ class Gravity(
         fun calibrateWSPSASM(
             activities: List<ActivityType>, parameters: Map<String, String>? = null
         ) {
-            val measurements = context.sensors.map { it.measuredFlow }.flatMap { it.toList() }
+            val measurements = context.sensors.map { it.measurements }.flatMap { it.toList() }
 
             for (activity in activities) {
                 val model = SGGravity(context).buildModelSimCounts(activity)
@@ -214,7 +214,7 @@ class Gravity(
         fun calibrateWSPSA(
             activities: List<ActivityType>, parameters: Map<String, String>? = null
         ) {
-            val measurements = context.sensors.map { it.measuredFlow }.flatMap { it.toList() }
+            val measurements = context.sensors.map { it.measurements }.flatMap { it.toList() }
 
             for (activity in activities) {
                 val model = SGGravity(context).buildModelSimCounts(activity)

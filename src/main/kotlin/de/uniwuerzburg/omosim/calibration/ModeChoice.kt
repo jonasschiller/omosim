@@ -155,7 +155,7 @@ class ModeChoice(
                 for (sensor in context.sensors) {
                     for (t in 0 until T) {
                         totalSim.addTerm(simCount[sensor]!![t], 1.0)
-                        totalMeasured += sensor.measuredFlow[t]
+                        totalMeasured += sensor.measurements[t]
                     }
                 }
                 val obj = LinearTerm(model.nVars)

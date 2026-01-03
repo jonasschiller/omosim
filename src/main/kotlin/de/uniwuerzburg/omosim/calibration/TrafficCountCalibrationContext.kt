@@ -6,6 +6,18 @@ import de.uniwuerzburg.omosim.core.DestinationFinderDefault
 import de.uniwuerzburg.omosim.core.Omosim
 import de.uniwuerzburg.omosim.core.models.*
 import de.uniwuerzburg.omosim.io.json.writeJson
+import de.uniwuerzburg.omosim.routing.routeCarAlternatives
+import de.uniwuerzburg.omosim.routing.routeWith
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import org.geotools.filter.function.StaticGeometry.intersection
+import org.locationtech.jts.geom.Coordinate
+import org.locationtech.jts.geom.GeometryFactory
+import org.locationtech.jts.geom.LineString
+import org.locationtech.jts.geom.MultiLineString
+import org.locationtech.jts.index.hprtree.HPRtree
 import java.io.File
 import kotlin.math.pow
 
@@ -23,21 +35,21 @@ class TrafficCountCalibrationContext(
     val omosim: Omosim,
     population: Double? = null,
 ) {
-    val sensors: List<TrafficSensor> = TrafficSensor.readSensorData(trafficCountDataFile, omosim)
+    val sensors: List<TrafficSensor> = TrafficSensor.readSensorData(trafficCountDataFile, omosim.transformer)
     val finder = omosim.destinationFinder as DestinationFinderDefault
     val affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     var affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>> = mapOf()
     val totalPopulation: Double
 
     init {
-        T = sensors.first().measuredFlow.size // Set number of time slices
-        if (!sensors.all { it.measuredFlow.size == T }) {
+        T = sensors.first().measurements.size // Set number of time slices
+        if (!sensors.all { it.measurements.size == T }) {
             throw IllegalArgumentException(
                 "Sensor measurement arrays are not uniformly sized!" +
                 "Validate the --cal_traffic_count_file file. "
             )
         }
-        affectedSensors = TrafficSensor.affectedSensors(sensors, omosim)
+        affectedSensors = affectedSensors()
 
         // Total population in area. Used to scale the estimated traffic counts.
         totalPopulation = if (population != null) {
@@ -67,7 +79,7 @@ class TrafficCountCalibrationContext(
     ) {
         // If alternative routes need to be computed
         if (CalibrationType.ROUTE_CHOICE in steps.map { it.type }) {
-            affectedAltSensors = TrafficSensor.altAffectedSensors(sensors, omosim)
+            affectedAltSensors = altAffectedSensors()
         }
 
         // Complete the steps in the given order
@@ -172,7 +184,7 @@ class TrafficCountCalibrationContext(
                 for (t in seg.first until seg.second) {
                     cal += simCal[sensor]!![t]
                     base += simBase[sensor]!![t]
-                    measurement += sensor.measuredFlow[t]
+                    measurement += sensor.measurements[t]
                 }
 
                 println(
@@ -269,6 +281,118 @@ class TrafficCountCalibrationContext(
     }
 
     /**
+     * Determine all sensors that count a given origin-destination trip.
+     *
+     * @return Key: origin-destination pair. Value: List of alternatives that contain lists of all sensors affected by
+     * the alternative.
+     */
+    private fun altAffectedSensors() : Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>> {
+        return affectedSensors(true)
+    }
+
+    /**
+     * Determine all sensors that count a given origin-destination trip.
+     *
+     * @return Key: origin-destination pair. Value: List of all sensors affected by the pair.
+     */
+    private fun affectedSensors() : Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>> {
+        val affectedSensors = affectedSensors(false)
+            .mapValues { (_, v) -> v.first() }
+            .filter{ (_, v) -> v.isNotEmpty()}
+        return affectedSensors
+    }
+
+    /**
+     * Determine all sensors that count a given origin-destination trip.
+     *
+     * @param checkAlternatives If true also check alternative routes between origin and destination. If false only
+     * check the 'best' route according to GraphHopper
+     * @param geometryFactory GeometryFactory to use for creating LineStrings from GraphHopper responses
+     * @param leeway Maximum angle between a measurement direction and a route that still counts as 'same direction'.
+     * In degrees.
+     * @return Key: origin-destination pair. Value: List of alternatives that contain lists of all sensors affected by
+     * the alternative.
+     */
+    private fun affectedSensors(
+        checkAlternatives: Boolean,
+        geometryFactory: GeometryFactory = GeometryFactory(),
+        leeway: Double = 30.0
+    ) : Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>> {
+        // Create spatial index of sensor FOVs
+        val sensorTree = HPRtree()
+        for (sensor in sensors) {
+            sensorTree.insert(sensor.fov.envelopeInternal, sensor)
+        }
+
+        val affectedSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>> = runBlocking(omosim.dispatcher) {
+            channelFlow {
+                for (origin in omosim.grid) {
+                    launch {
+                        for (destination in omosim.grid) {
+                            val odAffects = mutableListOf<List<TrafficSensor>>()
+
+                            // Route the origin destination pair
+                            val paths = if (checkAlternatives) {
+                                routeCarAlternatives(origin, destination, omosim.hopper!!).all
+                            } else {
+                                listOf( routeWith("car", origin, destination, omosim.hopper!!).best )
+                            }
+
+                            // Check which paths intersect with which sensors
+                            for (path in paths) {
+                                val coords = path.points.map { Coordinate(it.lat, it.lon) }.toTypedArray()
+
+                                if (coords.size >= 2) {
+                                    val route = omosim.transformer.toModelCRS(geometryFactory.createLineString(coords))
+
+                                    // Alternative affects these sensor counts:
+                                    val altAffects = sensorTree
+                                        // Sensors that intersect the route envelope
+                                        .query(route.envelopeInternal).map { it as TrafficSensor }
+                                        // Sensors that intersect the route
+                                        .filter { sensor ->
+                                            sensor.fov.envelope.intersects(route) && sensor.fov.intersects(route)
+                                        }
+                                        // Sensors that intersect the route and face the right direction
+                                        .filter { sensor ->
+                                            val inter = intersection(sensor.fov, route)
+                                            if (inter is LineString) {
+                                                sensor.direction.isSameDirection(inter, leeway)
+                                            } else if (inter is MultiLineString) {
+                                                // If route crosses the sensor fov more than once check if any crossing
+                                                // is in the right direction
+                                                var sameDir = false
+                                                for (n in 0 until inter.numGeometries) {
+                                                    val crossingN = inter.getGeometryN(n) as LineString
+                                                    if (sensor.direction.isSameDirection(crossingN, leeway)) {
+                                                        sameDir = true
+                                                        break
+                                                    }
+                                                }
+                                                sameDir
+                                            } else {
+                                                false
+                                            }
+                                        }
+
+                                    // Add affected sensors. Might be an empty list.
+                                    odAffects.add(altAffects)
+                                }
+                            }
+
+                            if(odAffects.isNotEmpty()) {
+                                send(Pair(Pair(origin, destination), odAffects))
+                            }
+                        }
+                    }
+                }
+            }.toList()
+        }.toMap()
+
+        return affectedSensors
+    }
+
+    /**
      * Compute the mean square error between simulation and measurements across all sensors and time steps.
      *
      * @param simCount Simulated traffic at sensor and time step
@@ -289,7 +413,7 @@ class TrafficCountCalibrationContext(
         var sse = 0.0
         for (sensor in sensors) {
             for (t in 0 until T) {
-                sse += (simCount[sensor]!![t] - sensor.measuredFlow[t]).pow(2)
+                sse += (simCount[sensor]!![t] - sensor.measurements[t]).pow(2)
             }
         }
         return sse

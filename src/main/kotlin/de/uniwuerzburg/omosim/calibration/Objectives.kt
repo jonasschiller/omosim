@@ -24,7 +24,7 @@ fun sseObjective(nVars: Int, sensors: List<TrafficSensor>, simCount: Map<Traffic
         for (t in 0 until T) {
             // (m - s)^2 = m^2 - 2ms + s^2
             val s = simCount[sensor]!![t]
-            val m = sensor.measuredFlow[t]
+            val m = sensor.measurements[t]
             obj.addConstant(m * m)
             obj.addTerm(s, -2 * m)
             val qTerm = QuadraticTerm(nVars, s, s,1.0)
@@ -71,8 +71,8 @@ fun grbSseObjective(
     for ((i, sensor) in sensors.withIndex()) {
         for (t in 0 until T) {
             // (Sm - Ss)^2 = Sm^2 - 2SmSs + Ss^2
-            obj.addConstant(sensor.measuredFlow[t] * sensor.measuredFlow[t])
-            obj.addTerm(-2 * sensor.measuredFlow[t], vSimCount[t][i])
+            obj.addConstant(sensor.measurements[t] * sensor.measurements[t])
+            obj.addTerm(-2 * sensor.measurements[t], vSimCount[t][i])
             obj.addTerm(1.0, vSimCount[t][i], vSimCount[t][i])
         }
     }
