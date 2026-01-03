@@ -85,6 +85,8 @@ class TrafficCountCalibrationContext(
      * @param sharePop Share of population to use.
      */
     fun evaluate(sharePop: Double) {
+        logger.info("Evaluating calibration...")
+
         // Get calibrated run
         val finder = omosim.destinationFinder as DestinationFinderDefault
         val simCal = runBatch(sharePop)
@@ -103,32 +105,46 @@ class TrafficCountCalibrationContext(
         // Run uncalibrated
         val simBase = runBatch(sharePop)
 
+        printTable(simBase, simCal)
+    }
+
+    /**
+     * Print evaluation result
+     * 
+     * @param simBase Simulation result at each traffic sensor at each time step without calibration
+     * @param simCal Simulation result at each traffic sensor at each time step with calibration
+     * @param cellWidth Size of each table cell (number of characters)
+     */
+    private fun printTable(
+        simBase: Map<TrafficSensor, DoubleArray>,
+        simCal: Map<TrafficSensor, DoubleArray>,
+        cellWidth: Int = 15
+    ) {
         // Calculate MSE
         val mseCal  = mse(simCal)
         val mseBase = mse(simBase)
 
         // Print table
-        val wCell = 15
         println("EVALUATION RESULT:")
 
         // Header
-        println("_".repeat(wCell*5 + 4*3))
-        println("${"Sensor".padEnd(wCell)} | " +
-                "${"T".padEnd(wCell)} | " +
-                "${"Sim. Calibrated".padEnd(wCell)} | " +
-                "${"Sim. Base".padEnd(wCell)} | " +
-                "Measured".padEnd(wCell)
+        println("_".repeat(cellWidth*5 + 4*3))
+        println("${"Sensor".padEnd(cellWidth)} | " +
+                "${"T".padEnd(cellWidth)} | " +
+                "${"Sim. Calibrated".padEnd(cellWidth)} | " +
+                "${"Sim. Base".padEnd(cellWidth)} | " +
+                "Measured".padEnd(cellWidth)
         )
-        printTabHLine(wCell)
+        printTabHLine(cellWidth)
 
         // MSE Result
-        println(" ".repeat(wCell) +
-                " | " + " ".repeat(wCell) +
-                " | " + "%.4g".format(mseCal).padStart(wCell)  +
-                " | " + "%.4g".format(mseBase).padStart(wCell)  +
-                " | " + " ".repeat(wCell)
+        println(" ".repeat(cellWidth) +
+                " | " + " ".repeat(cellWidth) +
+                " | " + "%.4g".format(mseCal).padStart(cellWidth)  +
+                " | " + "%.4g".format(mseBase).padStart(cellWidth)  +
+                " | " + " ".repeat(cellWidth)
         )
-        printTabHLine(wCell)
+        printTabHLine(cellWidth)
 
         // Measurement vs Simulated
         for (sensor in sensors) {
@@ -145,11 +161,11 @@ class TrafficCountCalibrationContext(
                 }
 
                 println(
-                    "${sensor.name.padEnd(wCell)} | " +
-                    "${(seg.first.toString() + "-" + seg.second).padEnd(wCell)} | " +
-                    "%.2f".format(cal).padStart(wCell) + " | " +
-                    "%.2f".format(base).padStart(wCell) + " | " +
-                    "%.2f".format(measurement).padStart(wCell)
+                    "${sensor.name.padEnd(cellWidth)} | " +
+                            "${(seg.first.toString() + "-" + seg.second).padEnd(cellWidth)} | " +
+                            "%.2f".format(cal).padStart(cellWidth) + " | " +
+                            "%.2f".format(base).padStart(cellWidth) + " | " +
+                            "%.2f".format(measurement).padStart(cellWidth)
                 )
             }
         }
