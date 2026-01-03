@@ -15,7 +15,7 @@ import java.util.*
  * Calibrate OMoSim output by adjusting the gravity model.
  * The gravity model is governed by the following equation:
  *
- *  P(i) = (c_i * A_i * f(od)) / sum_I(c_i * A_i * f(od)
+ *  P(i) = (c_i * A_i * f(od)) / sum_I(c_i * A_i * f(od))
  *
  *  where:
  *      c_i is a scaler determined by the calibration
@@ -107,7 +107,7 @@ class Gravity(
             activities: List<ActivityType>, parameters: Map<String, String>? = null
         )  {
             for (activity in activities) {
-                val model = SGGravity(context.omosim).buildModelSSE(activity, context.sensors, context.affectedSensors)
+                val model = SGGravity(context).buildModelSSE(activity)
                 val x0 = DoubleArray(context.omosim.grid.size - 1) { 1.0 }
                 var d =  BFGS.run(model, x0, parameters=parameters)
                 d = (d.toList() + listOf(1.0)).toDoubleArray()
@@ -120,7 +120,7 @@ class Gravity(
             activities: List<ActivityType>, parameters: Map<String, String>? = null
         ){
             for (activity in activities) {
-                val model = SGGravity(context.omosim).buildModelSSE(activity, context.sensors, context.affectedSensors)
+                val model = SGGravity(context).buildModelSSE(activity)
                 val x0 = DoubleArray(context.omosim.grid.size - 1) { 1.0 }
                 var d = GradientDescent.run(model, x0, parameters=parameters)
                 d = (d.toList() + listOf(1.0)).toDoubleArray()
@@ -201,7 +201,7 @@ class Gravity(
             val measurements = context.sensors.map { it.measuredFlow }.flatMap { it.toList() }
 
             for (activity in activities) {
-                val model = SGGravity(context.omosim).buildModelSimCounts(activity, context.sensors, context.affectedSensors)
+                val model = SGGravity(context).buildModelSimCounts(activity)
                 val objective = o.surrogateObjWSPSA(model, context.sensors)
                 val x0 = DoubleArray(context.omosim.grid.size - 1) { 1.0 }
                 var d = WSPSA.run(
@@ -217,7 +217,7 @@ class Gravity(
             val measurements = context.sensors.map { it.measuredFlow }.flatMap { it.toList() }
 
             for (activity in activities) {
-                val model = SGGravity(context.omosim).buildModelSimCounts(activity, context.sensors, context.affectedSensors)
+                val model = SGGravity(context).buildModelSimCounts(activity)
                 val objective = o.batchObjWSPSA(activity)
                 val x0 = DoubleArray(context.omosim.grid.size - 1) { 1.0 }
                 var d = WSPSA.run(
@@ -230,8 +230,8 @@ class Gravity(
 
         fun calibrateMatrix(activities: List<ActivityType>) {
             for (activity in activities) {
-                val model = SGGravity(context.omosim)
-                val wm = model.optimizeTMatrix(activity, context.sensors, context.affectedSensors)
+                val model = SGGravity(context)
+                val wm = model.optimizeTMatrix(activity)
 
                 val finder = context.omosim.destinationFinder as DestinationFinderDefault
                 val force = mutableMapOf<Cell, DoubleArray>()
@@ -251,7 +251,7 @@ class Gravity(
          * Sum of squares objective using the surrogate model.
          */
         fun surrogateObj(activity: ActivityType): (DoubleArray) -> Double {
-            val model = SGGravity(context.omosim).buildModelSSE(activity, context.sensors, context.affectedSensors)
+            val model = SGGravity(context).buildModelSSE(activity)
             return { x: DoubleArray ->
                 model.evaluate(x)
             }

@@ -9,7 +9,6 @@ import de.uniwuerzburg.omosim.calibration.grbSseObjective
 import de.uniwuerzburg.omosim.calibration.handleGrbStatus
 import de.uniwuerzburg.omosim.calibration.logger
 import de.uniwuerzburg.omosim.core.models.ActivityType
-import de.uniwuerzburg.omosim.core.models.RealLocation
 import org.jetbrains.kotlinx.multik.api.mk
 import org.jetbrains.kotlinx.multik.api.ones
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
@@ -23,8 +22,6 @@ import kotlin.math.pow
  * Requirement: Gurobi must be installed and Gurobi_HOME must be added to the path.
  *
  * @param activityType Activity for which the transition matrix is optimized.
- * @param sensors Sensors with measurements
- * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
  * @param iThresh Performance parameter.
  * All terms with coefficients below this value will be ignored and not added to the result.
  * Higher values -> Computes faster but is a rougher approximation of the markov chain representation.
@@ -32,19 +29,16 @@ import kotlin.math.pow
  */
 fun SGGravity.optimizeTMatrix(
     activityType: ActivityType,
-    sensors: List<TrafficSensor>,
-    affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
-    iThresh: Double = (1/omosim.grid.size.toDouble()).pow(1.5)
+    iThresh: Double = (1/context.omosim.grid.size.toDouble()).pow(1.5)
 ) : D2Array<Double>? {
     logger.info(
         "[Experimental] Calibrating transition matrix for activity $activityType directly." +
-                "Number of variables: ${omosim.grid.size}"
+                "Number of variables: ${context.omosim.grid.size}"
     )
     val m3rep = generateMarkovChainRep(activityType)
 
-    val n = omosim.grid.size
-    val totalPop = omosim.buildings.sumOf { it.population }
-    val relevantODs = getRelevantODs(affectedSensors)
+    val n = context.omosim.grid.size
+    val relevantODs = getRelevantODs(context.affectedSensors)
 
     try {
         // Setup
@@ -99,11 +93,11 @@ fun SGGravity.optimizeTMatrix(
 
         // Simulated Traffic Counts
         val simCount = mutableMapOf<TrafficSensor, List<GRBLinExpr>>()
-        for (sensor in sensors) {
+        for (sensor in context.sensors) {
             simCount[sensor] = List(T) { GRBLinExpr() }
         }
-        for ((o, origin) in omosim.grid.withIndex()) {
-            for ((d, destination) in omosim.grid.withIndex()) {
+        for ((o, origin) in context.omosim.grid.withIndex()) {
+            for ((d, destination) in context.omosim.grid.withIndex()) {
                 // Temporary variables to avoid GRBLinExpr().multAdd(). multAdd() leads to explosion in memory usage.
                 val eODA = mutableMapOf<ActivityType, GRBVar> ()
                 for (activity in ActivityType.entries) {
@@ -114,13 +108,13 @@ fun SGGravity.optimizeTMatrix(
 
                 // Add expected trips to simulated traffic counts
                 val od = Pair(origin, destination)
-                if (od in affectedSensors) {
-                    val affected = affectedSensors[od]!!
+                if (od in context.affectedSensors) {
+                    val affected = context.affectedSensors[od]!!
                     for (sensor in affected) {
                         for (t in 0 until T) {
                             for (activity in ActivityType.entries) {
                                 simCount[sensor]!![t]
-                                    .addTerm(totalPop * tripStartDistr[activity]!![t], eODA[activity]!!)
+                                    .addTerm(context.totalPopulation * tripStartDistr[activity]!![t], eODA[activity]!!)
                             }
                         }
                     }
@@ -129,7 +123,7 @@ fun SGGravity.optimizeTMatrix(
         }
 
         // Set Objective
-        val obj = grbSseObjective(model, sensors, simCount)
+        val obj = grbSseObjective(model, context.sensors, simCount)
         model.setObjective(obj, GRB.MINIMIZE)
 
         // Solve
@@ -141,9 +135,9 @@ fun SGGravity.optimizeTMatrix(
             logger.info("Optimization (gurobi) finished with optimal objective: $oval")
 
             // Ideal transition matrix
-            val result = mk.ones<Double>(omosim.grid.size, omosim.grid.size)
-            for(o in omosim.grid.indices) {
-                for (d in omosim.grid.indices) {
+            val result = mk.ones<Double>(context.omosim.grid.size, context.omosim.grid.size)
+            for(o in context.omosim.grid.indices) {
+                for (d in context.omosim.grid.indices) {
                     result[o, d] = vMatrix[o][d].get(GRB.DoubleAttr.X)
                 }
             }

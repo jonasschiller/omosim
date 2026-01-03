@@ -6,7 +6,6 @@ import de.uniwuerzburg.omosim.calibration.CalibrationConstants.T
 import de.uniwuerzburg.omosim.calibration.differentiablemodel.*
 import de.uniwuerzburg.omosim.core.ActivityGeneratorDefault
 import de.uniwuerzburg.omosim.core.DestinationFinderDefault
-import de.uniwuerzburg.omosim.core.Omosim
 import de.uniwuerzburg.omosim.core.models.*
 import de.uniwuerzburg.omosim.utils.diagonal
 import de.uniwuerzburg.omosim.utils.normalize
@@ -26,10 +25,10 @@ import kotlin.math.pow
 /**
  * Surrogate model builder for the gravity model surrogate.
  *
- * @param omosim The simulator for which to build a surrogate
+ * @param context Calibration context to use. Includes a Simulator (OMoSim) and the traffic count data.
  */
 class SGGravity(
-    val omosim: Omosim
+    val context: TrafficCountCalibrationContext
 ) {
     private val modeChoiceDummy = ModeChoiceDummyForCalibration() // TODO adapt
     private val fixActivitiesNotHome = setOf(ActivityType.WORK, ActivityType.SCHOOL)
@@ -37,16 +36,16 @@ class SGGravity(
     private val flexActivities = setOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)
 
     init {
-        if (omosim.destinationFinder !is DestinationFinderDefault) {
+        if (context.omosim.destinationFinder !is DestinationFinderDefault) {
             throw NotImplementedError(
                 "Surrogate is not valid for the destination finder " +
-                        omosim.destinationFinder.javaClass.simpleName
+                        context.omosim.destinationFinder.javaClass.simpleName
             )
         }
-        if (omosim.activityGenerator !is ActivityGeneratorDefault) {
+        if (context.omosim.activityGenerator !is ActivityGeneratorDefault) {
             throw NotImplementedError(
                 "Surrogate is not valid for the activity generator " +
-                        omosim.activityGenerator.javaClass.simpleName
+                        context.omosim.activityGenerator.javaClass.simpleName
             )
         }
     }
@@ -56,17 +55,12 @@ class SGGravity(
      * Variables = Gravity Model attraction scalers for one activity type.
      *
      * @param activityType ActivityType for which the gravity model will be variable
-     * @param sensors Sensors with measurements
-     * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
      * @return surrogate model
      */
-    // TODO get population size as input
     fun buildModelSSE(
-        activityType: ActivityType,
-        sensors: List<TrafficSensor>,
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
+        activityType: ActivityType
     ): DifferentiableModel {
-        val (model, tstSimCounts) = buildDiffModel(activityType, sensors, affectedSensors)
+        val (model, tstSimCounts) = buildDiffModel(activityType)
 
         // DEBUG CODE // TODO DELETE
         /*println(activityType)
@@ -88,20 +82,16 @@ class SGGravity(
      * Variables = Gravity Model attraction scalers for one activity type.
      *
      * @param activityType ActivityType for which the gravity model will be variable
-     * @param sensors Sensors with measurements
-     * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
      * @return surrogate model
      */
     fun buildModelSimCounts(
         activityType: ActivityType,
-        sensors: List<TrafficSensor>,
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ): DifferentiableModelMultiOut {
-        val (_, simCounts) = buildDiffModel(activityType, sensors, affectedSensors)
+        val (_, simCounts) = buildDiffModel(activityType)
 
         // Create DifferentiableModelMultiOut from simulated counts
         val countsFlat = mutableListOf<Term>()
-        for (sensor in sensors) {
+        for (sensor in context.sensors) {
             for (t in 0 until T) {
                 countsFlat.add( simCounts[sensor]!![t] )
             }
@@ -143,8 +133,8 @@ class SGGravity(
         val hDiag = h.diagonal()
 
         // Compact representation:
-        val mPriorVar  = ActivityType.entries.associateWith { mk.zeros<Double>(omosim.grid.size, omosim.grid.size) }
-        val mPriorCnst = ActivityType.entries.associateWith { mk.zeros<Double>(omosim.grid.size, omosim.grid.size) }
+        val mPriorVar  = ActivityType.entries.associateWith { mk.zeros<Double>(context.omosim.grid.size, context.omosim.grid.size) }
+        val mPriorCnst = ActivityType.entries.associateWith { mk.zeros<Double>(context.omosim.grid.size, context.omosim.grid.size) }
 
         // Go through each unique fixed-fixed segment
         for ((chain, chainP) in getUniqueChainSegments()) {
@@ -154,7 +144,7 @@ class SGGravity(
             var nextActivity = chain[1]
 
             // Setup
-            var mPostFixed = mk.identity<Double>(omosim.grid.size) // Matrix product of matrices after vActivity that are not vActivity
+            var mPostFixed = mk.identity<Double>(context.omosim.grid.size) // Matrix product of matrices after vActivity that are not vActivity
             var mK: D2Array<Double>      // Location probability distributions given the home location
             var mKExVar: D2Array<Double> // The same but ignoring the var activity
             when(startActivity) {
@@ -258,12 +248,12 @@ class SGGravity(
      */
     private fun computeTransitionMatrices() : Map<ActivityType,  D2Array<Double>> {
         val tMatrices = mutableMapOf<ActivityType,  D2Array<Double>>()
-        val finder = omosim.destinationFinder as DestinationFinderDefault
+        val finder = context.omosim.destinationFinder as DestinationFinderDefault
 
         // HOME. A vector.
-        val homeWeights = finder.getWeightsNoOrigin(omosim.grid, activityType=ActivityType.HOME).toMutableList()
-        if (!omosim.populateBufferArea) { // Handle buffer area
-            for ((i, cell) in omosim.grid.withIndex()) {
+        val homeWeights = finder.getWeightsNoOrigin(context.omosim.grid, activityType=ActivityType.HOME).toMutableList()
+        if (!context.omosim.populateBufferArea) { // Handle buffer area
+            for ((i, cell) in context.omosim.grid.withIndex()) {
                 if (!cell.inFocusArea) {
                     homeWeights[i] = 0.0
                 }
@@ -277,16 +267,16 @@ class SGGravity(
         for (activityType in ActivityType.entries) {
             if (activityType == ActivityType.HOME) { continue }
 
-            val mT = mk.zeros<Double>(omosim.grid.size, omosim.grid.size)
+            val mT = mk.zeros<Double>(context.omosim.grid.size, context.omosim.grid.size)
             if (finder.forcedTransitionMatrix.containsKey(activityType)) { // Handle forced matrix
                 val mWeights = finder.forcedTransitionMatrix[activityType]!!
-                for ((o, cell) in omosim.grid.withIndex()) {
+                for ((o, cell) in context.omosim.grid.withIndex()) {
                     val weights = mWeights[cell]!!
                     mT[o] = mk.ndarray( weights.normalize()!! )
                 }
             } else { // Normal case
-                for (o in omosim.grid.indices) {
-                    val weights = finder.getWeights(omosim.grid[o], omosim.grid, activityType=activityType)
+                for (o in context.omosim.grid.indices) {
+                    val weights = finder.getWeights(context.omosim.grid[o], context.omosim.grid, activityType=activityType)
                     mT[o] = mk.ndarray( weights.normalize()!! )
                 }
             }
@@ -301,11 +291,11 @@ class SGGravity(
      * @return unique chain segments with probabilities
      */
     private fun getUniqueChainSegments() : List<ChainSegment> {
-        val activityGenerator = omosim.activityGenerator as ActivityGeneratorDefault
+        val activityGenerator = context.omosim.activityGenerator as ActivityGeneratorDefault
 
         // Get all activity chains
         val allChains = mutableMapOf<List<ActivityType>, Double>()
-        for (stratum in omosim.popStrata) {
+        for (stratum in context.omosim.popStrata) {
             if (stratum.stratumShare == 0.0) { continue }
 
             for ((socioFeatureSet, pSFSet) in stratum.iterateOptions()) {
@@ -375,18 +365,18 @@ class SGGravity(
      * @return Probability matrix for each activity type.
      */
     private fun getPCar(weekday: Weekday = Weekday.UNDEFINED) : Map<ActivityType, D2Array<Double>> {
-        val finder = omosim.destinationFinder as DestinationFinderDefault
+        val finder = context.omosim.destinationFinder as DestinationFinderDefault
 
         val pCar = mutableMapOf<ActivityType, D2Array<Double>>()
         for (activity in ActivityType.entries) {
-            pCar[activity] = mk.zeros<Double>(omosim.grid.size, omosim.grid.size)
+            pCar[activity] = mk.zeros<Double>(context.omosim.grid.size, context.omosim.grid.size)
         }
 
         // Dummy location for home, work, and school of dummy agent. Irrelevant for mode choice.
         val dummyCoord = Coordinate(0.0,0.0)
         val dummyLocation = DummyLocation(dummyCoord, dummyCoord, null, setOf())
 
-        for (stratum in omosim.popStrata) {
+        for (stratum in context.omosim.popStrata) {
             if (stratum.stratumShare == 0.0) { continue }
 
             for ((socioFeatureSet, pSFSet) in stratum.iterateOptions()) {
@@ -400,14 +390,14 @@ class SGGravity(
                 stratumAgent.carAccess = true // Car ownership probability is considered later
 
                 // Car ownership probability
-                val carOwnershipP = omosim.carOwnership.probability(stratumAgent, stratum)
+                val carOwnershipP = context.omosim.carOwnership.probability(stratumAgent, stratum)
                 if (carOwnershipP == 0.0) { continue }
 
                 for (activity in ActivityType.entries) {
-                    val pCarActivity = mk.zeros<Double>(omosim.grid.size, omosim.grid.size)
-                    for (o in omosim.grid.indices) {
-                        val distances = finder.routingCache.getDistances(omosim.grid[o], omosim.grid)
-                        for (d in omosim.grid.indices) {
+                    val pCarActivity = mk.zeros<Double>(context.omosim.grid.size, context.omosim.grid.size)
+                    for (o in context.omosim.grid.indices) {
+                        val distances = finder.routingCache.getDistances(context.omosim.grid[o], context.omosim.grid)
+                        for (d in context.omosim.grid.indices) {
                             val weights = modeChoiceDummy.utilitiesForCalibration(
                                 distances[d].toDouble() / 1000.0, stratumAgent, activity, weekday
                             )
@@ -438,11 +428,11 @@ class SGGravity(
         }.toMutableMap()
 
         // Ensure results are deterministic
-        omosim.mainRng.setSeed(0)
+        context.omosim.mainRng.setSeed(0)
 
         // Run Simulation
-        val agents = omosim.run(n, verbose = false, start_wd = weekday)
-        omosim.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
+        val agents = context.omosim.run(n, verbose = false, start_wd = weekday)
+        context.omosim.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
 
         // Determine counts at sensors
         val visitor: TripVisitor = { _, _, destinationActivity, departureTime, _, _ ->
@@ -472,8 +462,8 @@ class SGGravity(
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
     ): Set<Pair<Int, Int>> {
         val relevantODs = mutableSetOf<Pair<Int, Int>>()
-        for ((o, origin) in omosim.grid.withIndex()) {
-            for ((d, destination) in omosim.grid.withIndex()) {
+        for ((o, origin) in context.omosim.grid.withIndex()) {
+            for ((d, destination) in context.omosim.grid.withIndex()) {
                 val od = Pair(origin, destination)
                 if (od in affectedSensors) {
                     if (affectedSensors[od]!!.isNotEmpty()) {
@@ -489,27 +479,22 @@ class SGGravity(
      * Create computational graph of surrogate model.
      *
      * @param vActivity ActivityType for which the gravity model will be variable
-     * @param sensors Sensors with measurements
-     * @param affectedSensors Gives all sensors that are affected by a certain origin-destination pair
      * @param iThresh Performance parameter.
      * All terms with coefficients below this value will be ignored and not added to the result.
      * Higher values -> Computes faster but is a rougher approximation of the markov chain representation.
      */
     private fun buildDiffModel(
         vActivity: ActivityType,
-        sensors: List<TrafficSensor>,
-        affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>,
-        iThresh: Double = (1/omosim.grid.size.toDouble()).pow(1.5)
+        iThresh: Double = (1/context.omosim.grid.size.toDouble()).pow(1.5)
     ) : Pair<DifferentiableModel, Map<TrafficSensor, List<LinearTerm>>> {
-        logger.info("Building surrogate for activity $vActivity with ${omosim.grid.size - 1} variables")
+        logger.info("Building surrogate for activity $vActivity with ${context.omosim.grid.size - 1} variables")
 
-        val n = omosim.grid.size
-        val population = omosim.buildings.sumOf { it.population }
+        val n = context.omosim.grid.size
         val mrep = generateMarkovChainRep(vActivity) // Compact matrix representation
-        val relevantODs = getRelevantODs(affectedSensors) // Relevant origin-destination pairs for measurements
+        val relevantODs = getRelevantODs(context.affectedSensors) // Relevant origin-destination pairs for measurements
 
         // Init diff model
-        val model = DifferentiableModel(omosim.grid.size - 1)
+        val model = DifferentiableModel(context.omosim.grid.size - 1)
 
         // Create graph of the expected trips matrix: E(o, d | Car)
         val expectedTrips = ActivityType.entries.associateWith {
@@ -566,19 +551,19 @@ class SGGravity(
 
         // Simulated traffic counts
         val simCount = mutableMapOf<TrafficSensor, List<LinearTerm>>()
-        for (sensor in sensors) {
+        for (sensor in context.sensors) {
             simCount[sensor] = List(T) { LinearTerm(model.nVars) }
         }
-        for ((o, origin) in omosim.grid.withIndex()) {
-            for ((d, destination) in omosim.grid.withIndex()) {
+        for ((o, origin) in context.omosim.grid.withIndex()) {
+            for ((d, destination) in context.omosim.grid.withIndex()) {
                 val od = Pair(origin, destination)
-                if (od in affectedSensors) {
-                    val affected = affectedSensors[od]!!
+                if (od in context.affectedSensors) {
+                    val affected = context.affectedSensors[od]!!
                     for (sensor in affected) {
                         for (t in 0 until T) {
                             for (activity in ActivityType.entries) {
                                 simCount[sensor]!![t].addTerm(
-                                    expectedTrips[activity]!![o][d], population * tripStartDistr[activity]!![t]
+                                    expectedTrips[activity]!![o][d], context.totalPopulation * tripStartDistr[activity]!![t]
                                 )
                             }
                         }
@@ -588,7 +573,7 @@ class SGGravity(
         }
 
         // Objective
-        val obj = sseObjective(model.nVars, sensors, simCount)
+        val obj = sseObjective(model.nVars, context.sensors, simCount)
 
         model.setRootTerm(obj)
 
@@ -628,7 +613,7 @@ class SGGravity(
             activity
         }
 
-        val n = omosim.grid.size
+        val n = context.omosim.grid.size
         val pCar = mrep.pCar[tActivity]!!
         val mPriorCnst  = mrep.mPriorCnst[activity]!!
         val mPriorVar   = mrep.mPriorVar[activity]!!
@@ -758,7 +743,7 @@ class SGGravity(
     // ========== DEBUG CODE ================= // TODO Delete
     private fun getExpectedCountPerAgent(mrep: SGCompactMatrixRep) : D2Array<Double> {
         // Result: Expected trip count on each od-paid of one agent on one day
-        val expectedCountPerAgent = mk.zeros<Double>(omosim.grid.size, omosim.grid.size)
+        val expectedCountPerAgent = mk.zeros<Double>(context.omosim.grid.size, context.omosim.grid.size)
 
         val varTMatrix = mrep.tMatrices[mrep.vActivity]!!
 
@@ -775,11 +760,11 @@ class SGGravity(
             val dep = if (mrep.vActivity in fixActivitiesNotHome) {
                 mrep.h.diagonal().dot(varTMatrix).dot(mrep.mPriorVar[flexActivity]!!)
             } else if (flexActivity == mrep.vActivity) {
-                mk.zeros<Double>(omosim.grid.size, omosim.grid.size)
+                mk.zeros<Double>(context.omosim.grid.size, context.omosim.grid.size)
             } else {
                 mrep.mPriorVar[flexActivity]!!.dot(varTMatrix)
             }
-            val total = mk.ones<Double>(omosim.grid.size).expandDims(0).asDNArray()
+            val total = mk.ones<Double>(context.omosim.grid.size).expandDims(0).asDNArray()
                 .asD2Array().dot(dep.plus(fix))
                 .diagonal().dot(mrep.tMatrices[transitionActivity]!!)
             expectedCountPerAgent.plusAssign(total.times(carP))
@@ -851,17 +836,16 @@ class SGGravity(
         affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     ) {
         val expected = getExpectedCountPerAgent(mrep)
-        val totalPop = omosim.buildings.sumOf { it.population }
 
         val simCount = sensors.associateWith { 0.0 }.toMutableMap()
-        for ((o, origin) in omosim.grid.withIndex()) {
-            for ((d, destination) in omosim.grid.withIndex()) {
+        for ((o, origin) in context.omosim.grid.withIndex()) {
+            for ((d, destination) in context.omosim.grid.withIndex()) {
                 val odPair = Pair(origin, destination)
                 if (odPair in affectedSensors) {
                     val affected = affectedSensors[odPair]!!
                     for (sensor in affected) {
 
-                        simCount[sensor] = simCount[sensor]!! + expected[o,d] * totalPop
+                        simCount[sensor] = simCount[sensor]!! + expected[o,d] * context.totalPopulation
                     }
                 }
             }

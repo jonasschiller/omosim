@@ -59,6 +59,10 @@ class CalibrationOptions : OptionGroup (
         help = "Calibration output directory. Stores the result of a calibration run." +
                "Calibration results will be stored in this file with the names gravity, mode choice, etc."
     ).path(canBeDir = true, canBeFile = false).default(Paths.get("omosim_calibration/"))
+    val calibration_population by option(
+        help = "Population of the area (focus + buffer). Necessary input when no census data is supplied. " +
+               "Used to scale the estimate traffic counts."
+    ).double()
 }
 
 /**
@@ -186,14 +190,14 @@ class Run : CliktCommand() {
     ).file(mustExist = true, mustBeReadable = true)
 
     override fun run() {
-        if ((census == null) && (agentNumberDefinition is ShareOfPop)) {
+        if ((census == null) && (agentNumberDefinition is ShareOfPop) && (calibrationParameters == null)) {
             throw Exception(
                 "Agent population is supposed to be based on the population but no census file is provided." +
                 "Consider adding a census file with --census or use --n_agents instead.")
         }
         if ((gtfs_file == null) && (mode_choice == ModeChoiceOption.GTFS)) {
             throw Exception(
-                "Mode choice includes public transit as option but no GTFS file is provided." +
+                "Mode choice includes public transit but no GTFS file is provided." +
                 "Add a gtfs file with --gtfs_file"
             )
         }
@@ -249,7 +253,8 @@ class Run : CliktCommand() {
             // Calibrate
             val calibrator = TrafficCountCalibrationContext(
                 calibrationParameters!!.calibration_traffic_count_file,
-                omosim
+                omosim,
+                calibrationParameters!!.calibration_population
             )
             calibrator.calibrate(
                 gravityOut,

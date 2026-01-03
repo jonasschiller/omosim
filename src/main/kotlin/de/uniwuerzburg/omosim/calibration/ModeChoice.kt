@@ -71,7 +71,6 @@ class ModeChoice(
         rng: Random,
         objective: ModeChoiceCalibrationObjective
     ) : DifferentiableModel {
-        val totalPop = context.omosim.buildings.sumOf { it.population } // TODO
         val model = DifferentiableModel(1) // Only variable: Intercept of car mode
 
         // Initialize simulated traffic counts
@@ -134,7 +133,7 @@ class ModeChoice(
                     val tripOD = Pair(o, d)
                     if (tripOD in context.affectedSensors) {
                         for (sensor in context.affectedSensors[tripOD]!!) {
-                            simCount[sensor]!![t].addTerm(pTerm, totalPop / agents.size)
+                            simCount[sensor]!![t].addTerm(pTerm, context.totalPopulation / agents.size)
                         }
                     }
                     o = d

@@ -90,7 +90,7 @@ class Omosim (
     val mainRng: Random = if (seed != null) Random(seed) else Random()
     val transformer: CRSTransformer
     val routingCache: RoutingCache
-    private var censusAvailable = false
+    var censusAvailable = false
     val dispatcher = if (nWorker != null) Dispatchers.Default.limitedParallelism(nWorker) else Dispatchers.Default
     val destinationFinder: DestinationFinder
     private val agentFactory: AgentFactory
@@ -627,7 +627,7 @@ class Omosim (
      */
     private fun altRouteSelection(agents: List<MobiAgent>) : List<MobiAgent> {
         // Determine number of time slices of calibration
-        val T = altPercentages.maxOf { (k, v) -> k.t } + 1
+        val T = altPercentages.maxOf { (k, _) -> k.t } + 1
 
         // Get alternatives and choose according to calibration
         val visitor: TripVisitor = { trip, originActivity, destinationActivity, departureTime, _, _ ->

@@ -20,12 +20,14 @@ import kotlin.math.pow
  */
 class TrafficCountCalibrationContext(
     trafficCountDataFile: File,
-    val omosim: Omosim
+    val omosim: Omosim,
+    population: Double? = null,
 ) {
     val sensors: List<TrafficSensor> = TrafficSensor.readSensorData(trafficCountDataFile, omosim)
     val finder = omosim.destinationFinder as DestinationFinderDefault
     val affectedSensors: Map<Pair<RealLocation, RealLocation>, List<TrafficSensor>>
     var affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>> = mapOf()
+    val totalPopulation: Double
 
     init {
         T = sensors.first().measuredFlow.size // Set number of time slices
@@ -36,6 +38,19 @@ class TrafficCountCalibrationContext(
             )
         }
         affectedSensors = TrafficSensor.affectedSensors(sensors, omosim)
+
+        // Total population in area. Used to scale the estimated traffic counts.
+        totalPopulation = if (population != null) {
+            population
+        } else if (omosim.censusAvailable) {
+            omosim.buildings.sumOf { it.population }
+        } else {
+            val estimate = omosim.buildings.size * 3.0
+            logger.warn(
+                "Population size not available. Please supply the population size with --calibration_population or " +
+                "with a census file. Falling back to population size estimate of %.3g".format(estimate))
+            estimate
+        }
     }
 
     /**
@@ -191,13 +206,15 @@ class TrafficCountCalibrationContext(
      */
     @Suppress("SameParameterValue")
     fun runBatch(sharePop: Double) : Map<TrafficSensor, DoubleArray> {
-       val fullPopulation = omosim.buildings.sumOf { it.population } // TODO
-
        // Ensure results are deterministic
        omosim.mainRng.setSeed(0)
 
        // Run Simulation
-       val agents = omosim.run(sharePop, verbose = false)
+       val agents = if (omosim.censusAvailable) {
+           omosim.run(sharePop, verbose = false)
+       } else {
+           omosim.run((sharePop * totalPopulation).toInt(), verbose = false)
+       }
        omosim.doModeChoice(agents, ModeChoiceOption.FAST, false, verbose = false)
 
        // Determine counts at sensors
@@ -245,7 +262,7 @@ class TrafficCountCalibrationContext(
        val scaledSimCount = sensors.associateWith { DoubleArray(T) {0.0} }.toMutableMap()
        for (sensor in sensors) {
            for (t in 0 until T) {
-               scaledSimCount[sensor]!![t] = simCount[sensor]!![t] * fullPopulation / agents.size
+               scaledSimCount[sensor]!![t] = simCount[sensor]!![t] * totalPopulation / agents.size
            }
        }
        return scaledSimCount

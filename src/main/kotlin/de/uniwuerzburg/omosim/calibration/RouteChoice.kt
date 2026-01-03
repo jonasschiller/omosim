@@ -57,7 +57,7 @@ class RouteChoice(
         agents: List<MobiAgent>
     ) : Map<ODTTriple, List<Double>> {
         logger.info("Starting route choice calibration with gurobi.")
-        val odtCounts = getODTCounts(agents, context.omosim)
+        val odtCounts = getODTCounts(agents)
 
         try {
             // Setup
@@ -137,7 +137,7 @@ class RouteChoice(
         agents: List<MobiAgent>,
         affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>>
     ) : DifferentiableModel {
-        val odtCounts = getODTCounts(agents, context.omosim)
+        val odtCounts = getODTCounts(agents)
 
         // Setup. Initialize differentiable model
         var nVar = 0
@@ -200,15 +200,11 @@ class RouteChoice(
     /**
      * Determine how often a specific origin-destination-time triple occurs.
      * @param agents OMoSim run result
-     * @param omosim Simulator
      * @return Occurrence
      */
     private fun getODTCounts(
-        agents: List<MobiAgent>,
-        omosim: Omosim
+        agents: List<MobiAgent>
     ) : Map<ODTTriple, Double> {
-        val totalPop = omosim.buildings.sumOf { it.population } // TODO
-
         val n = mutableMapOf<ODTTriple, Double>()
         for (agent in agents) {
             val demand = agent.mobilityDemand.first() // Get demand for first day
@@ -238,7 +234,7 @@ class RouteChoice(
 
                 val t =  startTime.determineTimeSlice()
                 val odt = ODTTriple(origin, destination, t)
-                n[odt] = (n[odt] ?: 0.0) + totalPop / agents.size
+                n[odt] = (n[odt] ?: 0.0) + context.totalPopulation / agents.size
             }
         }
         return n
