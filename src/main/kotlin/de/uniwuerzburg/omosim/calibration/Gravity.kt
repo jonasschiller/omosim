@@ -46,7 +46,6 @@ class Gravity(
     fun calibrate(algorithm: CalibrationAlgorithm?, activities: List<ActivityType>, parameters: Map<String, String>?) {
         when (algorithm) {
             CalibrationAlgorithm.SM_LBFGS  -> rw.calibrateLBFGSSM(activities, parameters)
-            CalibrationAlgorithm.SM_MINBC  -> rw.calibrateMinBcSM(activities, parameters)
             CalibrationAlgorithm.SM_GD     -> rw.calibrateGGSM(activities, parameters)
             CalibrationAlgorithm.SM_PSO    -> rw.calibratePSOSM(activities, parameters)
             CalibrationAlgorithm.PSO       -> rw.calibratePSO(activities, parameters)
@@ -111,19 +110,6 @@ class Gravity(
                 val model = SGGravity(context.omosim).buildModelSSE(activity, context.sensors, context.affectedSensors)
                 val x0 = DoubleArray(context.omosim.grid.size - 1) { 1.0 }
                 var d =  BFGS.run(model, x0, parameters=parameters)
-                d = (d.toList() + listOf(1.0)).toDoubleArray()
-                updateCalibration(d, activity)
-            }
-        }
-
-        // MinBC (CG)
-        fun calibrateMinBcSM(
-            activities: List<ActivityType>, parameters: Map<String, String>? = null
-        )  {
-            for (activity in activities) {
-                val model = SGGravity(context.omosim).buildModelSSE(activity, context.sensors, context.affectedSensors)
-                val x0 = DoubleArray(context.omosim.grid.size - 1) { 1.0 }
-                var d =  MinBc.run(model, x0, parameters=parameters)
                 d = (d.toList() + listOf(1.0)).toDoubleArray()
                 updateCalibration(d, activity)
             }

@@ -29,7 +29,6 @@ repositories {
 }
 
 dependencies {
-    implementation(files("libs/alglib-java/alglib406free.jar"))
     implementation("org.geotools:gt-epsg-hsql:31.+")
     implementation("org.geotools:gt-main:31.+")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
@@ -54,7 +53,6 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.+")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("org.jetbrains.kotlinx:kotlinx-benchmark-runtime:0.4.13")
-
 }
 
 benchmark {
