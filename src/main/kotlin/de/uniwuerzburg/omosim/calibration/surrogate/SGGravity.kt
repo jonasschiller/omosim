@@ -29,7 +29,7 @@ import kotlin.math.pow
 class SGGravity(
     val context: TrafficCountCalibrationContext
 ) {
-    private val modeChoiceDummy = ModeChoiceDummyForCalibration() // TODO adapt
+    private val modeChoiceDummy = ModeChoiceDummyForCalibration()
     private val fixActivitiesNotHome = setOf(ActivityType.WORK, ActivityType.SCHOOL)
     private val fixActivities = setOf(ActivityType.HOME) + fixActivitiesNotHome
     private val flexActivities = setOf(ActivityType.OTHER, ActivityType.SHOPPING, ActivityType.BUSINESS)

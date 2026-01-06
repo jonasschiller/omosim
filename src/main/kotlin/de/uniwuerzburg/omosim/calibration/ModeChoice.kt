@@ -38,7 +38,7 @@ class ModeChoice(
 
         // Run Simulation
         val agents = context.omosim.run(0.1, verbose = false)
-        context.omosim.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
+        context.omosim.doModeChoice(agents, ModeChoiceOption.FAST, withPath = false, verbose = false)
 
         // Create mode choice surrogate model
         val mc = ModeChoiceFast(context.omosim.routingCache)
@@ -87,20 +87,11 @@ class ModeChoice(
             val aTours = mc.getTours(agent.mobilityDemand.first(), rng)
 
             for (tour in aTours) {
-                // Only do HOME-HOME tours
-                if (tour.first().fromActivity.type != ActivityType.HOME) { continue }
-                if (tour.last().toActivity.type != ActivityType.HOME) { continue }
+                if (!tour.isHomeHome()) { continue } // Only do HOME-HOME tours
 
-                // Aggregate distance and times
-                val carDistance = tour.sumOf { it.carDistance }
-
-                // Main purpose of tour is defined by the activity with the longest stay time
-                val mainPurpose = tour
-                    .dropLast(1)
-                    .maxByOrNull { it.toActivity.stayTime!! }?.toActivity?.type ?: ActivityType.HOME
-
-                // Weekday
-                val weekday = tour.first().weekday
+                val carDistance = tour.totalCarDistance()
+                val mainPurpose = tour.mainPurpose()
+                val weekday = tour.weekday()
 
                 // Car mode utility
                 val utilityTerm = LinearTerm(model.nVars)
@@ -126,8 +117,8 @@ class ModeChoice(
                 val pTerm = PowerTerm(model.nVars, normTerm, -1)
 
                 // Add expected origin destination trips to sim counts
-                var o = tour.first().fromActivity.location.getAggLoc()!! as Cell
-                for (trip in tour) {
+                var o = tour.trips.first().fromActivity.location.getAggLoc()!! as Cell
+                for (trip in tour.trips) {
                     val d = trip.toActivity.location.getAggLoc()!! as Cell
                     val t = trip.departureTime.determineTimeSlice()
                     val tripOD = Pair(o, d)

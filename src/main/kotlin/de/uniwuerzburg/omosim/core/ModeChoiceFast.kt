@@ -3,10 +3,9 @@ package de.uniwuerzburg.omosim.core
 import de.uniwuerzburg.omosim.core.models.*
 import de.uniwuerzburg.omosim.io.json.readJson
 import de.uniwuerzburg.omosim.io.json.readJsonFromResource
-import de.uniwuerzburg.omosim.routing.*
+import de.uniwuerzburg.omosim.routing.Route
+import de.uniwuerzburg.omosim.routing.RoutingCache
 import de.uniwuerzburg.omosim.utils.ProgressBar
-import de.uniwuerzburg.omosim.utils.createCumDist
-import de.uniwuerzburg.omosim.utils.sampleCumDist
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -14,7 +13,6 @@ import java.io.File
 import java.time.LocalTime
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.exp
 import kotlin.time.TimeSource
 
 /**
@@ -85,9 +83,9 @@ class ModeChoiceFast(
      * @param rng Random number generator
      * @return Tours
      */
-    fun getTours(diary: Diary, rng: Random) : List<List<TripMCFeatures>> {
-        val tours = mutableListOf<List<TripMCFeatures>>()
-        var currentTour = mutableListOf<TripMCFeatures>()
+    fun getTours(diary: Diary, rng: Random) : List<ModeChoiceGTFS.TourMCFeatures> {
+        val tours = mutableListOf<ModeChoiceGTFS.TourMCFeatures>()
+        var currentTour = mutableListOf<ModeChoiceGTFS.TripMCFeatures>()
 
         val visitor = {
             trip: Trip, originActivity: Activity, destinationActivity: Activity,
@@ -119,7 +117,7 @@ class ModeChoiceFast(
                 ).first().toDouble() / 1000
             }
 
-            val tripFeatures = TripMCFeatures(
+            val tripFeatures = ModeChoiceGTFS.TripMCFeatures(
                 carDistance,
                 originActivity,
                 destinationActivity,
@@ -130,7 +128,7 @@ class ModeChoiceFast(
 
             // Tour ends
             if ((destinationActivity.type == ActivityType.HOME) || finished) {
-                tours.add(currentTour)
+                tours.add( ModeChoiceGTFS.TourMCFeatures(currentTour) )
                 currentTour = mutableListOf()
             }
 
@@ -154,42 +152,38 @@ class ModeChoiceFast(
 
             // Tour mode choice
             for (tour in tours) {
-                // Only do HOME-HOME tours as one block
-                if (tour.first().fromActivity.type != ActivityType.HOME) { continue }
-                if (tour.last().toActivity.type != ActivityType.HOME) { continue }
+                if (!tour.isHomeHome()) { continue } // Only do HOME-HOME tours as one block
 
-                // Aggregate distance and times
-                val carDistance = tour.sumOf { it.carDistance }
-
-                // Main purpose of tour is defined by the activity with the longest stay time
-                val mainPurpose = tour
-                    .dropLast(1)
-                    .maxByOrNull { it.toActivity.stayTime!! }?.toActivity?.type ?: ActivityType.HOME
-
-                // Weekday
-                val weekday = tour.first().weekday
-
-                val mode = sampleUtilities(tourModeOptions, carDistance, agent, mainPurpose, weekday, rng)
+                // Sample tour mode
+                val mode = ModeChoiceGTFS.sampleUtilities(
+                    tourModeOptions,
+                    null,
+                    tour.totalCarDistance(),
+                    agent,
+                    tour.mainPurpose(),
+                    tour.weekday(),
+                    rng
+                )
 
                 // If the tour is a CAR or BICYCLE all trips on the tour must be conducted with the respective vehicle
                 if ((mode == Mode.CAR_DRIVER) || (mode == Mode.BICYCLE)) {
-                    for (trip in tour) {
+                    for (trip in tour.trips) {
                         trip.mode = mode
                     }
                 }
             }
 
             // Trip mode choice
-            for (trip in tours.flatten().filter { it.mode == null }) {
-                val mode = sampleUtilities(
-                    tripModeOptions, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
+            for (trip in tours.flatMap { it.trips }.filter { it.mode == null }) {
+                val mode = ModeChoiceGTFS.sampleUtilities(
+                    tripModeOptions, null, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
                 )
                 trip.mode = mode
             }
 
             // Format for output
             val outTrips = mutableListOf<Trip>()
-            for (trip in tours.flatten()) {
+            for (trip in tours.flatMap { it.trips }) {
                 outTrips.add(
                     Trip(
                         trip.carDistance,
@@ -202,47 +196,5 @@ class ModeChoiceFast(
             }
             diary.trips = outTrips
         }
-    }
-
-    /**
-     * Sample logit model defined by the given utilities.
-     *
-     * @param options Possible modes for the decision (Different for tours and trips)
-     * @param carDistance Distance by car. Used as the reference distance.
-     * @param agent Agent
-     * @param activity Main activity of the tour or purpose of the trip.
-     * @param rng Random number generator
-     * @return Chosen mode
-     */
-    private fun sampleUtilities(
-        options: Array<ModeUtility>,
-        carDistance: Double, agent: MobiAgent, activity: ActivityType,
-        weekday: Weekday, rng: Random
-    ) : Mode {
-        // Sampling
-        val weights = options
-            .map { util -> exp(util.calc(null, carDistance, activity, agent.carAccess, weekday, agent)) }
-            .toDoubleArray()
-        val distr = createCumDist(weights)
-        val mode = options[sampleCumDist(distr, rng)].mode
-        return mode
-    }
-
-    /**
-     * Utility data class that stores all features of a trip required by the logit model.
-     * Also stores the result of the tour level decision for trip level decisions.
-     *
-     * @param carDistance Distance by car
-     * @param fromActivity Activity before the trip
-     * @param toActivity Activity after the trip
-     */
-    class TripMCFeatures (
-        val carDistance: Double,
-        val fromActivity: Activity,
-        val toActivity: Activity,
-        val weekday: Weekday,
-        val departureTime: LocalTime,
-    ) {
-        var mode: Mode? = null
     }
 }

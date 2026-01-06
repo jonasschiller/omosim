@@ -94,8 +94,8 @@ class ModeChoiceGTFS(
      * @param rng Random number generator
      * @return Tours
      */
-    private fun getTours(diary: Diary, rng: Random, modeSpeedUp: Map<Mode, Double>) : List<List<TripMCFeatures>> {
-        val tours = mutableListOf<List<TripMCFeatures>>()
+    private fun getTours(diary: Diary, rng: Random, modeSpeedUp: Map<Mode, Double>) : List<TourMCFeatures> {
+        val tours = mutableListOf<TourMCFeatures>()
         var currentTour = mutableListOf<TripMCFeatures>()
 
         val visitor = {
@@ -145,13 +145,14 @@ class ModeChoiceGTFS(
                 originActivity,
                 destinationActivity,
                 wd,
+                departureTime,
                 routes
             )
             currentTour.add(tripFeatures)
 
             // Tour ends
             if ((destinationActivity.type == ActivityType.HOME) || finished){
-                tours.add(currentTour)
+                tours.add( TourMCFeatures(currentTour) )
                 currentTour = mutableListOf()
             }
 
@@ -175,38 +176,33 @@ class ModeChoiceGTFS(
 
             // Tour mode choice
             for (tour in tours) {
-                // Only do HOME-HOME tours as one block
-                if (tour.first().fromActivity.type != ActivityType.HOME) { continue }
-                if (tour.last().toActivity.type != ActivityType.HOME) { continue }
+                if (!tour.isHomeHome()) { continue } // Only do HOME-HOME tours as one block
 
-                // Aggregate distance and times
-                val carDistance = tour.sumOf { it.carDistance }
-                val times = tourModeOptions.map {
-                    m -> tour.sumOf { it.routes[m.mode]!!.time }
-                }.toTypedArray()
+                val modeTimes = tourModeOptions.map { tour.totalTimeByMode(it.mode) }.toTypedArray()
 
-                // Main purpose of tour is defined by the activity with the longest stay time
-                val mainPurpose = tour
-                    .dropLast(1)
-                    .maxByOrNull { it.toActivity.stayTime!! }?.toActivity?.type ?: ActivityType.HOME
-
-                // Weekday
-                val weekday = tour.first().weekday
-
-                val mode = sampleUtilities(tourModeOptions, times, carDistance, agent, mainPurpose, weekday, rng)
+                // Sample tour mode
+                val mode = sampleUtilities(
+                    tourModeOptions,
+                    modeTimes,
+                    tour.totalCarDistance(),
+                    agent,
+                    tour.mainPurpose(),
+                    tour.weekday(),
+                    rng
+                )
 
                 // If the tour is a CAR or BICYCLE all trips on the tour must be conducted with the respective vehicle
                 if ((mode == Mode.CAR_DRIVER) || (mode == Mode.BICYCLE)) {
-                    for (trip in tour) {
+                    for (trip in tour.trips) {
                         trip.mode = mode
                     }
                 }
             }
 
             // Trip mode choice
-            for (trip in tours.flatten().filter { it.mode == null }) {
+            for (trip in tours.flatMap { it.trips }.filter { it.mode == null }) {
                 val times = tripModeOptions.map { m ->
-                    trip.routes[m.mode]!!.time
+                    trip.routes!![m.mode]!!.time
                 }.toTypedArray()
                 val mode = sampleUtilities(
                     tripModeOptions, times, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
@@ -216,9 +212,9 @@ class ModeChoiceGTFS(
 
             // Format for output
             val outTrips = mutableListOf<Trip>()
-            for (trip in tours.flatten()) {
+            for (trip in tours.flatMap { it.trips }) {
                 // Check if gtfs routing used any public transit or only walked
-                val mode = if (trip.routes[trip.mode!!]!!.onlyWalk) {
+                val mode = if (trip.routes!![trip.mode!!]!!.onlyWalk) {
                    Mode.FOOT
                 } else {
                    trip.mode!!
@@ -245,38 +241,42 @@ class ModeChoiceGTFS(
         }
     }
 
-    /**
-     * Sample logit model defined by the given utilities.
-     *
-     * @param options Possible modes for the decision (Different for tours and trips)
-     * @param times Travel times for each option
-     * @param carDistance Distance by car. Used as the reference distance.
-     * @param agent Agent
-     * @param activity Main activity of the tour or purpose of the trip.
-     * @param rng Random number generator
-     * @return Chosen mode
-     */
-    private fun sampleUtilities(
-        options: Array<ModeUtility>, times: Array<Double>,
-        carDistance: Double, agent: MobiAgent, activity: ActivityType,
-        weekday: Weekday, rng: Random
-    ) : Mode {
-        // If public transit and foot routes are the same, add 20 minutes to public transit to differentiate the options
-        val footIdx = options.withIndex().find { (_, o) -> o.mode == Mode.FOOT }?.index
-        val ptIdx = options.withIndex().find { (_, o) -> o.mode == Mode.PUBLIC_TRANSIT }?.index
-        if ((footIdx != null) && (ptIdx != null)) {
-            if (abs(times[footIdx] - times[ptIdx]) <= 3) {
-                times[ptIdx] = times[ptIdx] + 20.0
+    companion object {
+        /**
+         * Sample logit model defined by the given utilities.
+         *
+         * @param options Possible modes for the decision (Different for tours and trips)
+         * @param times Travel times for each option
+         * @param carDistance Distance by car. Used as the reference distance.
+         * @param agent Agent
+         * @param activity Main activity of the tour or purpose of the trip.
+         * @param rng Random number generator
+         * @return Chosen mode
+         */
+        fun sampleUtilities(
+            options: Array<ModeUtility>, times: Array<Double>?,
+            carDistance: Double, agent: MobiAgent, activity: ActivityType,
+            weekday: Weekday, rng: Random
+        ) : Mode {
+            if (times != null) {
+                // If public transit and foot routes are the same, add 20 minutes to public transit to differentiate the options
+                val footIdx = options.withIndex().find { (_, o) -> o.mode == Mode.FOOT }?.index
+                val ptIdx = options.withIndex().find { (_, o) -> o.mode == Mode.PUBLIC_TRANSIT }?.index
+                if ((footIdx != null) && (ptIdx != null)) {
+                    if (abs(times[footIdx] - times[ptIdx]) <= 3) {
+                        times[ptIdx] = times[ptIdx] + 20.0
+                    }
+                }
             }
-        }
 
-        // Sampling
-        val weights = options.withIndex()
-            .map { (i, util) -> exp(util.calc(times[i], carDistance, activity, agent.carAccess, weekday, agent)) }
-            .toDoubleArray()
-        val distr = createCumDist(weights)
-        val mode = options[sampleCumDist(distr, rng)].mode
-        return mode
+            // Sampling
+            val weights = options.withIndex()
+                .map { (i, util) -> exp(util.calc(times?.get(i), carDistance, activity, agent.carAccess, weekday, agent)) }
+                .toDoubleArray()
+            val distr = createCumDist(weights)
+            val mode = options[sampleCumDist(distr, rng)].mode
+            return mode
+        }
     }
 
     /**
@@ -288,13 +288,44 @@ class ModeChoiceGTFS(
      * @param toActivity Activity after the trip
      * @param routes Best routes with each mode
      */
-    private class TripMCFeatures (
+    class TripMCFeatures (
         val carDistance: Double,
         val fromActivity: Activity,
         val toActivity: Activity,
         val weekday: Weekday,
-        val routes: Map<Mode, Route>
+        val departureTime: LocalTime,
+        val routes: Map<Mode, Route>? = null
     ) {
         var mode: Mode? = null
+    }
+
+    /**
+     * Wrapper around TripMCFeatures that provides several useful functions. Represents a tour of multiple trips.
+     */
+    class TourMCFeatures (
+        val trips: List<TripMCFeatures>
+    ) {
+        fun isHomeHome() : Boolean {
+            if (trips.first().fromActivity.type != ActivityType.HOME) { return false }
+            if (trips.last().toActivity.type != ActivityType.HOME) { return false }
+            return true
+        }
+
+        fun totalCarDistance() : Double {
+            return trips.sumOf { it.carDistance }
+        }
+
+        fun totalTimeByMode(mode: Mode) : Double {
+            return trips.sumOf { it.routes!![mode]!!.time }
+        }
+
+        fun mainPurpose() : ActivityType {
+            // Main purpose of tour is defined by the activity with the longest stay time
+            return trips.dropLast(1).maxByOrNull { it.toActivity.stayTime!! }?.toActivity?.type ?: ActivityType.HOME
+        }
+
+        fun weekday() : Weekday {
+            return trips.first().weekday
+        }
     }
 }
