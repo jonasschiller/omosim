@@ -49,9 +49,9 @@ class TrafficSensor(
 
             // Index of cols to extract
             val nameCol = idxMap["name"]
-            val flowCol = idxMap["dailyFlow"]
-            val dirCol = idxMap["flowDirection"]
-            val geometryCol = idxMap["Geometry"]
+            val flowCol = idxMap["counts"]
+            val dirCol = idxMap["direction"]
+            val geometryCol = idxMap["geometry"]
 
             // Read data
             for (line in reader.lines()) {

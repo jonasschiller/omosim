@@ -33,8 +33,8 @@ class CalibrationStep (
             require(components.size >= 4) {
                 "Calibration step definition must contain 3 colons. " +
                 "If you want to use the default value for a section leave the section empty." +
-                "Format: TYPE:ALG:ACTIVITY?,..:PARAMS" +
-                "Example: GRAVITY:MM_PSO:WORK,OTHER:iterations=100:lb=0.2"
+                "Format: TYPE:ALG:ACTIVITY,..:PARAMS" +
+                "Example: GRAVITY:SM_PSO:WORK,OTHER:iterations=100:lb=0.2"
             }
 
             // TYPE

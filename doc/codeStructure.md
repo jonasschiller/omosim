@@ -34,3 +34,11 @@ Includes a wrapper around GraphHopper and caching logic.
 ## de.uniwuerzburg.omosim.utils
 
 Miscellaneous utilities.
+
+## de.uniwuerzburg.omosim.calibration
+
+Calibration tools. Used to fit OMoSim to local data.
+
+## ## de.uniwuerzburg.omosim.cli
+
+Command line interface.
