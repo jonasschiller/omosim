@@ -67,7 +67,7 @@ class Omosim (
     odFile: File? = null,
     gridPrecision: Double = 200.0,
     seed: Long? = null,
-    bufferRadius: Double = 0.0,
+    val bufferRadius: Double = 0.0,
     censusFile: File? = null,
     val populateBufferArea: Boolean = true,
     val distanceCacheSize: Long = 400e6.toLong(),
@@ -95,7 +95,7 @@ class Omosim (
     val destinationFinder: DestinationFinder
     private val agentFactory: AgentFactory
     private var gtfsComponents: GTFSComponents? = null
-    private val focusArea: Geometry
+    val focusArea: Geometry
     private val fullArea: Geometry
     val popStrata: List<PopStratum>
     val carOwnership: CarOwnership
@@ -233,6 +233,10 @@ class Omosim (
         fun defaultFactory(areaFile: File, osmFile: File): Omosim {
             return Omosim(areaFile, osmFile)
         }
+    }
+
+    fun getCachePath() {
+
     }
 
     /**

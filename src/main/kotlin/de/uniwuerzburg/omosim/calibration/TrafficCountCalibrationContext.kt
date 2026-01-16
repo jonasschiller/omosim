@@ -70,11 +70,13 @@ class TrafficCountCalibrationContext(
      *
      * @param gravityCalOut File where to store the calibration result for the GRAVITY step
      * @param modeChoiceCalOut  File where to store the calibration result for the MODE_CHOICE step
+     * @param routeChoiceCalOut  File where to store the calibration result for the ROUTE_CHOICE step
      * @param steps Calibration steps to be done.
      */
     fun calibrate(
         gravityCalOut: File,
         modeChoiceCalOut: File,
+        routeChoiceCalOut: File,
         steps: List<CalibrationStep>
     ) {
         // If alternative routes need to be computed
@@ -97,6 +99,7 @@ class TrafficCountCalibrationContext(
                 }
                 CalibrationType.ROUTE_CHOICE -> {
                     RouteChoice(this).calibrate()
+                    RouteChoiceCalibrationStore(omosim).write(routeChoiceCalOut, omosim.altPercentages)
                 }
                 CalibrationType.EVALUATE -> {
                     evaluate(0.1)
