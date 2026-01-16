@@ -279,6 +279,7 @@ class RoutingCache(
         val fis = FileInputStream(cachePath.toFile())
         val ois = ObjectInputStream(fis)
         val cacheData = ois.readObject() as OOMCacheFormat
+        ois.close()
 
         // Find locations for coords
         val allCoords = cacheData.dCoords.toSet().union(cacheData.oCoords.toSet())
