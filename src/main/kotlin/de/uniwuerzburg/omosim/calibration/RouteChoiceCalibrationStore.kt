@@ -107,5 +107,5 @@ class RouteChoiceCalibrationStore (
         val dCoords: Array<Coordinate>,
         val ts: Array<Int>,
         val ps: Array<Array<Float>>
-    ) : java.io.Serializable
+    ) : Serializable
 }

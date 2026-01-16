@@ -235,10 +235,6 @@ class Omosim (
         }
     }
 
-    fun getCachePath() {
-
-    }
-
     /**
      * Gather and combine all necessary information about the model area.
      * First checks if the data is cached and calls getBuildings().
