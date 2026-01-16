@@ -250,7 +250,7 @@ class TrafficCountCalibrationContext(
                            val p = omosim.altPercentages[odt]!!
                            for ((i, alternative) in affectedAltSensors[od]!!.withIndex()) {
                                for (sensor in alternative) {
-                                 simCount[sensor]!![t] += simCount[sensor]!![t] + p[i] // Add traffic
+                                 simCount[sensor]!![t] = simCount[sensor]!![t] + p[i] // Add traffic
                                }
                            }
                        }
