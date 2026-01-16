@@ -2,6 +2,7 @@ package de.uniwuerzburg.omosim.calibration
 
 import com.gurobi.gurobi.*
 import de.uniwuerzburg.omosim.calibration.CalibrationConstants.T
+import de.uniwuerzburg.omosim.calibration.algorithms.GradientDescent
 import de.uniwuerzburg.omosim.calibration.differentiablemodel.*
 import de.uniwuerzburg.omosim.core.models.*
 import java.time.LocalTime
@@ -34,29 +35,38 @@ class RouteChoice(
 ) {
     /**
      * Calibrate route choice.
+     *
+     * @param gurobi Use Gurobi solver. Must be installed on the system and findable by the gurobi java API.
      */
-    fun calibrate() {
+    fun calibrate(gurobi: Boolean = false) {
         context.omosim.mainRng.setSeed(0) // Seed impact low with 100% of agents
 
         // Run Simulation
         val agents = context.omosim.run(0.1, verbose = false)
         context.omosim.doModeChoice(agents, ModeChoiceOption.FAST, false, false)
 
-        // Route Choice
-        context.omosim.altPercentages = optimize(agents)
+        val odtCounts = getODTCounts(agents)
+
+        context.omosim.altPercentages = if (gurobi) {
+           optimize(odtCounts)
+        } else {
+            val model = buildModel(odtCounts) // Create route choice model
+            val x0 = buildX0(odtCounts)
+            val x = GradientDescent.run(model, x0, lb=0.0, ub=1.0)
+            unpackX(x, odtCounts)
+        }
     }
 
     /**
      * Find the optimal p with Gurobi.
      *
-     * @param agents OMoSim run result
+     * @param odtCounts occurrence count of specific origin-destination-time triples
      * @return Optimal p for each trip possibility
      */
     private fun optimize(
-        agents: List<MobiAgent>
+        odtCounts: Map<ODTTriple, Double>,
     ) : Map<ODTTriple, List<Double>> {
         logger.info("Starting route choice calibration with gurobi.")
-        val odtCounts = getODTCounts(agents)
 
         try {
             // Setup
@@ -128,19 +138,15 @@ class RouteChoice(
     /**
      * Build a differentiable model that computes the sum-of-square loss for a given p.
      *
-     * @param agents OMoSim run result
-     * @param affectedAltSensors Gives all sensors that are affected by a path option for a certain origin-destination pair
+     * @param odtCounts occurrence count of specific origin-destination-time triples
      * @return Differentiable Model
      */
     private fun buildModel(
-        agents: List<MobiAgent>,
-        affectedAltSensors: Map<Pair<RealLocation, RealLocation>, List<List<TrafficSensor>>>
+        odtCounts: Map<ODTTriple, Double>
     ) : DifferentiableModel {
-        val odtCounts = getODTCounts(agents)
-
         // Setup. Initialize differentiable model
         var nVar = 0
-        for ((od, alternatives) in affectedAltSensors.entries) {
+        for ((od, alternatives) in context.affectedAltSensors.entries) {
             for (t in 0 until T) {
                 val odt = ODTTriple(od.first, od.second, t)
                 if (odt in odtCounts) {
@@ -158,7 +164,7 @@ class RouteChoice(
 
         // Add contribution of each odt to simulated counts
         var iVar = 0 // Keep track of which variable represents the current route choice decision.
-        for ((od, alternatives) in affectedAltSensors.entries) {
+        for ((od, alternatives) in context.affectedAltSensors.entries) {
             for (t in 0 until T) {
                 val odt = ODTTriple(od.first, od.second, t)
                 if (odt in odtCounts) {
@@ -194,6 +200,54 @@ class RouteChoice(
         val obj = sseObjective(model.nVars, context.sensors, simCount)
         model.setRootTerm(obj)
         return model
+    }
+
+    /**
+     * Create x0 for route choice.
+     *
+     * @param odtCounts occurrence count of specific origin-destination-time triples
+     * @return x0
+     */
+    private fun buildX0(odtCounts: Map<ODTTriple, Double>) : DoubleArray {
+        val x0 = mutableListOf<Double>()
+        for ((od, alternatives) in context.affectedAltSensors.entries) {
+            for (t in 0 until T) {
+                val odt = ODTTriple(od.first, od.second, t)
+                if (odt in odtCounts) {
+                    val p0 = MutableList(alternatives.size) { 0.0 }
+                    if (p0.size > 0) {
+                        p0[0] = 1.0
+                    }
+                    x0.addAll(p0)
+                }
+            }
+        }
+        return x0.toDoubleArray()
+    }
+
+    /**
+     * Unpack result of optimization to fit route choice format.
+     *
+     * @param odtCounts occurrence count of specific origin-destination-time triples
+     * @return Unpacked route choice parameters
+     */
+    private fun unpackX(x: DoubleArray, odtCounts: Map<ODTTriple, Double>) : Map<ODTTriple, List<Double>> {
+        val unpacked = mutableMapOf<ODTTriple, List<Double>>()
+        var i = 0
+        for ((od, alternatives) in context.affectedAltSensors.entries) {
+            for (t in 0 until T) {
+                val odt = ODTTriple(od.first, od.second, t)
+                if (odt in odtCounts) {
+                    val p = mutableListOf<Double>()
+                    for (j in alternatives.indices) {
+                        p.add(x[i])
+                        i += 1
+                    }
+                    unpacked[odt] = p
+                }
+            }
+        }
+        return unpacked
     }
 
     /**
