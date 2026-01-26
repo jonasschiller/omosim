@@ -14,17 +14,71 @@ package de.uniwuerzburg.omosim.core.models
  * @param mobilityDemand Simulation result of agent
  *
  */
-data class MobiAgent (
-    val id: Int,
-    val homogenousGroup: HomogeneousGrp,
-    val mobilityGroup: MobilityGrp,
-    val age: Int?,
-    val home: LocationOption,
-    val work: LocationOption,
-    val school: LocationOption,
-    val sex: Sex,
-    var carAccess: Boolean = false,
-    val mobilityDemand: MutableList<Diary> = mutableListOf()
+abstract class MobiAgent(
+    open val id: Int,
+    open val homogenousGroup: HomogeneousGrp,
+    open val mobilityGroup: MobilityGrp,
+    open val age: Int?,
+    open val home: LocationOption,
+    open val work: LocationOption,
+    open val school: LocationOption,
+    open val sex: Sex,
+    open var carAccess: Boolean = false,
+    open val mobilityDemand: MutableList<Diary> = mutableListOf()
 ) {
     val ageGrp = AgeGrp.fromInt(age)
 }
+
+
+data class MobiAgentBase(
+    override val id: Int,
+    override val homogenousGroup: HomogeneousGrp,
+    override val mobilityGroup: MobilityGrp,
+    override val age: Int?,
+    override val home: LocationOption,
+    override val work: LocationOption,
+    override val school: LocationOption,
+    override val sex: Sex,
+    override var carAccess: Boolean = false,
+    override val mobilityDemand: MutableList<Diary> = mutableListOf()
+) : MobiAgent(id, homogenousGroup, mobilityGroup, age, home, work, school, sex, carAccess, mobilityDemand)
+
+
+abstract class MobiAgentSSWC(
+    id: Int,
+    homogenousGroup: HomogeneousGrp,
+    mobilityGroup: MobilityGrp,
+    age: Int?,
+    home: LocationOption,
+    work: LocationOption,
+    school: LocationOption,
+    sex: Sex,
+    carAccess: Boolean = false,
+    mobilityDemand: MutableList<Diary> = mutableListOf(),
+    open var sharedOffice: LocationOption?,
+    open val homeOfficeDays: Double= 0.0,
+    open val sharedOfficeRate: Double = 0.0,
+    open val drtLikelihood: Int=0
+) : MobiAgent(
+    id, homogenousGroup, mobilityGroup, age, home, work, school, sex, carAccess, mobilityDemand
+)
+
+data class MobiAgentSSWCBase(
+    override val id: Int,
+    override val homogenousGroup: HomogeneousGrp,
+    override val mobilityGroup: MobilityGrp,
+    override val age: Int?,
+    override val home: LocationOption,
+    override val work: LocationOption,
+    override val school: LocationOption,
+    override val sex: Sex,
+    override var carAccess: Boolean = false,
+    override var sharedOffice: LocationOption?,
+    override val homeOfficeDays: Double = 0.0,
+    override val sharedOfficeRate: Double = 0.0,
+    override val drtLikelihood: Int = 0,
+    override val mobilityDemand: MutableList<Diary> = mutableListOf()
+) : MobiAgentSSWC(
+    id, homogenousGroup, mobilityGroup, age, home, work, school, sex, carAccess, mobilityDemand,
+    sharedOffice, homeOfficeDays, sharedOfficeRate
+)

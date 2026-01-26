@@ -50,6 +50,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:multik-default:0.2.3")
     implementation("com.gurobi:gurobi:11.0.2")
     implementation("com.github.haifengl:smile-core:4.4.0")
+    implementation("com.github.haifengl:smile-kotlin:5.0.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.+")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     implementation("org.jetbrains.kotlinx:kotlinx-benchmark-runtime:0.4.13")
@@ -70,6 +71,12 @@ sourceSets {
 }
 
 kotlin {
+    jvmToolchain(17)
+    sourceSets.all {
+        languageSettings {
+            optIn("kotlin.io.path.ExperimentalPathApi")
+        }
+    }
     jvmToolchain(21)
     target {
         compilations.getByName("benchmark")

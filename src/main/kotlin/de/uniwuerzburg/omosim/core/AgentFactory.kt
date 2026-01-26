@@ -1,5 +1,7 @@
 package de.uniwuerzburg.omosim.core
 
+import de.uniwuerzburg.omosim.core.models.MobiAgent
+import de.uniwuerzburg.omosim.core.models.MobiAgentSSWC
 import de.uniwuerzburg.omosim.core.models.AggLocation
 import de.uniwuerzburg.omosim.core.models.MobiAgent
 import java.util.*
@@ -35,4 +37,48 @@ interface AgentFactory {
     fun createAgents(
         nFocus: Int, zones: List<AggLocation>, populateBufferArea: Boolean, rng: Random
     ) : List<MobiAgent>
+
+    /** Initialize population with fixed number of agents.
+     * Assigns socio-demographic features, and home, work, and school locations.
+     * Assign shared office locations based on the provided list or if empty  compute shared office locations based on k-means clustering.
+     * @param nFocus number of agents in focus areas
+     * @param zones Possible home locations
+     * @param populateBufferArea False: Only place agents in the focus area
+     * @param rng Random number generator
+     * @param sharedOfficeLocation List of shared office locations
+     * @return Population of agents
+     */
+
+    fun createAgents(
+        nFocus: Int,  zones: List<AggLocation>, populateBufferArea:Boolean, rng: Random, sharedOfficeLocation: List<Building>?
+    ) : List<MobiAgentSSWC>
+
+    /**
+     * Initialize population based on a share of the existing population.
+     * Assigns socio-demographic features, and home, work, and school locations.
+     * Assign shared office locations based on the provided list or if empty  compute shared office locations based on k-means clustering.
+     * @param nFocus  Number of agents to simulate
+     * @param zones Possible home locations
+     * @param populateBufferArea False: Only place agents in the focus area
+     * @param rng Random number generator
+     * @param sharedOfficeLocation List of shared office locations
+     * @return Population of agents
+     */
+
+    fun createAgents(
+        shareOfPop: Double,  zones: List<AggLocation>, populateBufferArea:Boolean, rng: Random, sharedOfficeLocation: List<Building>?
+    ) : List<MobiAgentSSWC>
+
+    /**
+     * Initialize population based on a share of the existing population.
+     * Assigns socio-demographic features, and home, work, and school locations.
+     * Assign shared office locations based on the provided list or if empty  compute shared office locations based on k-means clustering.
+     * @param share Share of the population to simulate
+     * @param zones Possible home locations
+     * @param populateBufferArea False: Only place agents in the focus area
+     * @param rng Random number generator
+     * @param sharedOfficeLocation List of shared office locations
+     * @return Population of agents
+     */
+
 }

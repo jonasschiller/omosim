@@ -29,9 +29,15 @@ fun formatOutput(agent: MobiAgent) : OutputEntry {
 
             if (i >= diary.trips.size) { continue }
             val trip = diary.trips[i]
+            val altModes= if (agent::class==MobiAgentSSWCBase::class) {
+                trip.altModes
+            } else {
+                null
+            }
+
             legs.add(
                 OutputTrip(
-                    id, trip.mode, currentTime.toString(), trip.distance, trip.time, trip.lats, trip.lons
+                    id, trip.mode, currentTime.toString(), trip.distance, trip.time, trip.lats, trip.lons, altModes
                 )
             )
             id += 1
@@ -39,8 +45,15 @@ fun formatOutput(agent: MobiAgent) : OutputEntry {
         }
         OutputDiary(diary.day, diary.dayType, legs)
     }
+    val drtLike= if (agent::class==MobiAgentSSWCBase::class) {
+        (agent as MobiAgentSSWC).drtLikelihood
+    } else {
+        null
+    }
     return OutputEntry(
-        agent.id, agent.homogenousGroup, agent.mobilityGroup, agent.age, agent.sex, agent.carAccess, mobilityDemand
+        agent.id, agent.homogenousGroup, agent.mobilityGroup, agent.age, agent.sex, agent.carAccess, agent.home.latlonCoord.toString(),agent.work.latlonCoord.toString(), drtLike, mobilityDemand
     )
 }
+
+
 

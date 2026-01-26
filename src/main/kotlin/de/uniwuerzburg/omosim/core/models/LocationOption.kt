@@ -17,4 +17,5 @@ sealed interface LocationOption {
      * Get the aggregate location this location is inside in.
      */
     fun getAggLoc() : AggLocation?
+    fun getCentralBuilding(): Building?
 }

@@ -9,8 +9,13 @@ import java.io.FileOutputStream
 @OptIn(ExperimentalSerializationApi::class)
 fun writeJSONOutput(output: List<OutputEntry>, file: File, runParams: Map<String, String>) : Boolean {
     val amendedOutput = OutputFormat(runParams, output)
+    val jsonA=Json {
+        prettyPrint = true
+        encodeDefaults = true
+        explicitNulls = false
+    }
     FileOutputStream(file).use { f ->
-        Json.encodeToStream( amendedOutput, f)
+        jsonA.encodeToStream( amendedOutput, f)
     }
     return true
 }

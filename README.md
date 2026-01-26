@@ -323,7 +323,7 @@ import java.io.File;
 import java.util.List;
 
 class App {
-   public static void main (String[] args) {
+   static void main(String[] args) {
       File areaFile = new File("Path/to/GeoJson");
       File osmFile = new File("Path/to/osm.pbf");
    

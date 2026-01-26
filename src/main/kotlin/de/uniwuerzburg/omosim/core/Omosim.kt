@@ -16,7 +16,7 @@ import de.uniwuerzburg.omosim.io.overture.readOverture
 import de.uniwuerzburg.omosim.io.readCensus
 import de.uniwuerzburg.omosim.routing.*
 import de.uniwuerzburg.omosim.utils.*
-import kotlinx.coroutines.CoroutineDispatcher
+import de.uniwuerzburg.omosim.io.readSharedOfficeLocationsr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -77,12 +77,17 @@ class Omosim (
     private val gtfsFile: File? = null,
     overtureRelease: String? = null,
     carOwnershipOption: CarOwnershipOption = CarOwnershipOption.FIX,
-    private val modeSpeedUp: Map<Mode, Double> = mapOf()
+    private val modeSpeedUp: Map<Mode, Double> = mapOf(),
+    predefinedBuildings: File? = null,
+    sharedOfficeLocationFile: File? = null,
+    useSharedOffices: Boolean?=null,
 ) {
     @Suppress("MemberVisibilityCanBePrivate")
     val kdTree: KdTree
     @Suppress("MemberVisibilityCanBePrivate")
     val buildings: List<Building>
+    private val sharedOfficeLocations: List<Building>?
+    private val useSharedOffices:Boolean?= useSharedOffices
     var hopper: GraphHopper?
     val grid: List<Cell>
     private val zones: List<AggLocation> // Grid + DummyLocations for commuting locations
@@ -103,16 +108,24 @@ class Omosim (
     var tripModeUtilityFn: File? = null
     var altPercentages: Map<ODTTriple, List<Double>> = mapOf()
 
+
     init {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
-
+        var popStrata: List<PopStratum> = emptyList()
         // Load population distribution
+        if (populationFile != null) {
+            if (populationFile.extension.equals("json", ignoreCase = true)) {
+                  popStrata=  readJson(populationFile)
+            }
+        }else {
+            popStrata=readJsonFromResource("Population.json")
         popStrata = if (populationFile != null) {
             readJson(populationFile)
         } else {
             readJsonFromResource("Population.json")
         }
+
 
         // Load activity chain data
         val activityGroups: List<ActivityGroup> = if (activityGroupFile !=null){
@@ -147,11 +160,47 @@ class Omosim (
         fullArea = transformer.toLatLon(utmArea)
 
         // Get map data
-        val mapDataSource = if (overtureRelease != null) MapDataSource.OVERTURE else MapDataSource.OSM
-        buildings = getBuildings(
-            focusArea, fullArea, osmFile, bufferRadius,  transformer,
-            geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
-        )
+        val mapDataSource = if (overtureRelease != null) MapDataSource.OVERTURE else MapDataSource.OSM// kotlin
+
+        buildings = if (predefinedBuildings != null && predefinedBuildings.exists()) {
+            try {
+                val collection:GeoJsonFeatureCollection<BuildingProperties> = readJsonStream(predefinedBuildings)
+                val loaded = Building.fromGeoJson(collection, geometryFactory, transformer, locChoiceWeightFuns)
+                logger.info("Loaded ${loaded.size} buildings from `${predefinedBuildings.name}`.")
+                loaded.ifEmpty {
+                    logger.warn("No building from `${predefinedBuildings.name}` loaded - using Fallback.")
+                    getBuildings(
+                        focusArea, fullArea, osmFile, bufferRadius, transformer,
+                        geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
+                    )
+                }
+
+            } catch (e: Exception) {
+                logger.warn("Error reading`${predefinedBuildings.name}`: ${e.message}. Using Fallback.", e)
+                getBuildings(
+                    focusArea, fullArea, osmFile, bufferRadius, transformer,
+                    geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
+                )
+            }
+        } else {
+            getBuildings(
+                focusArea, fullArea, osmFile, bufferRadius, transformer,
+                geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
+            )
+        }
+
+        sharedOfficeLocations= if (sharedOfficeLocationFile != null && sharedOfficeLocationFile.exists()) {
+            readSharedOfficeLocations(
+                buildings,
+                transformer,
+                geometryFactory,
+                sharedOfficeLocationFile,
+                mainRng
+            )
+        } else {
+            null
+        }
+
 
         // Create KD-Tree for faster access
         kdTree = KdTree()
@@ -216,7 +265,12 @@ class Omosim (
         }
 
         // Agent factory
-        agentFactory = AgentFactoryDefault(destinationFinder, carOwnership, popStrata, dispatcher)
+        agentFactory = if (popStrata.isNotEmpty()|| populationFile == null) {
+            AgentFactoryStratum(
+                destinationFinder, carOwnership, popStrata, dispatcher)
+        } else {
+            AgentFactorySynthPop(destinationFinder,populationFile)
+        }
 
         logger.get()?.info("Initializing OMoSim took: ${timeSource.markNow() - timestampStartInit}")
     }
@@ -396,7 +450,7 @@ class Omosim (
         val locations = mutableListOf<LocationOption>()
         locations.add(start)
         for (i in 1 until activityChain.size) {
-            val location =
+            val location: LocationOption =
                 when (activityChain[i]) {
                     ActivityType.HOME -> agent.home
                     ActivityType.WORK -> agent.work
@@ -432,7 +486,11 @@ class Omosim (
             ActivityType.SCHOOL -> agent.school
             else -> throw Exception("Start must be either Home, Work, School, or coordinates must be given. Agent: ${agent.id}")
         }
-        return getActivitySchedule(agent, rng, weekday, from, location)
+        return if (agent is MobiAgentSSWCBase) {
+            getActivityScheduleSSWC(agent, rng, weekday, from, location)
+        }else{
+            getActivitySchedule(agent, rng, weekday, from, location)
+        }
     }
 
     /**
@@ -444,6 +502,70 @@ class Omosim (
      * @param start Location the day starts at
      * @return Activity schedule
      */
+    private fun getActivityScheduleSSWC(
+        agent: MobiAgentSSWCBase,  rng: Random, weekday: Weekday = Weekday.UNDEFINED,
+        from: ActivityType = ActivityType.HOME, start: LocationOption
+    ): List<Activity> {
+        val activityChain = activityGenerator.getActivityChain(agent, weekday, from, rng).toMutableList()
+        val stayTimes = activityGenerator.getStayTimes(activityChain, agent, weekday, rng).toMutableList()
+        val locations = getLocations(agent, activityChain, start, rng).toMutableList()
+        // Replace Work with Home Office if sampled or with shared office based on probability
+        var i = 0
+        while (i < activityChain.size) {
+            //If agent works from home that day
+            if (activityChain[i] == ActivityType.WORK && (agent.homeOfficeDays) / 5.0 > rng.nextDouble()) {
+                // If agent works from shared office that day
+                if (agent.sharedOfficeRate > rng.nextDouble()) {
+                    activityChain[i]= ActivityType.SHARED_OFFICE
+                    agent.sharedOffice?.let { locations[i]= it }
+                }else {
+                    activityChain[i] = ActivityType.HOME_OFFICE
+                    locations[i] = agent.home
+                }
+                    /**
+                }
+                val prevIsHome = i > 0 && activityChain[i - 1] == ActivityType.HOME
+                val nextIsHome = i < activityChain.size - 1 && activityChain[i + 1] == ActivityType.HOME
+
+                when {
+                    prevIsHome && nextIsHome -> {
+                        stayTimes[i - 1] = (stayTimes[i - 1] ?: 0.0) + (stayTimes[i] ?: 0.0) + (stayTimes[i + 1] ?: 0.0)
+                        listOf(i + 1, i).forEach {
+                            stayTimes.removeAt(it)
+                            activityChain.removeAt(it)
+                            locations.removeAt(it)
+                        }
+                    }
+                    prevIsHome -> {
+                        activityChain[i] = ActivityType.HOME
+                        locations[i] = agent.home
+                        stayTimes[i - 1] = (stayTimes[i - 1] ?: 0.0) + (stayTimes[i] ?: 0.0)
+                        stayTimes.removeAt(i)
+                        activityChain.removeAt(i)
+                        locations.removeAt(i)
+                    }
+                    nextIsHome -> {
+                        activityChain[i] = ActivityType.HOME
+                        locations[i] = agent.home
+                        stayTimes[i] = (stayTimes[i] ?: 0.0) + (stayTimes[i + 1] ?: 0.0)
+                        stayTimes.removeAt(i + 1)
+                        activityChain.removeAt(i + 1)
+                        locations.removeAt(i + 1)
+                    }
+                    else -> {
+                        activityChain[i] = ActivityType.HOME
+                        locations[i] = agent.home
+                    }
+
+                }*/
+            }
+            i++
+        }
+        return List(activityChain.size) { i ->
+            Activity(activityChain[i], stayTimes[i], locations[i])
+        }
+    }
+
     private fun getActivitySchedule(
         agent: MobiAgent,  rng: Random, weekday: Weekday = Weekday.UNDEFINED,
         from: ActivityType = ActivityType.HOME, start: LocationOption
@@ -465,13 +587,13 @@ class Omosim (
      * @param verbose Print progressbar etc.. Doesn't affect logging.
      * @return List of agents each with an activity schedules for every simulated day
      */
-    fun run(
-        n_agents: Int, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1, verbose: Boolean = true
-    ) : List<MobiAgent> {
+    fun run(n_agents: Int, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1, verbose: Boolean =true) : List<MobiAgent> {
+    }
         logger.on = verbose
-
-        val agents = agentFactory.createAgents(n_agents, zones, populateBufferArea, mainRng)
-        return run(agents, start_wd, n_days, verbose)
+        val agents = if (this.sharedOfficeLocations != null && this.sharedOfficeLocations.isNotEmpty())
+            agentFactory.createAgents(n_agents, zones, populateBufferArea, mainRng,this.sharedOfficeLocations)
+        else agentFactory.createAgents(n_agents, zones, populateBufferArea, mainRng)
+        return run(agents, start_wd, n_days,verbose)
     }
 
     /**
@@ -493,8 +615,10 @@ class Omosim (
         }
         logger.on = verbose
 
-        val agents = agentFactory.createAgents(shareOfPop, zones, populateBufferArea, mainRng)
-        return run(agents, start_wd, n_days, verbose)
+        val agents = if (this.sharedOfficeLocations != null && this.sharedOfficeLocations.isNotEmpty())
+            agentFactory.createAgents(shareOfPop, zones, populateBufferArea, mainRng,this.sharedOfficeLocations)
+        else agentFactory.createAgents(shareOfPop, zones, populateBufferArea, mainRng)
+        return run(agents, start_wd, n_days,verbose)
     }
 
     /**
@@ -725,6 +849,7 @@ class Omosim (
             Files.createDirectories(gtfsCachePath)
 
             // Clip GTFS file to bounding box
+
             val clippedGtfsPath = Paths.get(gtfsCachePath.toString(), "clippedGTFS")
             if (!clippedGtfsPath.exists()) {
                 clipGTFSFile(

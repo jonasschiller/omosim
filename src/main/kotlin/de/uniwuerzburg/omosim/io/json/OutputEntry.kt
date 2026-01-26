@@ -16,5 +16,9 @@ data class OutputEntry (
     val age: Int?,
     val sex: Sex,
     val carAccess: Boolean,
+    val homeCoord: String,
+    val workCoord: String,
+    val drtLike: Int?,
     val mobilityDemand: List<OutputDiary>
 )
+

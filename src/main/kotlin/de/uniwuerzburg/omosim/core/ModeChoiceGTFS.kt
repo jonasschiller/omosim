@@ -3,6 +3,7 @@ package de.uniwuerzburg.omosim.core
 import com.graphhopper.GraphHopper
 import com.graphhopper.gtfs.PtRouter
 import de.uniwuerzburg.omosim.core.models.*
+import de.uniwuerzburg.omosim.io.json.AltMode
 import de.uniwuerzburg.omosim.io.json.readJson
 import de.uniwuerzburg.omosim.io.json.readJsonFromResource
 import de.uniwuerzburg.omosim.routing.*
@@ -19,6 +20,7 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.text.get
 import kotlin.time.TimeSource
 
 /**
@@ -180,6 +182,13 @@ class ModeChoiceGTFS(
 
                 val modeTimes = tourModeOptions.map { tour.totalTimeByMode(it.mode) }.toTypedArray()
 
+                // Weekday
+                val weekday = tour.first().weekday
+
+                val pair:Pair<Mode, Map<Mode,Double>> = sampleUtilities(tourModeOptions, times, carDistance, agent, mainPurpose, weekday, rng)
+                val mode = pair.first
+                val tourModeDist=pair.second
+
                 // Sample tour mode
                 val mode = sampleUtilities(
                     tourModeOptions,
@@ -195,6 +204,10 @@ class ModeChoiceGTFS(
                 if ((mode == Mode.CAR_DRIVER) || (mode == Mode.BICYCLE)) {
                     for (trip in tour.trips) {
                         trip.mode = mode
+                        trip.modeDist=sampleUtilities(
+                            tripModeOptions, times, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
+                        ).second
+                        trip.modeDist= trip.modeDist?.plus(tourModeDist)
                     }
                 }
             }
@@ -204,10 +217,11 @@ class ModeChoiceGTFS(
                 val times = tripModeOptions.map { m ->
                     trip.routes!![m.mode]!!.time
                 }.toTypedArray()
-                val mode = sampleUtilities(
+                val mode: Pair<Mode,Map<Mode,Double>> = sampleUtilities(
                     tripModeOptions, times, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
                 )
-                trip.mode = mode
+                trip.mode = mode.first
+                trip.modeDist=mode.second
             }
 
             // Format for output
@@ -227,13 +241,28 @@ class ModeChoiceGTFS(
                     trip.routes[mode]!!.distance
                 }
 
+                val altModes: List<AltMode> = Mode.entries.map { mode ->
+                    val route = trip.routes[mode]
+                    AltMode(
+                        distanceKilometer = route?.distance,
+                        timeMinute = route?.time,
+                        mode = mode,
+                        selected = (mode == trip.mode),
+                        utility = trip.modeDist?.get(mode),
+                        startTime=""
+                    )
+
+                }
+
+
                 outTrips.add(
                     Trip(
                         distance,
                         trip.routes[mode]!!.time,
                         mode = mode,
                         lats = trip.routes[mode]!!.lats,
-                        lons = trip.routes[mode]!!.lons
+                        lons = trip.routes[mode]!!.lons,
+                        altModes=altModes
                     )
                 )
             }
@@ -241,6 +270,30 @@ class ModeChoiceGTFS(
         }
     }
 
+    /**
+     * Sample logit model defined by the given utilities.
+     *
+     * @param options Possible modes for the decision (Different for tours and trips)
+     * @param times Travel times for each option
+     * @param carDistance Distance by car. Used as the reference distance.
+     * @param agent Agent
+     * @param activity Main activity of the tour or purpose of the trip.
+     * @param rng Random number generator
+     * @return Chosen mode
+     */
+    private fun sampleUtilities(
+        options: Array<ModeUtility>, times: Array<Double>,
+        carDistance: Double, agent: MobiAgent, activity: ActivityType,
+        weekday: Weekday, rng: Random
+    ) : Pair<Mode, Map<Mode,Double>> {
+        // If public transit and foot routes are the same, add 20 minutes to public transit to differentiate the options
+        val footIdx = options.withIndex().find { (_, o) -> o.mode == Mode.FOOT }?.index
+        val ptIdx = options.withIndex().find { (_, o) -> o.mode == Mode.PUBLIC_TRANSIT }?.index
+        if ((footIdx != null) && (ptIdx != null)) {
+            if (abs(times[footIdx] - times[ptIdx]) <= 3) {
+                times[ptIdx] = times[ptIdx] + 20.0
+            }
+        }
     companion object {
         /**
          * Sample logit model defined by the given utilities.
@@ -269,6 +322,16 @@ class ModeChoiceGTFS(
                 }
             }
 
+        // Sampling
+        val weights = options.withIndex()
+            .map { (i, util) -> exp(util.calc(times[i], carDistance, activity, agent.carAccess, weekday, agent)) }
+            .toDoubleArray()
+        val distr = createCumDist(weights)
+        val mode = options[sampleCumDist(distr, rng)].mode
+        val distrMap: Map<Mode, Double> = options.mapIndexed { i, util -> util.mode to weights[i] }.toMap()
+
+
+        return Pair(mode,distrMap)
             // Sampling
             val weights = options.withIndex()
                 .map { (i, util) -> exp(util.calc(times?.get(i), carDistance, activity, agent.carAccess, weekday, agent)) }
@@ -297,6 +360,7 @@ class ModeChoiceGTFS(
         val routes: Map<Mode, Route>? = null
     ) {
         var mode: Mode? = null
+        var modeDist: Map<Mode,Double>?=null
     }
 
     /**

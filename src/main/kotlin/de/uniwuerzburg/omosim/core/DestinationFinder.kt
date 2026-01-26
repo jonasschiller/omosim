@@ -32,7 +32,7 @@ interface DestinationFinder {
 
     /**
      * Determine activity location.
-     * To speed things up only the aggregated location is computed in with the distance factored in.
+     * To speed things up only the aggregated location is computed with the distance factored in.
      * The building level location is determined based only on the attraction values of the buildings inside the
      * aggregated location.
      * @param origin Routing cell of the trip origin.

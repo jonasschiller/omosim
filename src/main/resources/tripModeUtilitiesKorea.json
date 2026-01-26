@@ -1,0 +1,143 @@
+[
+  {
+    "mode": "FOOT",
+    "timeCoeff": 0.0,
+    "logTimeCoeff": -0.1608886,
+    "distanceCoeff": 0.0,
+    "logDistanceCoeff": -0.680824,
+    "homGroupCoeff": {
+      "WORKING": 0.0,
+      "NON_WORKING": 0.0,
+      "PUPIL_STUDENT": 0.0,
+      "UNDEFINED": 0.0
+    },
+    "ageGrpCoeff": {
+      "A0_40": 0.0,
+      "A40_60": 0.0,
+      "A60_100": 0.0
+    },
+    "mobGroupCoeff": {
+      "CAR_MIXED": 1.038866,
+      "CAR_USER": 1.503165,
+      "NOT_CAR": 0.985509
+    },
+    "sexCoeff": {
+      "MALE": 1.07782024,
+      "FEMALE": 1.112923
+    },
+    "carAvailableCoeff": {
+      "True": 0.0,
+      "False": 0.0
+    },
+    "activityCoeff": {
+      "HOME": 0.851934,
+      "SHOPPING": 1.153829,
+      "SCHOOL": 0.56042654,
+      "WORK": 0.86358859
+    },
+    "weekdayCoeff": {
+      "MO": 0,
+      "TU": 0,
+      "WE": 0,
+      "TH": 0,
+      "FR": 0,
+      "SA": 0,
+      "SU": 0
+    },
+    "intercept": 3.117658
+  },
+  {
+    "mode": "CAR_PASSENGER",
+    "timeCoeff": 0.0,
+    "logTimeCoeff": -0.1608886,
+    "distanceCoeff": 0.0,
+    "logDistanceCoeff": 0.41974512,
+    "homGroupCoeff": {
+      "WORKING": 0.0,
+      "NON_WORKING": 0.0,
+      "PUPIL_STUDENT": 0.0,
+      "UNDEFINED": 0.0
+    },
+    "ageGrpCoeff": {
+      "A0_40": 0.0,
+      "A40_60": 0.0,
+      "A60_100": 0.0
+    },
+    "mobGroupCoeff": {
+      "CAR_MIXED": 0.742074,
+      "CAR_USER": 1.979862,
+      "NOT_CAR": 0.818081
+    },
+    "sexCoeff": {
+      "MALE": 0.8106971,
+      "FEMALE": 1.112923
+    },
+    "carAvailableCoeff": {
+      "True": 0.0,
+      "False": 0.0
+    },
+    "activityCoeff": {
+      "HOME": 0.7400481,
+      "SHOPPING": 0.852793,
+      "SCHOOL": 1.033121,
+      "WORK": 0.477926
+    },
+    "weekdayCoeff": {
+      "MO": 0,
+      "TU": 0,
+      "WE": 0,
+      "TH": 0,
+      "FR": 0,
+      "SA": 0,
+      "SU": 0
+    },
+    "intercept": 0.520541
+  },
+  {
+    "mode": "PUBLIC_TRANSIT",
+    "timeCoeff": 0.0,
+    "logTimeCoeff": -0.1608886,
+    "distanceCoeff": 0.0,
+    "logDistanceCoeff": 0.735755,
+    "homGroupCoeff": {
+      "WORKING": 0.0,
+      "NON_WORKING": 0.0,
+      "PUPIL_STUDENT": 0.0,
+      "UNDEFINED": 0.0
+    },
+    "ageGrpCoeff": {
+      "A0_40": 0.0,
+      "A40_60": 0.0,
+      "A60_100": 0.0
+    },
+    "mobGroupCoeff": {
+      "CAR_MIXED": 1.122786,
+      "CAR_USER": 0.3435312,
+      "NOT_CAR": 1.1430119
+    },
+    "sexCoeff": {
+      "MALE": 1.111483,
+      "FEMALE": 0.9279041
+    },
+    "carAvailableCoeff": {
+      "True": 0.0,
+      "False": 0.0
+    },
+    "activityCoeff": {
+      "HOME": 1.408018,
+      "SHOPPING": 0.9933778,
+      "SCHOOL": 1.40645268,
+      "WORK": 1.65848579
+    },
+    "weekdayCoeff": {
+      "MO": 0,
+      "TU": 0,
+      "WE": 0,
+      "TH": 0,
+      "FR": 0,
+      "SA": 0,
+      "SU": 0
+    },
+    "intercept": -0.00415721
+  }
+]
