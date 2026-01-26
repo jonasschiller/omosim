@@ -2,6 +2,7 @@ package de.uniwuerzburg.omod.routing
 
 import com.graphhopper.GHResponse
 import com.graphhopper.GraphHopper
+import com.graphhopper.ResponsePath
 import com.graphhopper.gtfs.PtRouter
 import de.uniwuerzburg.omod.core.models.ActivityType
 import de.uniwuerzburg.omod.core.models.LocationOption
@@ -16,7 +17,8 @@ class Route (
     var time: Double,               // Unit: minutes
     val lats: List<Double>?,
     val lons: List<Double>?,
-    val onlyWalk: Boolean = false
+    val onlyWalk: Boolean = false,
+    var outOfVehicleTime:Double=0.0// Unit: minutes
 ) {
     companion object {
         fun getWithFallback(
@@ -39,13 +41,13 @@ class Route (
                 if (response.hasErrors()) {
                     routeFallback(mode, origin, destination)
                 } else {
-                    fromGHResponse(response, withPath)
+                    fromGHResponse(response, withPath, mode)
                 }
             }
             return addConstantTimeCost(mode, route)
         }
 
-        private fun fromGHResponse(response: GHResponse, withPath: Boolean) : Route {
+        private fun fromGHResponse(response: GHResponse, withPath: Boolean,mode:Mode) : Route {
             val (lats, lons) = if (withPath) {
                 Pair(
                     response.best.points.map { it.lat },
@@ -54,7 +56,11 @@ class Route (
             } else {
                 Pair(null, null)
             }
-
+            response.best
+            var outOfVehicleTime=0.0
+            if(mode==Mode.PUBLIC_TRANSIT){
+               outOfVehicleTime= calculateOutOfVehicleTime(response.best)
+            }
             // Check if only walking occurred
             val onlyWalk = response.best.legs.all { it.type == "walk" }
 
@@ -63,8 +69,23 @@ class Route (
                 (response.best.time / 1000 / 60).toDouble(),
                 lats,
                 lons,
-                onlyWalk
+                onlyWalk,
+                outOfVehicleTime,
             )
+        }
+
+        private fun calculateOutOfVehicleTime(route: ResponsePath, walk: Boolean =true ):Double{
+            val totalTime=route.time.toDouble()
+            // Sum duration of all PT legs (in-vehicle travel only)
+            val ptTravelTime = route.legs
+                .filter { it.type.equals("PT", ignoreCase = true) || it.type.equals("TRANSIT", ignoreCase = true) }
+                .sumOf { it.arrivalTime.time-it.departureTime.time }.toDouble()
+            val walkTime= route.legs.filter { it.type.equals("Walk", ignoreCase = true) }.sumOf { it.arrivalTime.time - it.departureTime.time }.toDouble()
+            return if (walk){
+                totalTime - ptTravelTime - walkTime
+            }else {
+                totalTime - ptTravelTime
+            }
         }
 
         private fun routeFallback(mode: Mode, origin: LocationOption, destination: LocationOption): Route {

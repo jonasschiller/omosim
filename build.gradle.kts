@@ -39,6 +39,7 @@ dependencies {
     implementation("org.duckdb:duckdb_jdbc:1.1.1")
     implementation("us.dustinj.timezonemap:timezonemap:4.+")
     implementation("org.xerial:sqlite-jdbc:3.+")
+    implementation("com.github.haifengl:smile-kotlin:5.0.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.+")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

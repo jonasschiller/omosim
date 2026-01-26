@@ -8,10 +8,8 @@ import java.util.ArrayList
 import java.util.Random
 import de.uniwuerzburg.omod.core.models.*
 import de.uniwuerzburg.omod.io.synthpop.getSynthPopAgents
-import java.io.FileInputStream
-import java.io.InputStream
-import java.util.*
-import kotlin.random.Random.Default.nextDouble
+import java.io.File
+import kotlin.collections.mapOf
 
 
 /** Load synthetic population data directly from Synthetic Population files
@@ -23,6 +21,7 @@ import kotlin.random.Random.Default.nextDouble
  */
 class AgentFactorySynthPop(
     override val destinationFinder: DestinationFinder,
+    val synthPopFile: File,
 ) : AgentFactoryDefault {
 
     /**
@@ -42,11 +41,11 @@ class AgentFactorySynthPop(
         rng: Random,
     ): List<MobiAgent> {
         val synthPopAgents =
-            getSynthPopAgents("C:\\Daten\\Forschung\\Sustainable Work Culture\\Daten\\Korea\\Synthetic Population\\Sejong+Daejeon\\travel_survey_preprocessed_Sejong+Daejeon.csv")
-        val agents = ArrayList<MobiAgent>(homes.size)
+            getSynthPopAgents(synthPopFile)
+        val agents = ArrayList<MobiAgent>()
         val shuffledAgents = synthPopAgents.shuffled(rng)
         var agentIdx = 0
-
+        val sharedOfficeRateMapping = mapOf(1 to 0.05, 2 to 0.3, 3 to 0.5, 4 to 0.7, 5 to 0.95)
         for ((id, home) in homes.withIndex()) {
             // Hole Agenten aus der gesampelten Liste, ggf. wiederhole die Liste
             val baseAgent = shuffledAgents[agentIdx % shuffledAgents.size]
@@ -55,8 +54,7 @@ class AgentFactorySynthPop(
             // Fixed locations
             val work = destinationFinder.getLocation(home.getAggLoc()!!, zones, ActivityType.WORK, rng)
             val school = destinationFinder.getLocation(home.getAggLoc()!!, zones, ActivityType.SCHOOL, rng)
-            // currently use the center of the cell as shared office
-            // Implement function based on provided list?
+            // Shared Office Location is determined later based on the given locations
             val agent = MobiAgentSSWCBase(
                 id,
                 baseAgent.homogenousGroup,
@@ -67,9 +65,10 @@ class AgentFactorySynthPop(
                 school,
                 baseAgent.sex,
                 carAccess = baseAgent.carAccess,
-                home.getAggLoc()!!.getCentralBuilding(),
+                sharedOffice=null,
                 homeOfficeDays = baseAgent.homeOfficeDays,
-                sharedOfficeRate = 0.4,
+                sharedOfficeRate = sharedOfficeRateMapping.getOrDefault(baseAgent.sharedOfficeLike, 0.0)*baseAgent.sharedOfficeDays/5.0,
+                drtLikelihood = baseAgent.drtLike,
             )
             agents.add(agent)
         }

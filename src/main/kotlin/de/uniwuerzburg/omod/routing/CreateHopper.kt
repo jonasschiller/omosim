@@ -21,10 +21,8 @@ fun createGraphHopper(osmLoc: String, cacheLoc: String) : GraphHopper {
     val hopper = GraphHopper()
     hopper.osmFile = osmLoc
     hopper.graphHopperLocation = cacheLoc
-    hopper.setEncodedValuesString(
-        "car_access, car_average_speed, road_class, foot_access, hike_rating, " +
-        "foot_priority, foot_average_speed, bike_priority, bike_access, roundabout, bike_average_speed"
-    )
+    hopper.encodedValuesString = "car_access, car_average_speed, road_class, foot_access, hike_rating, " +
+            "foot_priority, foot_average_speed, bike_priority, bike_access, roundabout, bike_average_speed"
 
     // Profiles
     val profiles = listOf(
@@ -32,7 +30,7 @@ fun createGraphHopper(osmLoc: String, cacheLoc: String) : GraphHopper {
         Profile("foot" ).setCustomModel(GHUtility.loadCustomModelFromJar("foot.json")),
         Profile("bike" ).setCustomModel(GHUtility.loadCustomModelFromJar("bike.json"))
     )
-    hopper.setProfiles(profiles)
+    hopper.profiles = profiles
 
     hopper.chPreparationHandler.setCHProfiles(
         CHProfile("car"),
@@ -63,10 +61,8 @@ fun createGraphHopperGTFS(osmLoc: String, gtfsLoc: String, cacheLoc: String) : P
     )
 
     // Profiles
-    ghConfig.setProfiles(
-        listOf(
-            Profile("foot").setCustomModel(GHUtility.loadCustomModelFromJar("foot.json"))
-        )
+    ghConfig.profiles = listOf(
+        Profile("foot").setCustomModel(GHUtility.loadCustomModelFromJar("foot.json"))
     )
 
     val hopperGtfs = GraphHopperGtfs(ghConfig)

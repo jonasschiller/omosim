@@ -120,8 +120,8 @@ class Run : CliktCommand() {
                "Paths only exist for trips with defined modes and within the focus area + buffer."
     ).boolean().default(false)
     private val population_file by option(
-        help="Path to file that describes the socio-demographic makeup of the population. " +
-             "Must be formatted like omod/src/main/resources/Population.json."
+        help="Either a path to json file that describes the socio-demographic makeup of the population or a csv file that contains a synthetic population " +
+             "The json file must be formatted like omod/src/main/resources/Population.json." + "The csv file must be formatted like the example in omod/src/main/resources/synthetic_population_example.csv"
     ).file(mustExist = true, mustBeReadable = true)
     private val activity_group_file by option(
         help="Path to file that describes the activity chains for each population group and the dwell-time distribution for the each chain. " +
@@ -146,6 +146,11 @@ class Run : CliktCommand() {
     private val matsim_output_crs by option(
         help = "CRS of MatSIM output. Must be a code understood by org.geotools.referencing.CRS.decode()."
     ).default("EPSG:4326")
+    private val shared_office_locations by option(
+
+            "--shared_office_locations_file",
+            help = "Locations of shared offices in target region."
+        ).file(mustExist = true, mustBeReadable = true)
     private val mode_speed_up by option(
         help = "Value: MODE=FACTOR. Multiply the travel time of each trip of the mode by the factor." +
                "Example: CAR_DRIVER=0.3, will slow down car travel durations by 70%."
@@ -153,6 +158,9 @@ class Run : CliktCommand() {
      .convert { (first, second) -> Mode.valueOf(first.uppercase()) to second.toDouble() }
      .multiple()
      .toMap()
+    private val predefined_buildings by option(
+        help = "File Path to a GeoJSON file that contains predefined building structures based on alternative map sources."
+    ).file(mustExist = false, mustBeReadable = true)
 
     override fun run() {
         if ((census == null) && (agentNumberDefinition is ShareOfPop)) {
@@ -168,21 +176,45 @@ class Run : CliktCommand() {
         }
 
         // Init OMOD
-        val omod = Omod(
-            area_geojson, osm_file,
-            routingMode = routing_mode,
-            odFile = od, censusFile = census,
-            gridPrecision = grid_precision, bufferRadius = buffer, seed = seed,
-            cache = true, cacheDir = cache_dir,
-            populateBufferArea = populate_buffer_area,
-            distanceCacheSize = distance_matrix_cache_size,
-            populationFile = population_file,
-            activityGroupFile = activity_group_file,
-            nWorker = n_worker,
-            gtfsFile = gtfs_file,
-            overtureRelease = mapdata_overture,
-            modeSpeedUp = mode_speed_up
-        )
+        val omod= if(shared_office_locations is File){
+            val sharedOfficeLocationFile = shared_office_locations as? File
+            Omod(
+                area_geojson, osm_file,
+                routingMode = routing_mode,
+                odFile = od, censusFile = census,
+                gridPrecision = grid_precision, bufferRadius = buffer, seed = seed,
+                cache = true, cacheDir = cache_dir,
+                populateBufferArea = populate_buffer_area,
+                distanceCacheSize = distance_matrix_cache_size,
+                populationFile = population_file,
+                activityGroupFile = activity_group_file,
+                nWorker = n_worker,
+                gtfsFile = gtfs_file,
+                overtureRelease = mapdata_overture,
+                modeSpeedUp = mode_speed_up,
+                predefinedBuildings = predefined_buildings,
+                sharedOfficeLocationFile = sharedOfficeLocationFile
+            )
+            }else{
+            val sharedOfficeLocationBool= shared_office_locations as?  Boolean
+            Omod(
+                area_geojson, osm_file,
+                routingMode = routing_mode,
+                odFile = od, censusFile = census,
+                gridPrecision = grid_precision, bufferRadius = buffer, seed = seed,
+                cache = true, cacheDir = cache_dir,
+                populateBufferArea = populate_buffer_area,
+                distanceCacheSize = distance_matrix_cache_size,
+                populationFile = population_file,
+                activityGroupFile = activity_group_file,
+                nWorker = n_worker,
+                gtfsFile = gtfs_file,
+                overtureRelease = mapdata_overture,
+                modeSpeedUp = mode_speed_up,
+                predefinedBuildings = predefined_buildings
+            )
+        }
+
 
         // Mobility demand
         val agents = when (val aND = agentNumberDefinition ) {

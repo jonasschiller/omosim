@@ -14,7 +14,6 @@ class BBFilter(
         val lat = record[idxMap["stop_lat"]!!].toDoubleOrNull() ?: return false
         if ((lat < minX) || (lat > maxX)) return false
         val lon = record[idxMap["stop_lon"]!!].toDoubleOrNull() ?: return false
-        if ((lon < minY) || (lon > maxY)) return false
-        return true
+        return !((lon < minY) || (lon > maxY))
     }
 }

@@ -13,6 +13,7 @@ import de.uniwuerzburg.omod.io.osm.BuildingData
 import de.uniwuerzburg.omod.io.osm.readOSM
 import de.uniwuerzburg.omod.io.overture.readOverture
 import de.uniwuerzburg.omod.io.readCensus
+import de.uniwuerzburg.omod.io.readSharedOfficeLocations
 import de.uniwuerzburg.omod.routing.RoutingCache
 import de.uniwuerzburg.omod.routing.RoutingMode
 import de.uniwuerzburg.omod.routing.createGraphHopper
@@ -36,12 +37,7 @@ import java.nio.file.Paths
 import java.time.LocalDate
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.compareTo
 import kotlin.io.path.exists
-import kotlin.plus
-import kotlin.text.compareTo
-import kotlin.text.get
-import kotlin.text.set
 import kotlin.time.TimeSource
 
 /**
@@ -85,12 +81,17 @@ class Omod(
     private val gtfsFile: File? = null,
     overtureRelease: String? = null,
     carOwnershipOption: CarOwnershipOption = CarOwnershipOption.FIX,
-    private val modeSpeedUp: Map<Mode, Double> = mapOf()
+    private val modeSpeedUp: Map<Mode, Double> = mapOf(),
+    predefinedBuildings: File? = null,
+    sharedOfficeLocationFile: File? = null,
+    useSharedOffices: Boolean?=null,
 ) {
     @Suppress("MemberVisibilityCanBePrivate")
     val kdTree: KdTree
     @Suppress("MemberVisibilityCanBePrivate")
     val buildings: List<Building>
+    private val sharedOfficeLocations: List<Building>?
+    private val useSharedOffices:Boolean?= useSharedOffices
     private var hopper: GraphHopper?
     private val grid: List<Cell>
     private val zones: List<AggLocation> // Grid + DummyLocations for commuting locations
@@ -105,16 +106,20 @@ class Omod(
     private var gtfsComponents: GTFSComponents? = null
     private val focusArea: Geometry
     private val fullArea: Geometry
+
     init {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
-
+        var popStrata: List<PopStratum> = emptyList()
         // Load population distribution
-        val popStrata: List<PopStratum> = if (populationFile != null) {
-            readJson(populationFile)
-        } else {
-            readJsonFromResource("Population.json")
+        if (populationFile != null) {
+            if (populationFile.extension.equals("json", ignoreCase = true)) {
+                  popStrata=  readJson(populationFile)
+            }
+        }else {
+            popStrata=readJsonFromResource("Population.json")
         }
+
 
         // Load activity chain data
         val activityGroups: List<ActivityGroup> = if (activityGroupFile !=null){
@@ -149,11 +154,47 @@ class Omod(
         fullArea = transformer.toLatLon(utmArea)
 
         // Get map data
-        val mapDataSource = if (overtureRelease != null) MapDataSource.OVERTURE else MapDataSource.OSM
-        buildings = getBuildings(
-            focusArea, fullArea, osmFile, bufferRadius,  transformer,
-            geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
-        )
+        val mapDataSource = if (overtureRelease != null) MapDataSource.OVERTURE else MapDataSource.OSM// kotlin
+
+        buildings = if (predefinedBuildings != null && predefinedBuildings.exists()) {
+            try {
+                val collection:GeoJsonFeatureCollection<BuildingProperties> = readJsonStream(predefinedBuildings)
+                val loaded = Building.fromGeoJson(collection, geometryFactory, transformer, locChoiceWeightFuns)
+                logger.info("Loaded ${loaded.size} buildings from `${predefinedBuildings.name}`.")
+                loaded.ifEmpty {
+                    logger.warn("No building from `${predefinedBuildings.name}` loaded - using Fallback.")
+                    getBuildings(
+                        focusArea, fullArea, osmFile, bufferRadius, transformer,
+                        geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
+                    )
+                }
+
+            } catch (e: Exception) {
+                logger.warn("Error reading`${predefinedBuildings.name}`: ${e.message}. Using Fallback.", e)
+                getBuildings(
+                    focusArea, fullArea, osmFile, bufferRadius, transformer,
+                    geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
+                )
+            }
+        } else {
+            getBuildings(
+                focusArea, fullArea, osmFile, bufferRadius, transformer,
+                geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
+            )
+        }
+
+        sharedOfficeLocations= if (sharedOfficeLocationFile != null && sharedOfficeLocationFile.exists()) {
+            readSharedOfficeLocations(
+                buildings,
+                transformer,
+                geometryFactory,
+                sharedOfficeLocationFile,
+                mainRng
+            )
+        } else {
+            null
+        }
+
 
         // Create KD-Tree for faster access
         kdTree = KdTree()
@@ -218,7 +259,12 @@ class Omod(
         }
 
         // Agent factory
-        agentFactory = AgentFactorySynthPop(destinationFinder)
+        agentFactory = if (popStrata.isNotEmpty()|| populationFile == null) {
+            AgentFactoryStratum(
+                destinationFinder, carOwnership, popStrata, dispatcher)
+        } else {
+            AgentFactorySynthPop(destinationFinder,populationFile)
+        }
 
         logger.info("Initializing OMOD took: ${timeSource.markNow() - timestampStartInit}")
     }
@@ -434,10 +480,10 @@ class Omod(
             ActivityType.SCHOOL -> agent.school
             else -> throw Exception("Start must be either Home, Work, School, or coordinates must be given. Agent: ${agent.id}")
         }
-        if (agent is MobiAgentSSWCBase) {
-                return getActivityScheduleSSWC(agent, rng, weekday, from, location)
-            }else{
-            return getActivitySchedule(agent, rng, weekday, from, location)
+        return if (agent is MobiAgentSSWCBase) {
+            getActivityScheduleSSWC(agent, rng, weekday, from, location)
+        }else{
+            getActivitySchedule(agent, rng, weekday, from, location)
         }
     }
 
@@ -457,10 +503,21 @@ class Omod(
         val activityChain = activityGenerator.getActivityChain(agent, weekday, from, rng).toMutableList()
         val stayTimes = activityGenerator.getStayTimes(activityChain, agent, weekday, rng).toMutableList()
         val locations = getLocations(agent, activityChain, start, rng).toMutableList()
-        // Here needs to be a function that replaces work with home if home office is done
+        // Replace Work with Home Office if sampled or with shared office based on probability
         var i = 0
         while (i < activityChain.size) {
-            if (activityChain[i] == ActivityType.WORK && agent.homeOfficeDays / 5.0 > rng.nextDouble()) {
+            //If agent works from home that day
+            if (activityChain[i] == ActivityType.WORK && (agent.homeOfficeDays) / 5.0 > rng.nextDouble()) {
+                // If agent works from shared office that day
+                if (agent.sharedOfficeRate > rng.nextDouble()) {
+                    activityChain[i]= ActivityType.SHARED_OFFICE
+                    agent.sharedOffice?.let { locations[i]= it }
+                }else {
+                    activityChain[i] = ActivityType.HOME_OFFICE
+                    locations[i] = agent.home
+                }
+                    /**
+                }
                 val prevIsHome = i > 0 && activityChain[i - 1] == ActivityType.HOME
                 val nextIsHome = i < activityChain.size - 1 && activityChain[i + 1] == ActivityType.HOME
 
@@ -493,7 +550,8 @@ class Omod(
                         activityChain[i] = ActivityType.HOME
                         locations[i] = agent.home
                     }
-                }
+
+                }*/
             }
             i++
         }
@@ -523,7 +581,9 @@ class Omod(
      * @return List of agents each with an activity schedules for every simulated day
      */
     fun run(n_agents: Int, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1) : List<MobiAgent> {
-        val agents = agentFactory.createAgents(n_agents, zones, populateBufferArea, mainRng)
+        val agents = if (this.sharedOfficeLocations != null && this.sharedOfficeLocations.isNotEmpty())
+            agentFactory.createAgents(n_agents, zones, populateBufferArea, mainRng,this.sharedOfficeLocations)
+        else agentFactory.createAgents(n_agents, zones, populateBufferArea, mainRng)
         return run(agents, start_wd, n_days)
     }
 
@@ -542,7 +602,9 @@ class Omod(
                         "Consider adding a census file with --census or use --n_agents instead.")
         }
 
-        val agents = agentFactory.createAgents(shareOfPop, zones, populateBufferArea, mainRng)
+        val agents = if (this.sharedOfficeLocations != null && this.sharedOfficeLocations.isNotEmpty())
+            agentFactory.createAgents(shareOfPop, zones, populateBufferArea, mainRng,this.sharedOfficeLocations)
+        else agentFactory.createAgents(shareOfPop, zones, populateBufferArea, mainRng)
         return run(agents, start_wd, n_days)
     }
 

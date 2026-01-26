@@ -138,7 +138,7 @@
         "coeff0": -1.384e-01,
         "coeff1": -1.225e+00
     },
-    "SHARED_WORK":
+    "SHARED_OFFICE":
     {
         "type": "PureAttraction",
         "coeffResidentialArea": 0.0,
@@ -166,5 +166,34 @@
         "coeffIndustrialUnits": 0.0,
         "coeff0": 0,
         "coeff1": 0
-    }
+    },
+  "HOME_OFFICE":
+  {
+    "type": "PureAttraction",
+    "coeffResidentialArea": 0.0,
+    "coeffCommercialArea": 0.0,
+    "coeffRetailArea":  0.0,
+    "coeffIndustrialArea" : 0.0,
+    "coeffOfficeArea": 0.0,
+    "coeffShopArea": 0.0,
+    "coeffSchoolArea":  0.0,
+    "coeffUniversityArea":  0.0,
+    "coeffOtherArea": 0.0,
+    "coeffOfficeUnits": 0,
+    "coeffShopUnits": 0,
+    "coeffSchoolUnits": 0,
+    "coeffUniUnits": 0.0,
+    "coeffPlaceOfWorshipUnits" : 0.0,
+    "coeffCafeUnits":  0.0,
+    "coeffFastFoodUnits": 0.0,
+    "coeffKinderGartenUnits":  0.0,
+    "coeffTourismUnits": 0.0,
+    "coeffBuildingUnits":  0.0,
+    "coeffResidentialUnits": 0.0,
+    "coeffCommercialUnits": 0.0,
+    "coeffRetailUnits": 0.0,
+    "coeffIndustrialUnits": 0.0,
+    "coeff0": 0,
+    "coeff1": 0
+  }
 }

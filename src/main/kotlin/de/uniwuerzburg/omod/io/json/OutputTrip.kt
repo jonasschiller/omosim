@@ -19,3 +19,4 @@ data class OutputTrip (
     val lons: List<Double>?,
     val alternativeModes: List<AltMode>?
 ) : OutputLeg
+
