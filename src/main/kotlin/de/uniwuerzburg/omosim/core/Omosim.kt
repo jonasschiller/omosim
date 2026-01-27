@@ -16,7 +16,8 @@ import de.uniwuerzburg.omosim.io.overture.readOverture
 import de.uniwuerzburg.omosim.io.readCensus
 import de.uniwuerzburg.omosim.routing.*
 import de.uniwuerzburg.omosim.utils.*
-import de.uniwuerzburg.omosim.io.readSharedOfficeLocationsr
+import de.uniwuerzburg.omosim.io.readSharedOfficeLocations
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -102,28 +103,23 @@ class Omosim (
     private var gtfsComponents: GTFSComponents? = null
     val focusArea: Geometry
     private val fullArea: Geometry
-    val popStrata: List<PopStratum>
     val carOwnership: CarOwnership
     var tourModeUtilityFn: File? = null
     var tripModeUtilityFn: File? = null
     var altPercentages: Map<ODTTriple, List<Double>> = mapOf()
-
+    var popStrata: List<PopStratum>
 
     init {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
-        var popStrata: List<PopStratum> = emptyList()
+        popStrata = emptyList()
         // Load population distribution
         if (populationFile != null) {
             if (populationFile.extension.equals("json", ignoreCase = true)) {
                   popStrata=  readJson(populationFile)
             }
         }else {
-            popStrata=readJsonFromResource("Population.json")
-        popStrata = if (populationFile != null) {
-            readJson(populationFile)
-        } else {
-            readJsonFromResource("Population.json")
+            popStrata = readJsonFromResource("Population.json")
         }
 
 
@@ -160,15 +156,15 @@ class Omosim (
         fullArea = transformer.toLatLon(utmArea)
 
         // Get map data
-        val mapDataSource = if (overtureRelease != null) MapDataSource.OVERTURE else MapDataSource.OSM// kotlin
+        val mapDataSource = if (overtureRelease != null) Pair(MapDataSource.OVERTURE,overtureRelease) else Pair(MapDataSource.OSM,null)// kotlin
 
         buildings = if (predefinedBuildings != null && predefinedBuildings.exists()) {
             try {
                 val collection:GeoJsonFeatureCollection<BuildingProperties> = readJsonStream(predefinedBuildings)
                 val loaded = Building.fromGeoJson(collection, geometryFactory, transformer, locChoiceWeightFuns)
-                logger.info("Loaded ${loaded.size} buildings from `${predefinedBuildings.name}`.")
+                logger.get()?.info("Loaded ${loaded.size} buildings from `${predefinedBuildings.name}`.")
                 loaded.ifEmpty {
-                    logger.warn("No building from `${predefinedBuildings.name}` loaded - using Fallback.")
+                    logger.get()?.warn("No building from `${predefinedBuildings.name}` loaded - using Fallback.")
                     getBuildings(
                         focusArea, fullArea, osmFile, bufferRadius, transformer,
                         geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
@@ -176,7 +172,7 @@ class Omosim (
                 }
 
             } catch (e: Exception) {
-                logger.warn("Error reading`${predefinedBuildings.name}`: ${e.message}. Using Fallback.", e)
+                logger.get()?.warn("Error reading`${predefinedBuildings.name}`: ${e.message}. Using Fallback.", e)
                 getBuildings(
                     focusArea, fullArea, osmFile, bufferRadius, transformer,
                     geometryFactory, censusFile, cacheDir, cache, locChoiceWeightFuns, mapDataSource, nWorker
@@ -310,7 +306,7 @@ class Omosim (
                              transformer: CRSTransformer, geometryFactory: GeometryFactory,
                              censusFile: File?, cacheDir: Path, cache: Boolean,
                              locChoiceWeightFuns: Map<ActivityType, LocationChoiceDCWeightFun>,
-                             mapType: MapDataSource = MapDataSource.OSM, nWorker:Int?
+                             mapType: Pair<MapDataSource,String?> = Pair(MapDataSource.OSM,null), nWorker:Int?
     ) : List<Building> {
         // Is cached?
         val bound = focusArea.envelopeInternal
@@ -327,9 +323,9 @@ class Omosim (
             readJsonStream(cachePath)
         } else {
             // Load data
-            var buildings: List<BuildingData> = when(mapType) {
+            var buildings: List<BuildingData> = when(mapType.first) {
                 MapDataSource.OVERTURE -> readOverture(
-                    focusArea, fullArea, geometryFactory, transformer, nWorker, cacheDir
+                    focusArea, fullArea, geometryFactory, transformer, nWorker,cacheDir,mapType.second,
                 )
                 MapDataSource.OSM -> readOSM(focusArea, fullArea, osmFile, geometryFactory, transformer)
             }
@@ -588,7 +584,7 @@ class Omosim (
      * @return List of agents each with an activity schedules for every simulated day
      */
     fun run(n_agents: Int, start_wd: Weekday = Weekday.UNDEFINED, n_days: Int = 1, verbose: Boolean =true) : List<MobiAgent> {
-    }
+
         logger.on = verbose
         val agents = if (this.sharedOfficeLocations != null && this.sharedOfficeLocations.isNotEmpty())
             agentFactory.createAgents(n_agents, zones, populateBufferArea, mainRng,this.sharedOfficeLocations)

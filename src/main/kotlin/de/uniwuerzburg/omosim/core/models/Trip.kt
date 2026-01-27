@@ -1,6 +1,6 @@
 package de.uniwuerzburg.omosim.core.models
 
-import de.uniwuerzburg.omod.io.json.AltMode
+import de.uniwuerzburg.omosim.io.json.AltMode
 
 /**
  * A trip.

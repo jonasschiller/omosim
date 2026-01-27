@@ -370,7 +370,7 @@ class SGGravity(
                 if (pSFSet == 0.0) { continue }
 
                 // Agent representing the population stratum
-                val stratumAgent = MobiAgent(
+                val stratumAgent = MobiAgentBase(
                     -1,  socioFeatureSet.hom, socioFeatureSet.mob, socioFeatureSet.age,
                     dummyLocation, dummyLocation, dummyLocation, socioFeatureSet.sex
                 )

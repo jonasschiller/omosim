@@ -2,7 +2,6 @@ package de.uniwuerzburg.omosim.core
 
 import de.uniwuerzburg.omosim.core.models.*
 import de.uniwuerzburg.omosim.utils.*
-import kotlinx.coroutines.*
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.Point
 import org.locationtech.jts.geom.GeometryFactory
@@ -17,7 +16,7 @@ private fun Coordinate.toPoint(): Point =
  * Creates agents by determining socio-demographic features as well as work and school locations.
  */
 interface AgentFactoryDefault : AgentFactory {
-
+    val destinationFinder: DestinationFinder
     /**
      * Initialize population based on a share of the existing population.
      * Assigns socio-demographic features, and home, work, and school locations.
@@ -28,7 +27,7 @@ interface AgentFactoryDefault : AgentFactory {
      * @param rng Random number generator
      * @return Population of agents
      */
-    val destinationFinder: DestinationFinder
+
     override fun createAgents(
         share: Double, zones: List<AggLocation>, populateBufferArea: Boolean, rng: Random
     ): List<MobiAgent> {
@@ -167,11 +166,12 @@ interface AgentFactoryDefault : AgentFactory {
             grid.flatMap { it.buildings }.filter { it.inFocusArea }
         }
         val agents = createAgents(nFocus, zones, populateBufferArea, rng)
+        val sswcAgents= agents.map { it as MobiAgentSSWC }.toList()
         if (sharedOfficeLocation.isNullOrEmpty()) {
-            assignSharedOfficeKMeans(agents as List<MobiAgentSSWC>,buildings)
+            assignSharedOfficeKMeans(sswcAgents,buildings)
         } else
-            assignSharedOfficeLocationsList(agents as List<MobiAgentSSWC>, buildings, sharedOfficeLocation)
-        return agents as List<MobiAgentSSWC>
+            assignSharedOfficeLocationsList(sswcAgents, buildings, sharedOfficeLocation)
+        return sswcAgents
     }
 
     override fun createAgents(
@@ -189,11 +189,12 @@ interface AgentFactoryDefault : AgentFactory {
             grid.flatMap { it.buildings }.filter { it.inFocusArea }
         }
         val agents = createAgents(shareOfPop, zones, populateBufferArea, rng)
+        val sswcAgents= agents.map { it as MobiAgentSSWC }.toList()
         if (sharedOfficeLocation.isNullOrEmpty()) {
-            assignSharedOfficeKMeans(agents as List<MobiAgentSSWC>,buildings)
+            assignSharedOfficeKMeans(sswcAgents,buildings)
         } else
-            assignSharedOfficeLocationsList(agents as List<MobiAgentSSWC>, buildings, sharedOfficeLocation)
-        return agents as List<MobiAgentSSWC>
+            assignSharedOfficeLocationsList(sswcAgents , buildings, sharedOfficeLocation)
+        return sswcAgents
     }
 
     fun createAgentsFromHomes(

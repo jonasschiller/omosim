@@ -1,8 +1,8 @@
-package de.uniwuerzburg.omod.io.synthpop
+package de.uniwuerzburg.omosim.io.synthpop
 
-import de.uniwuerzburg.omod.core.models.HomogeneousGrp
-import de.uniwuerzburg.omod.core.models.MobilityGrp
-import de.uniwuerzburg.omod.core.models.Sex
+import de.uniwuerzburg.omosim.core.models.HomogeneousGrp
+import de.uniwuerzburg.omosim.core.models.MobilityGrp
+import de.uniwuerzburg.omosim.core.models.Sex
 import org.locationtech.jts.geom.Coordinate
 import java.io.File
 import kotlin.random.Random

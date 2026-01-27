@@ -1,13 +1,13 @@
-package de.uniwuerzburg.omod.core
+package de.uniwuerzburg.omosim.core
 
-import de.uniwuerzburg.omod.core.models.ActivityType
-import de.uniwuerzburg.omod.core.models.AggLocation
-import de.uniwuerzburg.omod.core.models.LocationOption
-import de.uniwuerzburg.omod.core.models.MobiAgent
+import de.uniwuerzburg.omosim.core.models.ActivityType
+import de.uniwuerzburg.omosim.core.models.AggLocation
+import de.uniwuerzburg.omosim.core.models.LocationOption
+import de.uniwuerzburg.omosim.core.models.MobiAgent
 import java.util.ArrayList
 import java.util.Random
-import de.uniwuerzburg.omod.core.models.*
-import de.uniwuerzburg.omod.io.synthpop.getSynthPopAgents
+import de.uniwuerzburg.omosim.core.models.*
+import de.uniwuerzburg.omosim.io.synthpop.getSynthPopAgents
 import java.io.File
 import kotlin.collections.mapOf
 
@@ -28,10 +28,8 @@ class AgentFactorySynthPop(
      * Population size is based on census data and share thereof.
      * Load the agents from a file and assign home, work, and school locations.
      * Throws an error if the population size in the file is smaller than the requested size.
-     *
-     * @param share Share of the population to simulate
+     * @param homes Home locations
      * @param zones Possible home locations
-     * @param populateBufferArea False: Only place agents in the focus area
      * @param rng Random number generator
      * @return Population of agents
      */

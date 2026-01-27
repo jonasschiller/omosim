@@ -1,6 +1,6 @@
-package de.uniwuerzburg.omod.io.json
+package de.uniwuerzburg.omosim.io.json
 
-import de.uniwuerzburg.omod.core.models.Mode
+import de.uniwuerzburg.omosim.core.models.Mode
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 

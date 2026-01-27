@@ -20,7 +20,6 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.exp
-import kotlin.text.get
 import kotlin.time.TimeSource
 
 /**
@@ -155,7 +154,6 @@ class ModeChoiceGTFS(
             // Tour ends
             if ((destinationActivity.type == ActivityType.HOME) || finished){
                 tours.add( TourMCFeatures(currentTour) )
-                currentTour = mutableListOf()
             }
 
             // Add estimated travel time
@@ -182,12 +180,6 @@ class ModeChoiceGTFS(
 
                 val modeTimes = tourModeOptions.map { tour.totalTimeByMode(it.mode) }.toTypedArray()
 
-                // Weekday
-                val weekday = tour.first().weekday
-
-                val pair:Pair<Mode, Map<Mode,Double>> = sampleUtilities(tourModeOptions, times, carDistance, agent, mainPurpose, weekday, rng)
-                val mode = pair.first
-                val tourModeDist=pair.second
 
                 // Sample tour mode
                 val mode = sampleUtilities(
@@ -201,13 +193,16 @@ class ModeChoiceGTFS(
                 )
 
                 // If the tour is a CAR or BICYCLE all trips on the tour must be conducted with the respective vehicle
-                if ((mode == Mode.CAR_DRIVER) || (mode == Mode.BICYCLE)) {
+                if ((mode.first == Mode.CAR_DRIVER) || (mode.first == Mode.BICYCLE)) {
                     for (trip in tour.trips) {
-                        trip.mode = mode
-                        trip.modeDist=sampleUtilities(
-                            tripModeOptions, times, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
-                        ).second
-                        trip.modeDist= trip.modeDist?.plus(tourModeDist)
+                            trip.mode = mode.first
+                            val times = tripModeOptions.map { m ->
+                            trip.routes?.get(m.mode)!!.time
+                            }.toTypedArray()
+                            trip.modeDist=sampleUtilities(
+                                tripModeOptions, times, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
+                            ).second
+                            trip.modeDist= trip.modeDist?.plus(mode.second)
                     }
                 }
             }
@@ -217,7 +212,7 @@ class ModeChoiceGTFS(
                 val times = tripModeOptions.map { m ->
                     trip.routes!![m.mode]!!.time
                 }.toTypedArray()
-                val mode: Pair<Mode,Map<Mode,Double>> = sampleUtilities(
+                val mode = sampleUtilities(
                     tripModeOptions, times, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
                 )
                 trip.mode = mode.first
@@ -270,30 +265,7 @@ class ModeChoiceGTFS(
         }
     }
 
-    /**
-     * Sample logit model defined by the given utilities.
-     *
-     * @param options Possible modes for the decision (Different for tours and trips)
-     * @param times Travel times for each option
-     * @param carDistance Distance by car. Used as the reference distance.
-     * @param agent Agent
-     * @param activity Main activity of the tour or purpose of the trip.
-     * @param rng Random number generator
-     * @return Chosen mode
-     */
-    private fun sampleUtilities(
-        options: Array<ModeUtility>, times: Array<Double>,
-        carDistance: Double, agent: MobiAgent, activity: ActivityType,
-        weekday: Weekday, rng: Random
-    ) : Pair<Mode, Map<Mode,Double>> {
-        // If public transit and foot routes are the same, add 20 minutes to public transit to differentiate the options
-        val footIdx = options.withIndex().find { (_, o) -> o.mode == Mode.FOOT }?.index
-        val ptIdx = options.withIndex().find { (_, o) -> o.mode == Mode.PUBLIC_TRANSIT }?.index
-        if ((footIdx != null) && (ptIdx != null)) {
-            if (abs(times[footIdx] - times[ptIdx]) <= 3) {
-                times[ptIdx] = times[ptIdx] + 20.0
-            }
-        }
+
     companion object {
         /**
          * Sample logit model defined by the given utilities.
@@ -306,39 +278,30 @@ class ModeChoiceGTFS(
          * @param rng Random number generator
          * @return Chosen mode
          */
-        fun sampleUtilities(
-            options: Array<ModeUtility>, times: Array<Double>?,
+        private fun sampleUtilities(
+            options: Array<ModeUtility>, times: Array<Double>,
             carDistance: Double, agent: MobiAgent, activity: ActivityType,
             weekday: Weekday, rng: Random
-        ) : Mode {
-            if (times != null) {
-                // If public transit and foot routes are the same, add 20 minutes to public transit to differentiate the options
-                val footIdx = options.withIndex().find { (_, o) -> o.mode == Mode.FOOT }?.index
-                val ptIdx = options.withIndex().find { (_, o) -> o.mode == Mode.PUBLIC_TRANSIT }?.index
-                if ((footIdx != null) && (ptIdx != null)) {
-                    if (abs(times[footIdx] - times[ptIdx]) <= 3) {
-                        times[ptIdx] = times[ptIdx] + 20.0
-                    }
+        ) : Pair<Mode, Map<Mode,Double>> {
+            // If public transit and foot routes are the same, add 20 minutes to public transit to differentiate the options
+            val footIdx = options.withIndex().find { (_, o) -> o.mode == Mode.FOOT }?.index
+            val ptIdx = options.withIndex().find { (_, o) -> o.mode == Mode.PUBLIC_TRANSIT }?.index
+            if ((footIdx != null) && (ptIdx != null)) {
+                if (abs(times[footIdx] - times[ptIdx]) <= 3) {
+                    times[ptIdx] = times[ptIdx] + 20.0
                 }
             }
 
-        // Sampling
-        val weights = options.withIndex()
-            .map { (i, util) -> exp(util.calc(times[i], carDistance, activity, agent.carAccess, weekday, agent)) }
-            .toDoubleArray()
-        val distr = createCumDist(weights)
-        val mode = options[sampleCumDist(distr, rng)].mode
-        val distrMap: Map<Mode, Double> = options.mapIndexed { i, util -> util.mode to weights[i] }.toMap()
-
-
-        return Pair(mode,distrMap)
             // Sampling
             val weights = options.withIndex()
-                .map { (i, util) -> exp(util.calc(times?.get(i), carDistance, activity, agent.carAccess, weekday, agent)) }
+                .map { (i, util) -> exp(util.calc(times[i], carDistance, activity, agent.carAccess, weekday, agent)) }
                 .toDoubleArray()
             val distr = createCumDist(weights)
             val mode = options[sampleCumDist(distr, rng)].mode
-            return mode
+            val distrMap: Map<Mode, Double> = options.mapIndexed { i, util -> util.mode to weights[i] }.toMap()
+
+
+            return Pair(mode,distrMap)
         }
     }
 

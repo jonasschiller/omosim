@@ -176,7 +176,7 @@ class Run : CliktCommand() {
     ).default("EPSG:4326")
     private val shared_office_locations by option(
 
-            "--shared_office_locations_file",
+            "--shared_office_locations",
             help = "Locations of shared offices in target region."
         ).file(mustExist = true, mustBeReadable = true)
     private val mode_speed_up by option(
@@ -215,7 +215,7 @@ class Run : CliktCommand() {
 
         // Init Omosim
         val omosim= if(shared_office_locations is File){
-            val sharedOfficeLocationFile = shared_office_locations as? File
+            val sharedOfficeLocationFile = shared_office_locations
             Omosim(
                 area_geojson, osm_file,
                 routingMode = routing_mode,

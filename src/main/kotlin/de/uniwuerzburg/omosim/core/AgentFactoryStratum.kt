@@ -1,7 +1,7 @@
-package de.uniwuerzburg.omod.core
+package de.uniwuerzburg.omosim.core
 
-import de.uniwuerzburg.omod.core.models.*
-import de.uniwuerzburg.omod.utils.*
+import de.uniwuerzburg.omosim.core.models.*
+import de.uniwuerzburg.omosim.utils.*
 import kotlinx.coroutines.*
 import java.util.*
 

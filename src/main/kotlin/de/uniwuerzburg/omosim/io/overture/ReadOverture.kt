@@ -58,7 +58,7 @@ private fun determineTypes(
     return rslt
 }
 
-fun downloadOvertureLayer(fullArea: Geometry, type: String, overtureTmpDir: Path, nWorker:Int? = null) {
+fun downloadOvertureLayer(fullArea: Geometry, type: String, overtureTmpDir: Path, release: String?, nWorker: Int? = null) {
     val theme = typeThemeMap.getOrDefault(type, type)
 
     //Select String based on type
@@ -73,7 +73,7 @@ fun downloadOvertureLayer(fullArea: Geometry, type: String, overtureTmpDir: Path
     val xmax: Double = round(env.maxY, 2)
     val ymin: Double = round(env.minX, 2)
     val ymax: Double = round(env.maxX, 2)
-    var threads = nWorker ?: 1
+    val threads = nWorker ?: 1
 
     // Connect to DuckDB (in-memory unless you pass a file path)
     val conn = DriverManager.getConnection("jdbc:duckdb:")
@@ -96,7 +96,7 @@ fun downloadOvertureLayer(fullArea: Geometry, type: String, overtureTmpDir: Path
         SELECT   
             $selectString
         FROM read_parquet(
-            's3://overturemaps-us-west-2/release/2025-05-21.0/theme=$theme/type=$type/*',
+            's3://overturemaps-us-west-2/release/$release/theme=$theme/type=$type/*',
             filename = true,
             hive_partitioning = 1
         )
@@ -114,8 +114,8 @@ fun downloadOvertureLayer(fullArea: Geometry, type: String, overtureTmpDir: Path
 }
 
 fun readOverture(
-    focusArea: Geometry, fullArea: Geometry, geometryFactory:GeometryFactory, transformer: CRSTransformer,
-    nWorker: Int?, cacheDir: Path
+    focusArea: Geometry, fullArea: Geometry, geometryFactory: GeometryFactory, transformer: CRSTransformer,
+    nWorker: Int?, cacheDir: Path, release: String?
 ): List<BuildingData> {
 
 
@@ -133,7 +133,7 @@ fun readOverture(
     // Download
     logger.info("Downloading OvertureMap-File... (If this is too slow use smaller buffer size)")
     for (type in listOf("place", "land_use", "building")) {
-        downloadOvertureLayer(fullArea, type, overtureTmpDir, nWorker)
+        downloadOvertureLayer(fullArea, type, overtureTmpDir, release,nWorker)
     }
     logger.info("OvertureMap-File downloaded!")
 

@@ -1,7 +1,7 @@
-package de.uniwuerzburg.omod.io
+package de.uniwuerzburg.omosim.io
 
-import de.uniwuerzburg.omod.core.models.Building
-import de.uniwuerzburg.omod.utils.CRSTransformer
+import de.uniwuerzburg.omosim.core.models.Building
+import de.uniwuerzburg.omosim.utils.CRSTransformer
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.GeometryFactory
 import java.io.File

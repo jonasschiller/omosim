@@ -19,7 +19,7 @@ class CarOwnershipFixedProbability(
     }
 
     override fun probability(agent: MobiAgent, stratum: PopStratum): Double {
-        return if ((agent.age != null) && (agent.age < minDrivingAge)){
+        return if ((agent.age != null) && (agent.age!! < minDrivingAge)){
             0.0
         } else {
             stratum.carOwnership
