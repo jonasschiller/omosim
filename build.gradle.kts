@@ -71,7 +71,7 @@ sourceSets {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
     sourceSets.all {
         languageSettings {
             optIn("kotlin.io.path.ExperimentalPathApi")
