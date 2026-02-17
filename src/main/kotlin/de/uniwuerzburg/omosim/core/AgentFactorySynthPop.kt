@@ -9,7 +9,6 @@ import java.util.Random
 import de.uniwuerzburg.omosim.core.models.*
 import de.uniwuerzburg.omosim.io.synthpop.getSynthPopAgents
 import java.io.File
-import kotlin.collections.mapOf
 
 
 /** Load synthetic population data directly from Synthetic Population files
@@ -43,7 +42,6 @@ class AgentFactorySynthPop(
         val agents = ArrayList<MobiAgent>()
         val shuffledAgents = synthPopAgents.shuffled(rng)
         var agentIdx = 0
-        val sharedOfficeRateMapping = mapOf(1 to 0.05, 2 to 0.3, 3 to 0.5, 4 to 0.7, 5 to 0.95)
         for ((id, home) in homes.withIndex()) {
             // Hole Agenten aus der gesampelten Liste, ggf. wiederhole die Liste
             val baseAgent = shuffledAgents[agentIdx % shuffledAgents.size]
@@ -65,7 +63,7 @@ class AgentFactorySynthPop(
                 carAccess = baseAgent.carAccess,
                 sharedOffice=null,
                 homeOfficeDays = baseAgent.homeOfficeDays,
-                sharedOfficeRate = sharedOfficeRateMapping.getOrDefault(baseAgent.sharedOfficeLike, 0.0)*baseAgent.sharedOfficeDays/5.0,
+                sharedOfficeRate = baseAgent.sharedOfficeLike*(baseAgent.sharedOfficeDays/5.0),
                 drtLikelihood = baseAgent.drtLike,
             )
             agents.add(agent)

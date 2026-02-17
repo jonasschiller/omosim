@@ -19,6 +19,7 @@ fun readSharedOfficeLocations(
     val officeLocations= mutableListOf<Pair<Double, Double>>()
     sharedOfficeLocationFile.forEachLine { line ->
         //Skip the header line
+        if (line.startsWith("source")) return@forEachLine
         if (line.startsWith("fid")) return@forEachLine
         val tokens = line.split(",")
         if (tokens.size < 3) return@forEachLine

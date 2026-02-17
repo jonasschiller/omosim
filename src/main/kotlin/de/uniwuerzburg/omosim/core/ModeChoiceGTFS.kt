@@ -97,7 +97,7 @@ class ModeChoiceGTFS(
      */
     private fun getTours(diary: Diary, rng: Random, modeSpeedUp: Map<Mode, Double>) : List<TourMCFeatures> {
         val tours = mutableListOf<TourMCFeatures>()
-        var currentTour = mutableListOf<TripMCFeatures>()
+        val currentTour = mutableListOf<TripMCFeatures>()
 
         val visitor = {
             trip: Trip, originActivity: Activity, destinationActivity: Activity,
@@ -278,23 +278,24 @@ class ModeChoiceGTFS(
          * @param rng Random number generator
          * @return Chosen mode
          */
-        private fun sampleUtilities(
-            options: Array<ModeUtility>, times: Array<Double>,
+        fun sampleUtilities(
+            options: Array<ModeUtility>, times: Array<Double>?,
             carDistance: Double, agent: MobiAgent, activity: ActivityType,
             weekday: Weekday, rng: Random
         ) : Pair<Mode, Map<Mode,Double>> {
-            // If public transit and foot routes are the same, add 20 minutes to public transit to differentiate the options
-            val footIdx = options.withIndex().find { (_, o) -> o.mode == Mode.FOOT }?.index
-            val ptIdx = options.withIndex().find { (_, o) -> o.mode == Mode.PUBLIC_TRANSIT }?.index
-            if ((footIdx != null) && (ptIdx != null)) {
-                if (abs(times[footIdx] - times[ptIdx]) <= 3) {
-                    times[ptIdx] = times[ptIdx] + 20.0
+            if (times != null) {
+                // If public transit and foot routes are the same, add 20 minutes to public transit to differentiate the options
+                val footIdx = options.withIndex().find { (_, o) -> o.mode == Mode.FOOT }?.index
+                val ptIdx = options.withIndex().find { (_, o) -> o.mode == Mode.PUBLIC_TRANSIT }?.index
+                if ((footIdx != null) && (ptIdx != null)) {
+                    if (abs(times[footIdx] - times[ptIdx]) <= 3) {
+                        times[ptIdx] = times[ptIdx] + 20.0
+                    }
                 }
             }
-
             // Sampling
             val weights = options.withIndex()
-                .map { (i, util) -> exp(util.calc(times[i], carDistance, activity, agent.carAccess, weekday, agent)) }
+                .map { (i, util) -> exp(util.calc(times?.get(i), carDistance, activity, agent.carAccess, weekday, agent)) }
                 .toDoubleArray()
             val distr = createCumDist(weights)
             val mode = options[sampleCumDist(distr, rng)].mode

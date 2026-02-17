@@ -21,14 +21,14 @@ fun getSynthPopAgents(synthPopFile: File): List<SynthPopAgent> {
                     SynthPopAgent(
                         id = 0,
                         homogenousGroup = when (parts[8].trim().toInt()) {
-                            in 1..11 -> HomogeneousGrp.WORKING
-                            97 -> HomogeneousGrp.NON_WORKING
+                            in 1..7 -> HomogeneousGrp.WORKING
+                            8 -> HomogeneousGrp.NON_WORKING
                             else -> HomogeneousGrp.UNDEFINED
                         },
                         mobilityGroup = when {
                             parts[5].trim().toInt() == 2 -> MobilityGrp.NOT_CAR // driverLicense
                             parts[6].trim().toInt() == 2 && parts[10].trim().toInt() >= 1 -> MobilityGrp.CAR_MIXED // driveRegularly + carGroup
-                            parts[6].trim().toInt() == 2 && parts[10].trim().toInt() == 0 -> MobilityGrp.NOT_CAR
+                            parts[6].trim().toInt() == 1 && parts[10].trim().toInt() == 0 -> MobilityGrp.NOT_CAR
                             parts[6].trim().toInt() == 1 && parts[10].trim().toInt() >= 1 -> MobilityGrp.CAR_USER
                             parts[10].trim().toInt() == 0 -> MobilityGrp.CAR_MIXED
                             else -> MobilityGrp.UNDEFINED
@@ -51,9 +51,31 @@ fun getSynthPopAgents(synthPopFile: File): List<SynthPopAgent> {
                             else -> 0.0
                         },
                         carAccess = parts[10].trim().toInt() > 0,
-                        sharedOfficeLike = parts[14].trim().toInt(),
-                        sharedOfficeDays = parts[15].trim().toInt(),
-                        drtLike = parts[16].trim().toInt(),
+                        sharedOfficeLike = when(parts[14].trim().toInt()){
+                            1 -> 0.1
+                            2 -> 0.4
+                            3 -> 0.5
+                            4 -> 0.6
+                            5 -> 0.8
+                            else -> 0.0
+                        },
+
+                        sharedOfficeDays = when(parts[15].trim().toInt()){
+                            0 -> 0.0
+                            1 -> 1.0
+                            2 -> 2.5
+                            3 -> 4.5
+                            4 -> 5.0
+                            else -> 0.0
+                        },
+                        drtLike = when(parts[16].trim().toInt()){
+                            1 -> 0.1
+                            2 -> 0.4
+                            3 -> 0.5
+                            4 -> 0.6
+                            5 -> 0.8
+                            else -> 0.0
+                        },
                         sharedOfficeLocation = if (parts.size > 18) {
                                 Coordinate(parts[17].trim().toDouble(), parts[18].trim().toDouble())
                             } else {

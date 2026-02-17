@@ -18,7 +18,7 @@ data class OutputEntry (
     val carAccess: Boolean,
     val homeCoord: String,
     val workCoord: String,
-    val drtLike: Int?,
+    val drtLike: Double?,
     val mobilityDemand: List<OutputDiary>
 )
 

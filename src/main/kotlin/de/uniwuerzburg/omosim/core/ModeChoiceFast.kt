@@ -166,9 +166,9 @@ class ModeChoiceFast(
                 )
 
                 // If the tour is a CAR or BICYCLE all trips on the tour must be conducted with the respective vehicle
-                if ((mode == Mode.CAR_DRIVER) || (mode == Mode.BICYCLE)) {
+                if ((mode.first == Mode.CAR_DRIVER) || (mode.first == Mode.BICYCLE)) {
                     for (trip in tour.trips) {
-                        trip.mode = mode
+                        trip.mode = mode.first
                     }
                 }
             }
@@ -178,7 +178,7 @@ class ModeChoiceFast(
                 val mode = ModeChoiceGTFS.sampleUtilities(
                     tripModeOptions, null, trip.carDistance, agent, trip.toActivity.type, trip.weekday, rng
                 )
-                trip.mode = mode
+                trip.mode = mode.first
             }
 
             // Format for output

@@ -507,54 +507,48 @@ class Omosim (
         val locations = getLocations(agent, activityChain, start, rng).toMutableList()
         // Replace Work with Home Office if sampled or with shared office based on probability
         var i = 0
-        while (i < activityChain.size) {
-            //If agent works from home that day
-            if (activityChain[i] == ActivityType.WORK && (agent.homeOfficeDays) / 5.0 > rng.nextDouble()) {
-                // If agent works from shared office that day
-                if (agent.sharedOfficeRate > rng.nextDouble()) {
-                    activityChain[i]= ActivityType.SHARED_OFFICE
-                    agent.sharedOffice?.let { locations[i]= it }
-                }else {
-                    activityChain[i] = ActivityType.HOME_OFFICE
-                    locations[i] = agent.home
-                }
-                    /**
-                }
-                val prevIsHome = i > 0 && activityChain[i - 1] == ActivityType.HOME
-                val nextIsHome = i < activityChain.size - 1 && activityChain[i + 1] == ActivityType.HOME
+        var decision=null as ActivityType?
 
-                when {
-                    prevIsHome && nextIsHome -> {
-                        stayTimes[i - 1] = (stayTimes[i - 1] ?: 0.0) + (stayTimes[i] ?: 0.0) + (stayTimes[i + 1] ?: 0.0)
-                        listOf(i + 1, i).forEach {
-                            stayTimes.removeAt(it)
-                            activityChain.removeAt(it)
-                            locations.removeAt(it)
+        while (i < activityChain.size) {
+            //Check if Activity Type is Work
+            if (activityChain[i] == ActivityType.WORK) {
+                //Check if it is the first Work of the day
+                    if (decision==null){
+
+                        if(((0.7*agent.homeOfficeDays)+(0.7*agent.sharedOfficeRate*5)) / 5.0 > rng.nextDouble()) {
+                            // If agent works from shared office that day
+                            if ((agent.sharedOfficeRate*5)/(agent.sharedOfficeRate*5+agent.homeOfficeDays) > rng.nextDouble()) {
+                                activityChain[i]= ActivityType.SHARED_OFFICE
+                                agent.sharedOffice?.let { locations[i]= it }
+                                decision=ActivityType.SHARED_OFFICE
+                            }else {
+                                activityChain[i] = ActivityType.HOME_OFFICE
+                                locations[i] = agent.home
+                                decision=ActivityType.HOME_OFFICE
+                            }
+
+                            val prevIsHome = i > 0 && activityChain[i - 1] == ActivityType.HOME
+                            val nextIsHome = i < activityChain.size - 1 && activityChain[i + 1] == ActivityType.HOME
+
+
+                        }
+                        else{
+                            decision= ActivityType.WORK
+                        }
+                    }else{
+                        if (decision==ActivityType.SHARED_OFFICE){
+                            activityChain[i]= ActivityType.SHARED_OFFICE
+                            agent.sharedOffice?.let { locations[i]= it  }
+                        }else if (decision==ActivityType.HOME_OFFICE){
+                            activityChain[i]= ActivityType.HOME_OFFICE
+                            locations[i]= agent.home
                         }
                     }
-                    prevIsHome -> {
-                        activityChain[i] = ActivityType.HOME
-                        locations[i] = agent.home
-                        stayTimes[i - 1] = (stayTimes[i - 1] ?: 0.0) + (stayTimes[i] ?: 0.0)
-                        stayTimes.removeAt(i)
-                        activityChain.removeAt(i)
-                        locations.removeAt(i)
-                    }
-                    nextIsHome -> {
-                        activityChain[i] = ActivityType.HOME
-                        locations[i] = agent.home
-                        stayTimes[i] = (stayTimes[i] ?: 0.0) + (stayTimes[i + 1] ?: 0.0)
-                        stayTimes.removeAt(i + 1)
-                        activityChain.removeAt(i + 1)
-                        locations.removeAt(i + 1)
-                    }
-                    else -> {
-                        activityChain[i] = ActivityType.HOME
-                        locations[i] = agent.home
-                    }
+                }
 
-                }*/
-            }
+
+            //If agent works from home that day
+
             i++
         }
         return List(activityChain.size) { i ->

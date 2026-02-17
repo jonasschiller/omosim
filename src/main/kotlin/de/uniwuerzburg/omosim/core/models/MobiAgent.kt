@@ -58,7 +58,7 @@ abstract class MobiAgentSSWC(
     open var sharedOffice: LocationOption?,
     open val homeOfficeDays: Double= 0.0,
     open val sharedOfficeRate: Double = 0.0,
-    open val drtLikelihood: Int=0
+    open val drtLikelihood: Double=0.0
 ) : MobiAgent(
     id, homogenousGroup, mobilityGroup, age, home, work, school, sex, carAccess, mobilityDemand
 )
@@ -76,7 +76,7 @@ data class MobiAgentSSWCBase(
     override var sharedOffice: LocationOption?,
     override val homeOfficeDays: Double = 0.0,
     override val sharedOfficeRate: Double = 0.0,
-    override val drtLikelihood: Int = 0,
+    override val drtLikelihood: Double = 0.0,
     override val mobilityDemand: MutableList<Diary> = mutableListOf()
 ) : MobiAgentSSWC(
     id, homogenousGroup, mobilityGroup, age, home, work, school, sex, carAccess, mobilityDemand,
