@@ -527,10 +527,6 @@ class Omosim (
                                 decision=ActivityType.HOME_OFFICE
                             }
 
-                            val prevIsHome = i > 0 && activityChain[i - 1] == ActivityType.HOME
-                            val nextIsHome = i < activityChain.size - 1 && activityChain[i + 1] == ActivityType.HOME
-
-
                         }
                         else{
                             decision= ActivityType.WORK

@@ -112,6 +112,8 @@ class Route (
                 ActivityType.HOME   -> 1.0 / 11.9
                 ActivityType.WORK   -> 1.0 / 12.7
                 ActivityType.SCHOOL -> 1.0 / 7.7
+                ActivityType.HOME_OFFICE -> 1.0 / 11.9
+                ActivityType.SHARED_OFFICE -> 1.0 / 12.7
                 else -> throw IllegalArgumentException(
                     "Round-trips must start and end at a fixed location (HOME, WORK, SCHOOL)."
                 )

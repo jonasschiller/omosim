@@ -12,7 +12,7 @@ fun writeJSONOutput(output: List<OutputEntry>, file: File, runParams: Map<String
     val jsonA=Json {
         prettyPrint = true
         encodeDefaults = true
-        explicitNulls = false
+        explicitNulls = true
     }
     FileOutputStream(file).use { f ->
         jsonA.encodeToStream( amendedOutput, f)

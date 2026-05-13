@@ -108,7 +108,9 @@ class ModeChoiceGTFS(
             val rtDistances = mapOf(
                 ActivityType.HOME to Route.sampleDistanceRoundTrip(ActivityType.HOME, rng),
                 ActivityType.WORK to Route.sampleDistanceRoundTrip(ActivityType.WORK, rng),
-                ActivityType.SCHOOL to Route.sampleDistanceRoundTrip(ActivityType.SCHOOL, rng)
+                ActivityType.SCHOOL to Route.sampleDistanceRoundTrip(ActivityType.SCHOOL, rng),
+                ActivityType.HOME_OFFICE to Route.sampleDistanceRoundTrip(ActivityType.HOME_OFFICE, rng),
+                ActivityType.SHARED_OFFICE to Route.sampleDistanceRoundTrip(ActivityType.SHARED_OFFICE, rng)
             )
 
             // Get car distance and routes per mode
@@ -117,7 +119,9 @@ class ModeChoiceGTFS(
                 (
                     (originActivity.type == ActivityType.HOME) ||
                     (originActivity.type == ActivityType.WORK) ||
-                    (originActivity.type == ActivityType.SCHOOL)
+                    (originActivity.type == ActivityType.SCHOOL) ||
+                        (originActivity.type == ActivityType.HOME_OFFICE) ||
+                        (originActivity.type == ActivityType.SHARED_OFFICE)
                 )
             ) {
                 // IF trip is from fixed location to same fixed location. Impute a randomly sampled Round-trip.

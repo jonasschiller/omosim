@@ -3,6 +3,7 @@ package de.uniwuerzburg.omosim.io
 import de.uniwuerzburg.omosim.core.models.*
 import de.uniwuerzburg.omosim.io.json.*
 import java.time.LocalTime
+import kotlin.toString
 
 /**
  * Retrieves results from an agent and formats the data for output.
@@ -34,12 +35,22 @@ fun formatOutput(agent: MobiAgent) : OutputEntry {
             } else {
                 null
             }
-
-            legs.add(
-                OutputTrip(
-                    id, trip.mode, currentTime.toString(), trip.distance, trip.time, trip.lats, trip.lons, altModes
+            if (i < diary.activities.size - 1 &&
+                (
+                        (diary.activities[i].type == ActivityType.HOME && diary.activities[i+1].type == ActivityType.HOME_OFFICE) ||
+                                (diary.activities[i].type == ActivityType.HOME_OFFICE && diary.activities[i+1].type == ActivityType.HOME)
+                        )
+            ) {
+                continue
+            } else {
+                legs.add(
+                    OutputTrip(
+                        id, trip.mode, currentTime.toString(), trip.distance, trip.time, trip.lats, trip.lons, altModes
+                    )
                 )
-            )
+            }
+
+
             id += 1
             currentTime = currentTime.plusMinutes(trip.time?.toLong() ?: 0)
         }
