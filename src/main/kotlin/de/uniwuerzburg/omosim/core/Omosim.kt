@@ -81,14 +81,14 @@ class Omosim (
     private val modeSpeedUp: Map<Mode, Double> = mapOf(),
     predefinedBuildings: File? = null,
     sharedOfficeLocationFile: File? = null,
-    useSharedOffices: Boolean?=null,
+    sswcMode: SSWCMode= SSWCMode.HO_SO,
 ) {
     @Suppress("MemberVisibilityCanBePrivate")
     val kdTree: KdTree
     @Suppress("MemberVisibilityCanBePrivate")
     val buildings: List<Building>
     private val sharedOfficeLocations: List<Building>?
-    private val useSharedOffices:Boolean?= useSharedOffices
+
     var hopper: GraphHopper?
     val grid: List<Cell>
     private val zones: List<AggLocation> // Grid + DummyLocations for commuting locations
@@ -108,10 +108,12 @@ class Omosim (
     var tripModeUtilityFn: File? = null
     var altPercentages: Map<ODTTriple, List<Double>> = mapOf()
     var popStrata: List<PopStratum>
+    var sswcMode: SSWCMode
 
     init {
         val timeSource = TimeSource.Monotonic
         val timestampStartInit = timeSource.markNow()
+        this.sswcMode=sswcMode
         popStrata = emptyList()
         // Load population distribution
         if (populationFile != null) {
@@ -502,20 +504,21 @@ class Omosim (
         agent: MobiAgentSSWCBase,  rng: Random, weekday: Weekday = Weekday.UNDEFINED,
         from: ActivityType = ActivityType.HOME, start: LocationOption
     ): List<Activity> {
+
         val activityChain = activityGenerator.getActivityChain(agent, weekday, from, rng).toMutableList()
         val stayTimes = activityGenerator.getStayTimes(activityChain, agent, weekday, rng).toMutableList()
         val locations = getLocations(agent, activityChain, start, rng).toMutableList()
         // Replace Work with Home Office if sampled or with shared office based on probability
         var i = 0
         var decision=null as ActivityType?
-
+        if (this.sswcMode != SSWCMode.BASELINE){
+            if (this.sswcMode == SSWCMode.HO_SO){
         while (i < activityChain.size) {
             //Check if Activity Type is Work
             if (activityChain[i] == ActivityType.WORK) {
                 //Check if it is the first Work of the day
                     if (decision==null){
-
-                        if(((0.7*agent.homeOfficeDays)+(0.7*agent.sharedOfficeRate*5)) / 5.0 > rng.nextDouble()) {
+                        if(((0.7*agent.homeOfficeDays)+(0.7*agent.sharedOfficeRate*5)) / 5.0 < rng.nextDouble()) {
                             // If agent works from shared office that day
                             if ((agent.sharedOfficeRate*5)/(agent.sharedOfficeRate*5+agent.homeOfficeDays) > rng.nextDouble()) {
                                 activityChain[i]= ActivityType.SHARED_OFFICE
@@ -546,6 +549,56 @@ class Omosim (
             //If agent works from home that day
 
             i++
+        }}
+            else if(this.sswcMode== SSWCMode.HO){
+                while (i < activityChain.size) {
+                    //Check if Activity Type is Work
+                    if (activityChain[i] == ActivityType.WORK) {
+                        //Check if it is the first Work of the day
+                        if (decision==null){
+                            if(agent.homeOfficeDays/ 5.0 < rng.nextDouble()) {
+                                // If agent works from home office that day
+                                    activityChain[i] = ActivityType.HOME_OFFICE
+                                    locations[i] = agent.home
+                                    decision=ActivityType.HOME_OFFICE
+                                }
+                            else{
+                                decision= ActivityType.WORK
+                            }
+                        }else{
+                                activityChain[i]= ActivityType.HOME_OFFICE
+                                locations[i]= agent.home
+                            }
+                        }
+                   //If agent works from home that day
+                    i++
+                }
+            } else if(this.sswcMode==SSWCMode.SO){
+                while (i < activityChain.size) {
+                    //Check if Activity Type is Work
+                    if (activityChain[i] == ActivityType.WORK) {
+                        //Check if it is the first Work of the day
+                        if (decision==null){
+                            if(agent.sharedOfficeRate < rng.nextDouble()) {
+                                // If agent works from home office that day
+                                activityChain[i] = ActivityType.SHARED_OFFICE
+                                agent.sharedOffice?.let { locations[i] = it }
+                                decision=ActivityType.SHARED_OFFICE
+                            }
+                            else{
+                                decision= ActivityType.WORK
+                            }
+                        }else{
+                            activityChain[i]= ActivityType.SHARED_OFFICE
+                            agent.sharedOffice?.let { locations[i]= it }
+                        }
+                    }
+                    //If agent works from home that day
+                    i++
+                }
+            }
+
+
         }
         return List(activityChain.size) { i ->
             Activity(activityChain[i], stayTimes[i], locations[i])

@@ -12,6 +12,7 @@ import de.uniwuerzburg.omosim.core.logger
 import de.uniwuerzburg.omosim.core.models.ActivityType
 import de.uniwuerzburg.omosim.core.models.Mode
 import de.uniwuerzburg.omosim.core.models.ModeChoiceOption
+import de.uniwuerzburg.omosim.core.models.SSWCMode
 import de.uniwuerzburg.omosim.core.models.Weekday
 import de.uniwuerzburg.omosim.io.formatOutput
 import de.uniwuerzburg.omosim.io.json.writeJSONOutput
@@ -199,6 +200,9 @@ class Run : CliktCommand() {
     private val predefined_buildings by option(
         help = "File Path to a GeoJSON file that contains predefined building structures based on alternative map sources."
     ).file(mustExist = false, mustBeReadable = true)
+    private val sswc_mode by option(
+        help="You can choose between BASELINE, HO, SO and HO_SO"
+    ).enum<SSWCMode>().default(SSWCMode.HO_SO)
 
     override fun run() {
         if ((census == null) && (agentNumberDefinition is ShareOfPop) && (calibrationParameters == null)) {
@@ -231,10 +235,10 @@ class Run : CliktCommand() {
                 overtureRelease = mapdata_overture,
                 modeSpeedUp = mode_speed_up,
                 predefinedBuildings = predefined_buildings,
-                sharedOfficeLocationFile = sharedOfficeLocationFile
+                sharedOfficeLocationFile = sharedOfficeLocationFile,
+                sswcMode=sswc_mode
             )
             }else{
-            val sharedOfficeLocationBool= shared_office_locations as?  Boolean
             Omosim(
                 area_geojson, osm_file,
                 routingMode = routing_mode,
@@ -249,7 +253,8 @@ class Run : CliktCommand() {
                 gtfsFile = gtfs_file,
                 overtureRelease = mapdata_overture,
                 modeSpeedUp = mode_speed_up,
-                predefinedBuildings = predefined_buildings
+                predefinedBuildings = predefined_buildings,
+                sswcMode=sswc_mode
             )
         }
 
