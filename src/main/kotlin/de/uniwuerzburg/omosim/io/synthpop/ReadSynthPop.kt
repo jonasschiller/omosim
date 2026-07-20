@@ -43,13 +43,13 @@ fun getSynthPopAgents(synthPopFile: File): List<SynthPopAgent> {
                             else -> 0
                         },
                         sex = if (parts[2].trim().toInt() == 1) Sex.MALE else Sex.FEMALE,
-                        homeOfficeDays = when (parts[9].trim().toInt()) {
+                        homeOfficeRate = when (parts[9].trim().toInt()) {
                             5 -> 0.0 // no home office
                             4 -> 1.5 // 1-2 days
                             3 -> 3.5 // 3 days
                             2, 1 -> 5.0 // 5 days or full home office
                             else -> 0.0
-                        },
+                        }/5.0,
                         carAccess = parts[10].trim().toInt() > 0,
                         sharedOfficeLike = when(parts[14].trim().toInt()){
                             1 -> 0.1
@@ -68,6 +68,21 @@ fun getSynthPopAgents(synthPopFile: File): List<SynthPopAgent> {
                             4 -> 5.0
                             else -> 0.0
                         },
+                        sharedOfficeRate =when(parts[14].trim().toInt()){
+                            1 -> 0.1
+                            2 -> 0.4
+                            3 -> 0.5
+                            4 -> 0.6
+                            5 -> 0.8
+                            else -> 0.0
+                        }*(when(parts[15].trim().toInt()){
+                            0 -> 0.0
+                            1 -> 1.0
+                            2 -> 2.5
+                            3 -> 4.5
+                            4 -> 5.0
+                            else -> 0.0
+                        }/5.0),
                         drtLike = when(parts[16].trim().toInt()){
                             1 -> 0.1
                             2 -> 0.4

@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory
 class PausableLogger(
     private val logger: Logger,
 ) {
-    var on = true;
+    var on = true
 
     fun get() : Logger? {
         return if (on) {

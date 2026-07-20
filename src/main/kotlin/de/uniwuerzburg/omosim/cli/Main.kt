@@ -180,6 +180,14 @@ class Run : CliktCommand() {
             "--shared_office_locations",
             help = "Locations of shared offices in target region."
         ).file(mustExist = true, mustBeReadable = true)
+    private val wfh_rate by option(
+        "--wfh_rate",
+        help="Ratio of the population that works from home on a given day"
+    ).double()
+    private val so_rate by option(
+        "--so_rate",
+        help = "Ratio of the population that works from Shared Office on a given day"
+    ).double()
     private val mode_speed_up by option(
         help = "Value: MODE=FACTOR. Multiply the travel time of each trip of the mode by the factor." +
                "Example: CAR_DRIVER=0.3, will slow down car travel durations by 70%."
@@ -236,7 +244,9 @@ class Run : CliktCommand() {
                 modeSpeedUp = mode_speed_up,
                 predefinedBuildings = predefined_buildings,
                 sharedOfficeLocationFile = sharedOfficeLocationFile,
-                sswcMode=sswc_mode
+                sswcMode=sswc_mode,
+                wfhRate=wfh_rate,
+                soRate=so_rate,
             )
             }else{
             Omosim(

@@ -34,7 +34,10 @@ import java.time.LocalDate
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.exists
+import kotlin.math.exp
 import kotlin.math.floor
+import kotlin.math.ln
+import kotlin.math.max
 import kotlin.time.TimeSource
 
 /**
@@ -82,6 +85,8 @@ class Omosim (
     predefinedBuildings: File? = null,
     sharedOfficeLocationFile: File? = null,
     sswcMode: SSWCMode= SSWCMode.HO_SO,
+    wfhRate: Double? = null,
+    soRate: Double? = null
 ) {
     @Suppress("MemberVisibilityCanBePrivate")
     val kdTree: KdTree
@@ -261,13 +266,12 @@ class Omosim (
                 CarOwnershipMNL(carOwnershipUtility, 17)
             }
         }
-
         // Agent factory
         agentFactory = if (popStrata.isNotEmpty()|| populationFile == null) {
             AgentFactoryStratum(
                 destinationFinder, carOwnership, popStrata, dispatcher)
         } else {
-            AgentFactorySynthPop(destinationFinder,populationFile)
+            AgentFactorySynthPop(destinationFinder,populationFile,wfhRate,soRate)
         }
 
         logger.get()?.info("Initializing OMoSim took: ${timeSource.markNow() - timestampStartInit}")
@@ -512,90 +516,84 @@ class Omosim (
         var i = 0
         var decision=null as ActivityType?
         if (this.sswcMode != SSWCMode.BASELINE){
-            if (this.sswcMode == SSWCMode.HO_SO){
-        while (i < activityChain.size) {
-            //Check if Activity Type is Work
-            if (activityChain[i] == ActivityType.WORK) {
-                //Check if it is the first Work of the day
-                    if (decision==null){
-                        if(((0.7*agent.homeOfficeDays)+(0.7*agent.sharedOfficeRate*5)) / 5.0 < rng.nextDouble()) {
-                            // If agent works from shared office that day
-                            if ((agent.sharedOfficeRate*5)/(agent.sharedOfficeRate*5+agent.homeOfficeDays) > rng.nextDouble()) {
-                                activityChain[i]= ActivityType.SHARED_OFFICE
-                                agent.sharedOffice?.let { locations[i]= it }
-                                decision=ActivityType.SHARED_OFFICE
-                            }else {
-                                activityChain[i] = ActivityType.HOME_OFFICE
-                                locations[i] = agent.home
-                                decision=ActivityType.HOME_OFFICE
+            when (this.sswcMode) {
+                SSWCMode.HO_SO -> {
+                    while (i < activityChain.size) {
+                        if (activityChain[i] == ActivityType.WORK) {
+                            if (decision == null) {
+                                val decisionHO = agent.homeOfficeRate > rng.nextDouble()
+                                val decisionSO = agent.sharedOfficeRate > rng.nextDouble()
+                                decision = when {
+                                    decisionSO && decisionHO ->
+                                        if (agent.homeOfficeRate > agent.sharedOfficeRate)
+                                            ActivityType.HOME_OFFICE else ActivityType.SHARED_OFFICE
+                                    decisionSO -> ActivityType.SHARED_OFFICE
+                                    decisionHO -> ActivityType.HOME_OFFICE
+                                    else -> ActivityType.WORK
+                                }
                             }
-
+                            // Apply decision to activity chain and locations
+                            activityChain[i] = decision
+                            when (decision) {
+                                ActivityType.SHARED_OFFICE -> agent.sharedOffice?.let { locations[i] = it }
+                                ActivityType.HOME_OFFICE -> locations[i] = agent.home
+                                else -> {} // WORK: keep original location
+                            }
                         }
-                        else{
-                            decision= ActivityType.WORK
-                        }
-                    }else{
-                        if (decision==ActivityType.SHARED_OFFICE){
-                            activityChain[i]= ActivityType.SHARED_OFFICE
-                            agent.sharedOffice?.let { locations[i]= it  }
-                        }else if (decision==ActivityType.HOME_OFFICE){
-                            activityChain[i]= ActivityType.HOME_OFFICE
-                            locations[i]= agent.home
-                        }
+                        i++
                     }
                 }
 
-
-            //If agent works from home that day
-
-            i++
-        }}
-            else if(this.sswcMode== SSWCMode.HO){
-                while (i < activityChain.size) {
-                    //Check if Activity Type is Work
-                    if (activityChain[i] == ActivityType.WORK) {
-                        //Check if it is the first Work of the day
-                        if (decision==null){
-                            if(agent.homeOfficeDays/ 5.0 < rng.nextDouble()) {
-                                // If agent works from home office that day
+                SSWCMode.HO -> {
+                    //Adjust to desired rate
+                    while (i < activityChain.size) {
+                        //Check if Activity Type is Work
+                        if (activityChain[i] == ActivityType.WORK) {
+                            //Check if it is the first Work of the day
+                            if (decision == null) {
+                                if (agent.homeOfficeRate > rng.nextDouble()) {
+                                    // If agent works from home office that day
                                     activityChain[i] = ActivityType.HOME_OFFICE
                                     locations[i] = agent.home
-                                    decision=ActivityType.HOME_OFFICE
+                                    decision = ActivityType.HOME_OFFICE
+                                } else {
+                                    decision = ActivityType.WORK
                                 }
-                            else{
-                                decision= ActivityType.WORK
-                            }
-                        }else{
-                                activityChain[i]= ActivityType.HOME_OFFICE
-                                locations[i]= agent.home
+                            } else if (decision == ActivityType.HOME_OFFICE) {
+                                activityChain[i] = ActivityType.HOME_OFFICE
+                                locations[i] = agent.home
                             }
                         }
-                   //If agent works from home that day
-                    i++
+                        //If agent works from home that day
+                        i++
+                    }
                 }
-            } else if(this.sswcMode==SSWCMode.SO){
-                while (i < activityChain.size) {
-                    //Check if Activity Type is Work
-                    if (activityChain[i] == ActivityType.WORK) {
-                        //Check if it is the first Work of the day
-                        if (decision==null){
-                            if(agent.sharedOfficeRate < rng.nextDouble()) {
-                                // If agent works from home office that day
+
+                SSWCMode.SO -> {
+                    while (i < activityChain.size) {
+                        //Check if Activity Type is Work
+                        if (activityChain[i] == ActivityType.WORK) {
+                            //Check if it is the first Work of the day
+                            if (decision == null) {
+                                if (agent.sharedOfficeRate > rng.nextDouble()) {
+                                    // If agent works from home office that day
+                                    activityChain[i] = ActivityType.SHARED_OFFICE
+                                    agent.sharedOffice?.let { locations[i] = it }
+                                    decision = ActivityType.SHARED_OFFICE
+                                } else {
+                                    decision = ActivityType.WORK
+                                }
+                            } else if (decision == ActivityType.SHARED_OFFICE) {
                                 activityChain[i] = ActivityType.SHARED_OFFICE
                                 agent.sharedOffice?.let { locations[i] = it }
-                                decision=ActivityType.SHARED_OFFICE
                             }
-                            else{
-                                decision= ActivityType.WORK
-                            }
-                        }else{
-                            activityChain[i]= ActivityType.SHARED_OFFICE
-                            agent.sharedOffice?.let { locations[i]= it }
                         }
+                        //If agent works from home that day
+                        i++
                     }
-                    //If agent works from home that day
-                    i++
                 }
+
+                else -> {}
             }
 
 

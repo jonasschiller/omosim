@@ -252,9 +252,7 @@ class OSMProcessor(idTrackerType: IdTrackerType,
             // Stamp holes into polygon
             val holesAsPolygon = holes.map { geometryFactory.createPolygon(it) }.toTypedArray()
             val hole = geometryFactory.createMultiPolygon(holesAsPolygon).union()
-            val punchedGeom = polygon.difference(hole)
-
-            when (punchedGeom) {
+            when (val punchedGeom = polygon.difference(hole)) {
                 is Polygon -> polygons.add ( punchedGeom )
                 is MultiPolygon -> {
                     for (i in 0 until punchedGeom.numGeometries){
