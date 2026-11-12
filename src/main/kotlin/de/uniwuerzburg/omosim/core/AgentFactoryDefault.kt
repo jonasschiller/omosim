@@ -167,11 +167,12 @@ interface AgentFactoryDefault : AgentFactory {
         }
         val agents = createAgents(nFocus, zones, populateBufferArea, rng)
         val sswcAgents= agents.map { it as MobiAgentSSWC }.toList()
-        if (sharedOfficeLocation.isNullOrEmpty()) {
-            assignSharedOfficeKMeans(sswcAgents,buildings)
-        } else
+        return if (sharedOfficeLocation.isNullOrEmpty()) {
+            assignSharedOfficeKMeans(sswcAgents, buildings).map { it as MobiAgentSSWC }
+        } else {
             assignSharedOfficeLocationsList(sswcAgents, buildings, sharedOfficeLocation)
-        return sswcAgents
+            sswcAgents
+        }
     }
 
     override fun createAgents(
@@ -190,11 +191,12 @@ interface AgentFactoryDefault : AgentFactory {
         }
         val agents = createAgents(shareOfPop, zones, populateBufferArea, rng)
         val sswcAgents= agents.map { it as MobiAgentSSWC }.toList()
-        if (sharedOfficeLocation.isNullOrEmpty()) {
-            assignSharedOfficeKMeans(sswcAgents,buildings)
-        } else
-            assignSharedOfficeLocationsList(sswcAgents , buildings, sharedOfficeLocation)
-        return sswcAgents
+        return if (sharedOfficeLocation.isNullOrEmpty()) {
+            assignSharedOfficeKMeans(sswcAgents, buildings).map { it as MobiAgentSSWC }
+        } else {
+            assignSharedOfficeLocationsList(sswcAgents, buildings, sharedOfficeLocation)
+            sswcAgents
+        }
     }
 
     fun createAgentsFromHomes(
@@ -219,6 +221,7 @@ interface AgentFactoryDefault : AgentFactory {
 
     /**
      * Assign shared office locations to agents based on a provided list of shared office locations or using K-Means clustering.
+     * A shared office is assigned only when it is farther from home than the agent's work location.
      *
      * @param agents List of agents
      * @param buildings List of all buildings in the area
@@ -227,30 +230,22 @@ interface AgentFactoryDefault : AgentFactory {
      */
 
     private fun assignSharedOfficeLocationsList(agents: List<MobiAgentSSWC>, buildings: List<Building>, sharedOfficeLocation: List<RealLocation>): List<MobiAgent> {
-        val sharedOfficePairs = sharedOfficeLocation.map { sharedOffice ->
-            Pair(sharedOffice, gf.createPoint(Coordinate(sharedOffice.latlonCoord.y, sharedOffice.latlonCoord.x)))
+
+
+        agents.forEach { agent ->
+            val distances = (destinationFinder as DestinationFinderDefault).routingCache
+                .getDistances(agent.home, sharedOfficeLocation)
+            val nearestIndex = distances.indices.minByOrNull { distances[it] }
+            val nearest = nearestIndex?.let { sharedOfficeLocation[it] }
+            val distanceToSharedOffice = distances[nearestIndex ?: -1]
+
+            val distanceToWork = (destinationFinder as DestinationFinderDefault).routingCache
+                .getDistances(agent.home, listOf(agent.work)).first()
+
+            agent.sharedOffice = nearest?.takeIf { distanceToSharedOffice < distanceToWork }
         }
 
-         // Vorberechne die Points für alle Agenten einmalig (statt pro Iteration neu zu erzeugen)
-         val agentPoints: List<Point> = agents.map { agent ->
-             gf.createPoint(Coordinate(agent.home.latlonCoord.y, agent.home.latlonCoord.x))
-         }
-
-         // Für jeden Agenten das nächste Shared-Office anhand der vorberechneten Punkte finden
-         agents.zip(agentPoints).forEach { (agent, agentPoint) ->
-            val nearest = sharedOfficePairs.minByOrNull { (_, buildingPoint) ->
-                buildingPoint.distance(agentPoint)
-            }
-             val distance= nearest?.second?.distance(agentPoint)
-             if (distance != null && distance > 1500) {
-                 println("Warning: Assigned shared office is more than 1.5 km away from agent home location ")
-
-             }
-
-            nearest?.let { agent.sharedOffice = it.first }
-        }
-
-         return agents
+        return agents
     }
 
 
@@ -339,9 +334,15 @@ interface AgentFactoryDefault : AgentFactory {
         return agents.mapIndexed { index, agent ->
             val clusterId = homes.getOrNull(index)?.cluster ?: -1
             val office = closestBuildings.getOrNull(clusterId)
+            val homePoint = agent.home.coord.toPoint()
+            val distanceToWork = homePoint.distance(agent.work.coord.toPoint())
 
             if (agent is MobiAgentSSWCBase) {
-                agent.copy(sharedOffice = office)
+                agent.copy(
+                    sharedOffice = office?.takeIf {
+                        homePoint.distance(it.coord.toPoint()) > distanceToWork
+                    }
+                )
             } else agent
         }
     }

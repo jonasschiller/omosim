@@ -61,8 +61,13 @@ fun formatOutput(agent: MobiAgent) : OutputEntry {
     } else {
         null
     }
+    val sharedOfficeLocation=if(agent::class==MobiAgentSSWCBase::class) {
+        (agent as MobiAgentSSWC).sharedOffice?.latlonCoord.toString()
+    } else {
+        null
+    }
     return OutputEntry(
-        agent.id, agent.homogenousGroup, agent.mobilityGroup, agent.age, agent.sex, agent.carAccess, agent.home.latlonCoord.toString(),agent.work.latlonCoord.toString(), drtLike, mobilityDemand
+        agent.id, agent.homogenousGroup, agent.mobilityGroup, agent.age, agent.sex, agent.carAccess, agent.home.latlonCoord.toString(),agent.work.latlonCoord.toString(), sharedOfficeLocation, drtLike, mobilityDemand
     )
 }
 

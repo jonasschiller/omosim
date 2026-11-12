@@ -156,6 +156,14 @@ class Run : CliktCommand() {
         help="Path to file that describes the activity chains for each population group and the dwell-time distribution for the each chain. " +
         "Must be formatted like omosim/src/main/resources/ActivityGroup.json"
     ).file(mustExist = true, mustBeReadable = true)
+    private val tour_utilities_file by option(
+        help="Path to parameter file for the tour mode decision model." +
+                "Must be formatted like omosim/src/main/resources/tourModeUtilities.json"
+    ).path(mustExist = true, mustBeReadable = true)
+    private val trip_utilities_file by option(
+        help="Path to parameter file for the trip mode decision model. " +
+                "Must be formatted like omosim/src/main/resources/tripModeUtilities.json"
+    ).path(mustExist = true, mustBeReadable = true)
     private val n_worker by option(
         help="Number of parallel coroutines that can be executed at the same time. " +
              "Default: Number of CPU-Cores available."
@@ -238,6 +246,8 @@ class Run : CliktCommand() {
                 distanceCacheSize = distance_matrix_cache_size,
                 populationFile = population_file,
                 activityGroupFile = activity_group_file,
+                tourModeUtilityFile = tour_utilities_file,
+                tripModeUtilityFile = trip_utilities_file,
                 nWorker = n_worker,
                 gtfsFile = gtfs_file,
                 overtureRelease = mapdata_overture,
@@ -259,6 +269,8 @@ class Run : CliktCommand() {
                 distanceCacheSize = distance_matrix_cache_size,
                 populationFile = population_file,
                 activityGroupFile = activity_group_file,
+                tourModeUtilityFile = tour_utilities_file,
+                tripModeUtilityFile = trip_utilities_file,
                 nWorker = n_worker,
                 gtfsFile = gtfs_file,
                 overtureRelease = mapdata_overture,

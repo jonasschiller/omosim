@@ -86,7 +86,9 @@ class Omosim (
     sharedOfficeLocationFile: File? = null,
     sswcMode: SSWCMode= SSWCMode.HO_SO,
     wfhRate: Double? = null,
-    soRate: Double? = null
+    soRate: Double? = null,
+    tourModeUtilityFile: Path? = null,
+    tripModeUtilityFile: Path? = null
 ) {
     @Suppress("MemberVisibilityCanBePrivate")
     val kdTree: KdTree
@@ -109,8 +111,8 @@ class Omosim (
     val focusArea: Geometry
     private val fullArea: Geometry
     val carOwnership: CarOwnership
-    var tourModeUtilityFn: File? = null
-    var tripModeUtilityFn: File? = null
+    var tourModeUtilityFn: File? = tourModeUtilityFile?.toFile()
+    var tripModeUtilityFn: File? = tripModeUtilityFile?.toFile()
     var altPercentages: Map<ODTTriple, List<Double>> = mapOf()
     var popStrata: List<PopStratum>
     var sswcMode: SSWCMode
@@ -515,8 +517,18 @@ class Omosim (
         // Replace Work with Home Office if sampled or with shared office based on probability
         var i = 0
         var decision=null as ActivityType?
-        if (this.sswcMode != SSWCMode.BASELINE){
-            when (this.sswcMode) {
+
+        // If shared office location is not defined, agent cannot work from home
+        var sswcModeAgent=this.sswcMode
+        if (agent.sharedOffice==null){
+            if (sswcModeAgent==SSWCMode.SO){
+                sswcModeAgent=SSWCMode.BASELINE
+            }else if (sswcModeAgent==SSWCMode.HO_SO){
+                sswcModeAgent=SSWCMode.HO
+            }
+        }
+        if (sswcModeAgent != SSWCMode.BASELINE){
+            when (sswcModeAgent) {
                 SSWCMode.HO_SO -> {
                     while (i < activityChain.size) {
                         if (activityChain[i] == ActivityType.WORK) {

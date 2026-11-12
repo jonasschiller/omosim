@@ -49,7 +49,7 @@ class ModeChoiceGTFS(
     val tripModeOptions: Array<ModeUtility> = if (tripModeUtilityFn != null) {
         readJson(tripModeUtilityFn)
     } else {
-        readJsonFromResource("tripModeUtilities.json")
+        readJsonFromResource("tripModeUtilitiesKorea.json")
     }
 
     /**
@@ -97,7 +97,7 @@ class ModeChoiceGTFS(
      */
     private fun getTours(diary: Diary, rng: Random, modeSpeedUp: Map<Mode, Double>) : List<TourMCFeatures> {
         val tours = mutableListOf<TourMCFeatures>()
-        val currentTour = mutableListOf<TripMCFeatures>()
+        var currentTour = mutableListOf<TripMCFeatures>()
 
         val visitor = {
             trip: Trip, originActivity: Activity, destinationActivity: Activity,
@@ -158,6 +158,7 @@ class ModeChoiceGTFS(
             // Tour ends
             if ((destinationActivity.type == ActivityType.HOME) || finished){
                 tours.add( TourMCFeatures(currentTour) )
+                currentTour = mutableListOf()
             }
 
             // Add estimated travel time
@@ -176,6 +177,7 @@ class ModeChoiceGTFS(
      */
     private fun doModeChoiceFor(agent: MobiAgent, rng: Random, modeSpeedUp: Map<Mode, Double>) {
         for (diary in agent.mobilityDemand) {
+
             val tours = getTours(diary, rng, modeSpeedUp)
 
             // Tour mode choice
